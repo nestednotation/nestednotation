@@ -1,0 +1,24 @@
+extends base
+
+block script
+    script(src='/javascripts/index.js')
+block content
+    form(action = "/setup", method = "GET", autocomplete="off")
+        div(class="row", style="margin-top: 10px;")
+            div(class="col-lg-4")
+            div(class="col-lg-4")
+                div(class="input-group")
+                    input(name="un", autocomplete="off", class="form-control", placeholder="Username")
+            div(class="col-lg-4")
+        div(class="row", style="margin-top: 10px;")
+            div(class="col-lg-4")
+            div(class="col-lg-4")
+                div(class="input-group")
+                    input(name="pw", autocomplete="off", type="password", class="form-control", placeholder="Password")
+            div(class="col-lg-4")
+        div(class="row", style="margin-top: 10px;")
+            div(class="col-lg-4")
+            div(class="col-lg-4")
+                div(class="input-group")
+                    button(type="submit", class="btn btn-primary", style="background-color: orange; border-color: #36322E; width: 100%;") LOGIN TO SETUP
+            div(class="col-lg-4")

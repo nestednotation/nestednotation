@@ -1,0 +1,124 @@
+extends base
+
+block script
+    script(src='javascripts/index.js')
+block content
+    h3. 
+        Running session: 
+    table(cellpadding="10")
+        each d in session
+            form(method = "GET")
+                tr
+                    td
+                        label(for="i") &nbsp;id&nbsp;
+                    td
+                        input(type="hidden", name="c", value="u")
+                        input(type="text", name="i", value=d.id, readonly)
+                tr
+                    td
+                        label(for="n") &nbsp;name&nbsp;
+                    td
+                        input(type="text", name="n", value=d.sessionName, readonly)
+                tr
+                    td
+                        label(for="f") &nbsp;folder&nbsp;
+                    td
+                        select(name="f")
+                            each s in score
+                                if s == d.folder
+                                    option(value=s, selected)=s
+                                else
+                                    option(value=s)=s
+                tr
+                    td
+                        label(for="vd") &nbsp;sm password&nbsp;
+                    td
+                        input(type="text", name="sp", value=d.adminPassword, readonly)
+                tr
+                    td
+                        label(for="vd") &nbsp;player password&nbsp;
+                    td
+                        input(type="text", name="pp", value=d.playerPassword, readonly)
+                tr
+                    td
+                        label(for="vd") &nbsp;voting duration&nbsp;
+                    td
+                        input(type="text", name="vd", value=d.votingDuration)
+                tr
+                    td
+                        label(for="hd") &nbsp;holding duration&nbsp;
+                    td
+                        input(type="text", name="hd", value=d.holdDuration)
+                tr
+                    td
+                        input(type="submit", value="Update session")
+                    td
+                tr
+                    td.
+                        &nbsp;
+            tr
+                td
+                    form(method = "GET")     
+                        input(type="hidden", name="c", value="s") 
+                        input(type="hidden", name="i", value=d.id) 
+                        input(type="hidden", name="n", value="1")
+                        input(type="hidden", name="f", value="1")
+                        input(type="hidden", name="sp", value="1")
+                        input(type="hidden", name="pp", value="1")
+                        input(type="hidden", name="vd", value="1")
+                        input(type="hidden", name="hd", value="1")
+                        input(type="submit", value="Stop session")
+                td
+                    form(method="GET", action="../session")
+                        input(type="hidden", name="s", value=d.sessionName)
+                        input(type="hidden", name="p", value=d.adminPassword)
+                        input(type="submit", value="Manage")
+            tr
+                td.
+                    &nbsp;
+            tr
+                td.
+                    &nbsp;
+    hr
+    h3. 
+        Create new session: 
+    table(cellpadding="10")
+        form(method = "GET")
+            input(type="hidden", name="c", value="n")
+            input(type="hidden", name="i", value=0)
+            tr
+                td
+                    label(for="n") &nbsp;name&nbsp;
+                td
+                    input(type="text", name="n")
+            tr
+                td
+                    label(for="f") &nbsp;folder&nbsp;
+                td
+                    select(name="f")
+                        each s in score
+                            option(value=s)=s
+            tr
+                td
+                    label(for="sp") &nbsp;sm password&nbsp;
+                td
+                    input(type="text", name="sp", value="managerpassword")
+            tr
+                td
+                    label(for="pp") &nbsp;player password&nbsp;
+                td
+                    input(type="text", name="pp")
+            tr
+                td
+                    label(for="vd") &nbsp;voting duration&nbsp;
+                td
+                    input(type="text", name="vd", value=10)
+            tr
+                td
+                    label(for="hd") &nbsp;holding duration&nbsp;
+                td
+                    input(type="text", name="hd", value=10)
+            tr
+                td
+                    input(type="submit", value="New session")
+                td

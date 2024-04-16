@@ -1,0 +1,24 @@
+extends base
+
+block script
+    script(src='javascripts/index.js')
+block content
+    form(action = "session", method = "GET", autocomplete="off")
+        div(class="row", style="margin-top: 10px;")
+            div(class="col-lg-4")
+            div(class="col-lg-4")
+                div(class="input-group")
+                    input(name="s", autocomplete="off", class="form-control", placeholder="session name")
+            div(class="col-lg-4")
+        div(class="row", style="margin-top: 10px;")
+            div(class="col-lg-4")
+            div(class="col-lg-4")
+                div(class="input-group")
+                    input(name="p", autocomplete="off", type="password", class="form-control", placeholder="player password (leave blank for rider)")
+            div(class="col-lg-4")
+        div(class="row", style="margin-top: 10px;")
+            div(class="col-lg-4")
+            div(class="col-lg-4")
+                div(class="input-group")
+                    button(type="submit", class="btn btn-primary", style="background-color: #36322E; border-color: #36322E; width: 100%;") GO
+            div(class="col-lg-4")

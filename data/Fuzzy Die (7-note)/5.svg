@@ -1,0 +1,135 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
+<svg width="100%" height="100%" viewBox="0 0 1800 1800" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" xml:space="preserve" xmlns:serif="http://www.serif.com/" style="fill-rule:evenodd;clip-rule:evenodd;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:1.5;">
+    <g transform="matrix(1,0,0,1,-9192,0)">
+        <g id="_5" serif:id="5" transform="matrix(1,0,0,1,9192,0)">
+            <rect x="0" y="0" width="1800" height="1800" style="fill:none;"/>
+            <clipPath id="_clip1">
+                <rect x="0" y="0" width="1800" height="1800"/>
+            </clipPath>
+            <g clip-path="url(#_clip1)">
+                <rect x="3.144" y="0" width="1793.71" height="1796.87" style="fill:white;stroke:white;stroke-width:5px;"/>
+                <g transform="matrix(1,0,0,1,-9192,0)">
+                    <path d="M9434.18,915.306C9391.06,806.535 9424.94,671.733 9508.97,606.498" style="fill:none;stroke:black;stroke-width:6.67px;"/>
+                </g>
+                <g id="Meta-Ring-and-Background" serif:id="Meta-Ring and Background">
+                    <g transform="matrix(0.975658,0.219299,-0.219299,0.975658,219.277,-175.461)">
+                        <g transform="matrix(1,0,0,1,-2210.55,0)">
+                            <path d="M2655,682L2619,664" style="fill:none;stroke:rgb(179,179,179);stroke-width:5.83px;"/>
+                        </g>
+                        <g transform="matrix(1,0,0,1,-2210.55,0)">
+                            <path d="M3456,1329L3434,1302" style="fill:none;stroke:rgb(179,179,179);stroke-width:5.83px;"/>
+                        </g>
+                        <g transform="matrix(1,0,0,1,-2214.55,5)">
+                            <path d="M3457,472L3435,498" style="fill:none;stroke:rgb(179,179,179);stroke-width:5.83px;"/>
+                        </g>
+                        <g transform="matrix(1,0,0,1,-2210.55,0)">
+                            <path d="M2992,366L3000,401" style="fill:none;stroke:rgb(179,179,179);stroke-width:5.83px;"/>
+                        </g>
+                        <g transform="matrix(0.8,0,0,0.863636,-1612.15,195.818)">
+                            <path d="M3002,1392L2992,1436" style="fill:none;stroke:rgb(179,179,179);stroke-width:7.01px;"/>
+                        </g>
+                        <g transform="matrix(1.12903,0,0,1.06667,-2548.1,-75.8667)">
+                            <path d="M2647,1123L2616,1138" style="fill:none;stroke:rgb(179,179,179);stroke-width:5.31px;"/>
+                        </g>
+                        <g transform="matrix(-6.7241e-17,1.09811,-0.79838,-4.88857e-17,1868.52,58.3011)">
+                            <path d="M768,524.038L768,568" style="fill:none;stroke:rgb(179,179,179);stroke-width:6.08px;"/>
+                        </g>
+                    </g>
+                    <g transform="matrix(-0.8125,0.881474,-0.889196,-0.819588,2393.06,1149.16)">
+                        <ellipse cx="692" cy="1046" rx="458" ry="454" style="fill:none;stroke:rgb(179,179,179);stroke-width:5.54px;"/>
+                    </g>
+                </g>
+                <g id="Child-Rings" serif:id="Child Rings">
+					<a xlink:href="PRE-6.svg">
+                    <g id="_7" serif:id="7" transform="matrix(0.232458,0,0,0.232458,258.066,350.293)">
+                        <g id="Ring-and-Background" serif:id="Ring and Background">
+                            <g transform="matrix(4.97405,0,0,4.97405,-3617.94,-952.181)">
+                                <ellipse cx="908.472" cy="372.741" rx="135.237" ry="135.134" style="fill:white;stroke:white;stroke-width:5.77px;"/>
+                            </g>
+                            <g transform="matrix(-0.8125,0.881474,-0.889196,-0.819588,2393.06,1149.16)">
+                                <ellipse cx="692" cy="1046" rx="458" ry="454" style="fill:none;stroke:black;stroke-width:17.86px;"/>
+                            </g>
+                            <g transform="matrix(0.954174,0.21447,-0.21447,0.954174,234.859,-151.624)">
+                                <g transform="matrix(1,0,0,1,-2210.55,0)">
+                                    <path d="M2655,682L2619,664" style="fill:none;stroke:black;stroke-width:29.32px;"/>
+                                </g>
+                                <g transform="matrix(1,0,0,1,-2210.55,0)">
+                                    <path d="M3456,1329L3434,1302" style="fill:none;stroke:black;stroke-width:29.32px;"/>
+                                </g>
+                                <g transform="matrix(1,0,0,1,-2214.55,5)">
+                                    <path d="M3457,472L3435,498" style="fill:none;stroke:black;stroke-width:29.32px;"/>
+                                </g>
+                                <g transform="matrix(1,0,0,1,-2210.55,0)">
+                                    <path d="M2992,366L3000,401" style="fill:none;stroke:black;stroke-width:29.32px;"/>
+                                </g>
+                                <g transform="matrix(0.8,0,0,0.863636,-1612.15,195.818)">
+                                    <path d="M3002,1392L2992,1436" style="fill:none;stroke:black;stroke-width:35.23px;"/>
+                                </g>
+                                <g transform="matrix(1.12903,0,0,1.06667,-2548.1,-75.8667)">
+                                    <path d="M2647,1123L2616,1138" style="fill:none;stroke:black;stroke-width:26.7px;"/>
+                                </g>
+                                <g transform="matrix(-6.7241e-17,1.09811,-0.79838,-4.88857e-17,1868.52,58.3011)">
+                                    <path d="M768,524.038L768,568" style="fill:none;stroke:black;stroke-width:30.55px;"/>
+                                </g>
+                            </g>
+                        </g>
+                        <g id="Notes" transform="matrix(0.975658,0.219299,-0.219299,0.975658,219.277,-175.461)">
+                            <g id="_71" serif:id="7" transform="matrix(-1.39762,2.4207,-2.45799,-1.41909,2765.91,-442.966)">
+                                <ellipse cx="766" cy="526.5" rx="33" ry="32.5" style="fill:rgb(84,0,255);stroke:white;stroke-width:8.91px;"/>
+                            </g>
+                            <g id="_6" serif:id="6" transform="matrix(-1.39762,2.4207,-2.45799,-1.41909,2766.78,25.705)">
+                                <ellipse cx="766" cy="526.5" rx="33" ry="32.5" style="fill:rgb(84,0,255);stroke:white;stroke-width:8.91px;"/>
+                            </g>
+                            <g id="_4" serif:id="4" transform="matrix(-1.39762,2.4207,-2.45799,-1.41909,3610.24,220.057)">
+                                <ellipse cx="766" cy="526.5" rx="33" ry="32.5" style="fill:rgb(84,0,255);stroke:white;stroke-width:8.91px;"/>
+                            </g>
+                        </g>
+                    </g>
+					</a>
+                    <g id="_61" serif:id="6" transform="matrix(0.232458,0,0,0.232458,153.001,814.671)">
+                        <g id="Ring-and-Background1" serif:id="Ring and Background">
+                            <g transform="matrix(4.97405,0,0,4.97405,-3617.94,-952.181)">
+                                <ellipse cx="908.472" cy="372.741" rx="135.237" ry="135.134" style="fill:white;stroke:white;stroke-width:5.77px;"/>
+                            </g>
+                            <g transform="matrix(-0.8125,0.881474,-0.889196,-0.819588,2393.06,1149.16)">
+                                <ellipse cx="692" cy="1046" rx="458" ry="454" style="fill:none;stroke:black;stroke-width:17.86px;"/>
+                            </g>
+                            <g transform="matrix(0.954174,0.21447,-0.21447,0.954174,234.859,-151.624)">
+                                <g transform="matrix(1,0,0,1,-2210.55,0)">
+                                    <path d="M2655,682L2619,664" style="fill:none;stroke:black;stroke-width:29.32px;"/>
+                                </g>
+                                <g transform="matrix(1,0,0,1,-2210.55,0)">
+                                    <path d="M3456,1329L3434,1302" style="fill:none;stroke:black;stroke-width:29.32px;"/>
+                                </g>
+                                <g transform="matrix(1,0,0,1,-2214.55,5)">
+                                    <path d="M3457,472L3435,498" style="fill:none;stroke:black;stroke-width:29.32px;"/>
+                                </g>
+                                <g transform="matrix(1,0,0,1,-2210.55,0)">
+                                    <path d="M2992,366L3000,401" style="fill:none;stroke:black;stroke-width:29.32px;"/>
+                                </g>
+                                <g transform="matrix(0.8,0,0,0.863636,-1612.15,195.818)">
+                                    <path d="M3002,1392L2992,1436" style="fill:none;stroke:black;stroke-width:35.23px;"/>
+                                </g>
+                                <g transform="matrix(1.12903,0,0,1.06667,-2548.1,-75.8667)">
+                                    <path d="M2647,1123L2616,1138" style="fill:none;stroke:black;stroke-width:26.7px;"/>
+                                </g>
+                                <g transform="matrix(-6.7241e-17,1.09811,-0.79838,-4.88857e-17,1868.52,58.3011)">
+                                    <path d="M768,524.038L768,568" style="fill:none;stroke:black;stroke-width:30.55px;"/>
+                                </g>
+                            </g>
+                        </g>
+                        <g id="Notes1" serif:id="Notes" transform="matrix(0.975658,0.219299,-0.219299,0.975658,219.277,-175.461)">
+                            <g id="_72" serif:id="7" transform="matrix(-1.39762,2.4207,-2.45799,-1.41909,2765.91,-442.966)">
+                                <ellipse cx="766" cy="526.5" rx="33" ry="32.5" style="fill:rgb(255,0,0);stroke:white;stroke-width:8.91px;"/>
+                            </g>
+                            <g id="_62" serif:id="6" transform="matrix(-1.39762,2.4207,-2.45799,-1.41909,2766.78,25.705)">
+                                <ellipse cx="766" cy="526.5" rx="33" ry="32.5" style="fill:rgb(255,0,0);stroke:white;stroke-width:8.91px;"/>
+                            </g>
+                        </g>
+                    </g>
+                </g>
+            </g>
+        </g>
+    </g>
+</svg>
