@@ -21,18 +21,18 @@ if (!fs.existsSync(testPrefixFile)){
 var accountDir = prefixDir + '/account';
 var dataDir = prefixDir + '/data';
 const env = process.env.NODE_ENV || 'development';
-var hostAddress = 'nestednotation.com';
+var hostaddress = 'nestednotation.com';
 if (env == 'development'){
   require('dotenv').config({
     path: '.env.development'
   });
-  hostAddress = 'devapi.nestednotation.com'
+  hostaddress = 'devapi.nestednotation.com';
 
 } else {
   require('dotenv').config({
     path: '.env.production'
   });
-  hostAddress = "proapi.nestednotation.com";
+  hostaddress = 'proapi.nestednotation.com';
 }
 
 /**
