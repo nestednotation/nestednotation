@@ -5,7 +5,8 @@ module.exports = {
       name: 'development',
       env: {
         NODE_ENV: 'development',
-      }
+      },
+      
     },
     {
       script: 'bin/www', // the path of the script you want to execute,

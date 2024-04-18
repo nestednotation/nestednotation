@@ -16,11 +16,20 @@ var testPrefixFile = prefixDir + '/account/admin.dat';
 if (!fs.existsSync(testPrefixFile)){
   prefixDir = '..';
 }
-require('dotenv').config();
 
 
 var accountDir = prefixDir + '/account';
 var dataDir = prefixDir + '/data';
+const env = process.env.NODE_ENV || 'development';
+if (env == 'development'){
+  require('dotenv').config({
+    path: '.env.development'
+  });
+} else {
+  require('dotenv').config({
+    path: '.env.production'
+  });
+}
 
 /**
  * Get port from environment and store in Express.
