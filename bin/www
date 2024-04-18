@@ -854,6 +854,9 @@ db.adminPassword = 'g3tn3st3d';
 const wsPort = process.env.WS_PORT || 8080;
 const wsPath = `wss://${hostaddress}:${wsPort}`;
 
+console.log(`App is running on port ${wsPort}`)
+console.log(`Websocket path is ${wsPath}`)
+
 
 /**
  * Admin data
