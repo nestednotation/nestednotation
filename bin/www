@@ -21,14 +21,18 @@ if (!fs.existsSync(testPrefixFile)){
 var accountDir = prefixDir + '/account';
 var dataDir = prefixDir + '/data';
 const env = process.env.NODE_ENV || 'development';
+var hostAddress = 'nestednotation.com';
 if (env == 'development'){
   require('dotenv').config({
     path: '.env.development'
   });
+  hostAddress = 'devapi.nestednotation.com'
+
 } else {
   require('dotenv').config({
     path: '.env.production'
   });
+  hostAddress = "proapi.nestednotation.com";
 }
 
 /**
@@ -39,7 +43,6 @@ if (env == 'development'){
 var port = normalizePort(process.env.PORT || '3000');
 var websocketport = process.env.WS_PORT;
 var networkInterfaces = os.networkInterfaces( );
-var hostaddress = 'nestednotation.com';
 
 if (typeof(networkInterfaces['en0']) !== 'undefined'){
   var listInterfaces = networkInterfaces['en0'];
@@ -861,7 +864,7 @@ db.adminUsername = 'admin';
 db.adminPassword = 'g3tn3st3d';
 
 const wsPort = process.env.WS_PORT || 8080;
-const wsPath = `wss://${hostaddress}:${wsPort}`;
+const wsPath = `wss://${hostaddress}`;
 
 console.log(`App is running on port ${wsPort}`)
 console.log(`Websocket path is ${wsPath}`)
