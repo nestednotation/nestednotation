@@ -851,6 +851,9 @@ var db = new BMDatabase();
 db.adminUsername = 'admin';
 db.adminPassword = 'g3tn3st3d';
 
+const wsPort = process.env.WS_PORT || 8080;
+const wsPath = `wss://${hostaddress}:${wsPort}`;
+
 
 /**
  * Admin data
@@ -901,6 +904,7 @@ var folderName = 'Serotonin-v2';
 var displayName = 'mcknight';
 var adminPass = 'managerpassword';
 var playerPass = 'mcknight';
+db.wsPath = wsPath;
 
 var session = db.session.add(ownerId, folderName, displayName, adminPass, playerPass);
 session.votingDuration = 0;

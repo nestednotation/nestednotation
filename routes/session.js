@@ -48,14 +48,14 @@ router.get('/*', function(req, res, next) {
         res.status(301).redirect('/?msg=1');
       }else{
         var noSleepDuration = 60;
-        res.render('session', { 
-          title: 'Session', 
+        res.render('session', {
+          title: 'Session',
           staffCode: password,
           sessionId: sessionId,
           hostAddress: db.hostAddress,
           webSocketPort: db.wsPort,
           noSleepDuration: noSleepDuration,
-          
+
           msgPing: db.MSG_PING,
           msgTap: db.MSG_TAP,
           msgShow: db.MSG_SHOW,
@@ -69,8 +69,9 @@ router.get('/*', function(req, res, next) {
           msgPause: db.MSG_PAUSE,
           msgSelectHistory: db.MSG_SELECT_HISTORY,
           msgShowNumberConnection: db.MSG_SHOW_NUMBER_CONNECTION,
-          
-          svg: session.svgContent 
+
+          svg: session.svgContent,
+          wsPath: db.wsPath
         });
       }
     }

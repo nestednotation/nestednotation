@@ -32,6 +32,7 @@ html
       var sessionId = '#{sessionId}';
       var hostAddress = '#{hostAddress}';
       var wsPort = '#{webSocketPort}';
+      var wsPath = '#{wsPath}'
 
       var CONST_NO_SLEEP_DURATION = #{noSleepDuration};
       var MSG_PING = #{msgPing};
@@ -128,7 +129,7 @@ html
 
           }
 
-          ws = new WebSocket('wss://' + hostAddress + ':' + wsPort);
+          ws = new WebSocket(wsPath);
           ws.onopen = function (event) {
             var currentTime = getClientTime();
             sendToServer(MSG_PING, currentTime);
