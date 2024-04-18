@@ -128,7 +128,7 @@ html
 
           }
 
-          ws = new WebSocket('ws://' + hostAddress + ':' + wsPort);
+          ws = new WebSocket('wss://' + hostAddress + ':' + wsPort);
           ws.onopen = function (event) {
             var currentTime = getClientTime();
             sendToServer(MSG_PING, currentTime);
