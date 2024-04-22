@@ -15,9 +15,9 @@ jobs:
         uses: appleboy/ssh-action@master
         with:
           host: ${{ secrets.HOST }}
-          username: ${{ secrets.USERNAME }}
-          port: ${{ env.SSH_PORT }}
-          password: ${{ secrets.HOST_PASSWORD }}
+          username: ${{ secrets.SSH_USERNAME }}
+          port: 22
+          password: ${{ secrets.SSH_PASSWORD }}
           script: |
             whoami
             cd /nestednotation
@@ -34,7 +34,7 @@ jobs:
           server_address: smtp.gmail.com
           server_port: 465
           username: ${{ secrets.EMAIL }}
-          password: ${{ secrets.MAIL_PASSWORD }}
+          password: ${{ secrets.EMAIL_PASSWORD }}
           subject: 'Deployed develop branch'
           body: 'Deployed develop branch'
           to: doanhoaisonfithcmus@gmail.com, doanhoaison97@gmail.com
