@@ -19,6 +19,7 @@ jobs:
           port: ${{ env.SSH_PORT }}
           password: ${{ secrets.HOST_PASSWORD }}
           script: |
+            whoami
             cd /nestednotation
             git pull origin develop
             npm install
