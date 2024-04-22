@@ -27,16 +27,18 @@ jobs:
             pm2 restart all
 
   send-noti:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Send email
-        uses: dawidd6/action-send-mail@v2
+      runs-on: ubuntu-latest
+      name: Send email on every push
+      steps:
+      - name: Send Mail Action
+        id: sendmail
+        uses: vineetchoudhary/mailgun-action@master
         with:
-          server_address: smtp.gmail.com
-          server_port: 465
-          username: ${{ secrets.EMAIL }}
-          password: ${{ secrets.EMAIL_PASSWORD }}
-          subject: 'Deployed develop branch'
-          body: 'Deployed develop branch'
-          to: doanhoaisonfithcmus@gmail.com, doanhoaison97@gmail.com
-          from: ${{ secrets.EMAIL }}
+          api-key: ${{ secrets.MAIL_GUN_API }}
+          domain: ${{ secrets.MAIL_GUN_DOMAIN }}
+          to: doanhoaisonfithcmus@gmail.com
+      - name: Send Mail Action Response
+        run: echo "${{ steps.sendmail.outputs.response }}"
+        
+
+       
