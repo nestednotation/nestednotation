@@ -1,0 +1,40 @@
+name: Deploy develop branch
+on:
+  push:
+    branches:
+      - ci-cd
+env:
+  CI: true
+  SSH_PORT: 22
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Pull code and restart pm2
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.HOST }}
+          username: ${{ secrets.USERNAME }}
+          port: ${{ env.SSH_PORT }}
+          password: ${{ secrets.HOST_PASSWORD }}
+          script: |
+            cd /nestednotation
+            git pull origin develop
+            npm install
+            pm2 restart all
+
+  send-noti:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send email
+        uses: dawidd6/action-send-mail@v2
+        with:
+          server_address: smtp.gmail.com
+          server_port: 465
+          username: ${{ secrets.EMAIL }}
+          password: ${{ secrets.MAIL_PASSWORD }}
+          subject: 'Deployed develop branch'
+          body: 'Deployed develop branch'
+          to: doanhoaisonfithcmus@gmail.com, doanhoaison97@gmail.com
+          from: ${{ secrets.EMAIL }}
