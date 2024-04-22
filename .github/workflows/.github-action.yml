@@ -20,7 +20,8 @@ jobs:
           password: ${{ secrets.SSH_PASSWORD }}
           script: |
             whoami
-            cd /nestednotation
+            pwd
+            cd nestednotation
             git pull origin develop
             npm install
             pm2 restart all
