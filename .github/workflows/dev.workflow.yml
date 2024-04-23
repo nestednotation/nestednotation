@@ -24,7 +24,7 @@ jobs:
             cd nestednotation
             git pull origin develop
             npm install
-            pm2 restart all
+            pm2 start ecosystem.config.js -f
 
   send-noti:
       runs-on: ubuntu-latest

@@ -8,12 +8,5 @@ module.exports = {
       },
       
     },
-    // {
-    //   script: 'bin/www', // the path of the script you want to execute,
-    //   name: 'production',
-    //   env: {
-    //     NODE_ENV: 'production',
-    // },
-    // }
   ],
 };
