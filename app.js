@@ -12,7 +12,7 @@ var adminRouter = require('./routes/admin');
 var smRouter = require('./routes/sm');
 
 var app = express();
-console.log('App is starting');
+console.log('App is starting...');
 
 // view engine setup
 app.set('views', path.join(__dirname, 'views'));
