@@ -1,0 +1,42 @@
+name: Deploy main branch
+on:
+  push:
+    branches:
+      - main
+env:
+  CI: true
+  SSH_PORT: 22
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Pull code and restart pm2
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.HOST }}
+          username: ${{ secrets.SSH_USERNAME }}
+          port: 22
+          password: ${{ secrets.SSH_PASSWORD }}
+          script: |
+            whoami
+            pwd
+            cd pro-nestednotation
+            git pull origin main
+            npm install
+            pm2 start ecosystem.config.js -f
+
+  send-noti:
+      runs-on: ubuntu-latest
+      name: Send email on every push
+      steps:
+      - name: Send Mail Action
+        id: sendmail
+        uses: vineetchoudhary/mailgun-action@master
+        with:
+          api-key: ${{ secrets.MAIL_GUN_API }}
+          domain: ${{ secrets.MAIL_GUN_DOMAIN }}
+          to: doanhoaisonfithcmus@gmail.com
+      - name: Send Mail Action Response
+        run: echo "${{ steps.sendmail.outputs.response }}"
+        
