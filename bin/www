@@ -686,9 +686,7 @@ class BMSession {
     this.folder = folderName;
     this.hasSounds = this.checkScoreHasSounds(folderName);
 
-    if (this.hasSounds) {
-      this.buildSoundsHTML();
-    }
+    this.soundList = this.hasSounds ? this.getSoundList(folderName) : [];
 
     this.buildSVGContent();
 
@@ -737,24 +735,13 @@ class BMSession {
     this.historyIndex = this.history.length - 1;
   }
 
-  buildSoundsHTML() {
-    const dir = `${dataDir}/${this.folder}/Sounds`;
-
+  getSoundList(folder) {
+    const dir = `${dataDir}/${folder}/Sounds`;
     if (!fs.existsSync(dir)) {
-      return;
+      return [];
     }
 
-    const fileList = fs.readdirSync(dir);
-    const audioHTMLElements = fileList.map(
-      (fileName) =>
-        `<audio id="${utils.removeFileExt(
-          fileName
-        )}" src="/audio/${utils.slugify(this.folder)}/${utils.removeFileExt(
-          fileName
-        )}"></audio>`
-    );
-
-    this.soundsHTML = audioHTMLElements.join("");
+    return fs.readdirSync(dir);
   }
 
   buildSVGContent() {
@@ -1068,7 +1055,7 @@ db.adminPassword = "g3tn3st3d";
 
 const wsPort = process.env.WS_PORT || 8080;
 const serverIp = process.env.SERVER_IP;
-const wsPath = `ws://${serverIp}`;
+const wsPath = `wss://${serverIp}`;
 
 console.log(`App is running on port ${wsPort}`);
 console.log(`Websocket path is ${wsPath}`);
