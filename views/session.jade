@@ -2,6 +2,7 @@ html
   head
     title= title
     link(rel='stylesheet', href='/stylesheets/style.css')
+    script(src='https://cdn.jsdelivr.net/npm/howler@2.2.4/dist/howler.min.js')
     script(src='/javascripts/nosleep.js')
     meta( name='viewport', content='width=device-width, initial-scale=1.0' )
 
@@ -12,20 +13,7 @@ html
     link(rel="mask-icon", href="/icon/safari-pinned-tab.svg", color="#5bbad5")
     meta(name="msapplication-TileColor", content="#da532c")
     meta(name="theme-color", content="#ffffff")
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+    
   body
     script.
       var staffCode = '#{staffCode}';
@@ -673,6 +661,7 @@ html
       div(id="divOverlay" style="width: 100%; height: 100%; position: absolute; background-color: white; opacity: 0.50; display: none;")
       div(id="MainSVGContent")
         !{svg}
+        !{audio}
       svg(id="svg-1", width="100%", height="100%", viewBox="0 0 1801 1801", version="1.1", xmlns="http://www.w3.org/2000/svg", xmlns:xlink="http://www.w3.org/1999/xlink", xml:space="preserve", xmlns:serif="http://www.serif.com/", style="fill-rule:evenodd;clip-rule:evenodd;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:1.5;")
         g
           rect(x="0.7", y="0.9", width="1800", height="1800", style="fill:none;")

@@ -4,32 +4,31 @@
  * Module dependencies.
  */
 
-var app = require('../app');
-var debug = require('debug')('first-app:server');
-var http = require('http');
-var WebSocketServer = require('websocket').server;
-var fs = require('fs');
-var os = require( 'os' );
+var app = require("../app");
+var debug = require("debug")("first-app:server");
+var http = require("http");
+var WebSocketServer = require("websocket").server;
+var fs = require("fs");
+var os = require("os");
+var utils = require("../utils");
 
-var prefixDir = '.';
-var testPrefixFile = prefixDir + '/account/admin.dat';
-if (!fs.existsSync(testPrefixFile)){
-  prefixDir = '..';
+var prefixDir = ".";
+var testPrefixFile = prefixDir + "/account/admin.dat";
+if (!fs.existsSync(testPrefixFile)) {
+  prefixDir = "..";
 }
 
-
-var accountDir = prefixDir + '/account';
-var dataDir = prefixDir + '/data';
-const env = process.env.NODE_ENV || 'development';
-var hostaddress = 'nestednotation.com';
-if (env == 'development'){
-  require('dotenv').config({
-    path: '.env.development'
+var accountDir = prefixDir + "/account";
+var dataDir = prefixDir + "/data";
+const env = process.env.NODE_ENV || "development";
+var hostaddress = "nestednotation.com";
+if (env == "development") {
+  require("dotenv").config({
+    path: ".env.development",
   });
-
 } else {
-  require('dotenv').config({
-    path: '.env.production'
+  require("dotenv").config({
+    path: ".env.production",
   });
 }
 
@@ -38,22 +37,21 @@ if (env == 'development'){
  */
 //sudo iptables -t nat -A PREROUTING -p tcp --dport 80 -j REDIRECT --to-ports 3000
 
-var port = normalizePort(process.env.PORT || '3000');
+var port = normalizePort(process.env.PORT || "3000");
 var websocketport = process.env.WS_PORT;
-var networkInterfaces = os.networkInterfaces( );
+var networkInterfaces = os.networkInterfaces();
 
-if (typeof(networkInterfaces['en0']) !== 'undefined'){
-  var listInterfaces = networkInterfaces['en0'];
-  if (listInterfaces.length > 1){
-    for(var i=0; i<listInterfaces.length; i++){
-      var candidate = listInterfaces[i]['address'];
-      if (candidate.startsWith('192.168')){
+if (typeof networkInterfaces["en0"] !== "undefined") {
+  var listInterfaces = networkInterfaces["en0"];
+  if (listInterfaces.length > 1) {
+    for (var i = 0; i < listInterfaces.length; i++) {
+      var candidate = listInterfaces[i]["address"];
+      if (candidate.startsWith("192.168")) {
         hostaddress = candidate;
       }
     }
   }
 }
-
 
 const MSG_PING = 0;
 const MSG_TAP = 1;
@@ -69,8 +67,7 @@ const MSG_PAUSE = 10;
 const MSG_SELECT_HISTORY = 11;
 const MSG_SHOW_NUMBER_CONNECTION = 12;
 
-
-app.set('port', port);
+app.set("port", port);
 
 //networkInterfaces['en0'][1]['address'];
 console.log("myip = " + hostaddress);
@@ -85,8 +82,8 @@ var server = http.createServer(app);
  */
 
 server.listen(port);
-server.on('error', onError);
-server.on('listening', onListening);
+server.on("error", onError);
+server.on("listening", onListening);
 
 /**
  * Normalize a port into a number, string, or false.
@@ -113,21 +110,19 @@ function normalizePort(val) {
  */
 
 function onError(error) {
-  if (error.syscall !== 'listen') {
+  if (error.syscall !== "listen") {
     throw error;
   }
 
-  var bind = typeof port === 'string'
-    ? 'Pipe ' + port
-    : 'Port ' + port;
+  var bind = typeof port === "string" ? "Pipe " + port : "Port " + port;
 
   // handle specific listen errors with friendly messages
   switch (error.code) {
-    case 'EACCES':
-      console.error(bind + ' requires elevated privileges');
+    case "EACCES":
+      console.error(bind + " requires elevated privileges");
       process.exit(1);
-    case 'EADDRINUSE':
-      console.error(bind + ' is already in use');
+    case "EADDRINUSE":
+      console.error(bind + " is already in use");
       process.exit(1);
     default:
       throw error;
@@ -140,12 +135,9 @@ function onError(error) {
 
 function onListening() {
   var addr = server.address();
-  var bind = typeof addr === 'string'
-    ? 'pipe ' + addr
-    : 'port ' + addr.port;
-  debug('Listening on ' + bind);
+  var bind = typeof addr === "string" ? "pipe " + addr : "port " + addr.port;
+  debug("Listening on " + bind);
 }
-
 
 /**
  * Websocket
@@ -153,174 +145,201 @@ function onListening() {
 var httpServerForSocket = http.createServer();
 httpServerForSocket.listen(websocketport);
 var wsServer = new WebSocketServer({
-    httpServer: httpServerForSocket
+  httpServer: httpServerForSocket,
 });
 
-wsServer.on('request', function(request) {
-    const connection = request.accept(null, request.origin);
-    connection.on('message', function(message) {
-      messageHandle(connection, message);
-    });
-    connection.on('close', function(reasonCode, description) {
-      var session = db.session.getById(connection.sessionId);
-      if (session != null){
-        updateNumberOfConnectionForSession(session);
-      }
-    });
+wsServer.on("request", function (request) {
+  const connection = request.accept(null, request.origin);
+  connection.on("message", function (message) {
+    messageHandle(connection, message);
+  });
+  connection.on("close", function (reasonCode, description) {
+    var session = db.session.getById(connection.sessionId);
+    if (session != null) {
+      updateNumberOfConnectionForSession(session);
+    }
+  });
 });
 
-var forceRefresh = function(session){
+var forceRefresh = function (session) {
   //stop holding timer
-  if (session.holdingTimer != null){
+  if (session.holdingTimer != null) {
     clearTimeout(session.holdingTimer);
     session.holdingTimer = null;
   }
   //stop standby timer
-  if (session.standbyTimer != null){
+  if (session.standbyTimer != null) {
     clearTimeout(session.standbyTimer);
     session.standbyTimer = null;
   }
   //stop voting timer
-  if (session.votingTimer != null){
+  if (session.votingTimer != null) {
     clearInterval(session.votingTimer);
     session.votingTimer = null;
   }
   sendToAllClients(session, 0, MSG_NEED_DISPLAY, 0, 0);
 };
 
-var forceStop = function(session){
+var forceStop = function (session) {
   //stop holding timer
-  if (session.holdingTimer != null){
+  if (session.holdingTimer != null) {
     clearTimeout(session.holdingTimer);
     session.holdingTimer = null;
   }
   //stop standby timer
-  if (session.standbyTimer != null){
+  if (session.standbyTimer != null) {
     clearTimeout(session.standbyTimer);
     session.standbyTimer = null;
   }
   //stop voting timer
-  if (session.votingTimer != null){
+  if (session.votingTimer != null) {
     clearInterval(session.votingTimer);
     session.votingTimer = null;
   }
   db.session.remove(session);
 
   sendToAllClientsWithDelay(session, 100, MSG_FINISH, 0, 0);
-  console.log('session stopped...');
+  console.log("session stopped...");
 };
 
 //time = 0 => immediately
-function sendToClient(conn, time, messageId, value1, value2){
+function sendToClient(conn, time, messageId, value1, value2) {
   var obj = {
-    t:time,
-    m:messageId,
-    v1:value1,
-    v2:value2
+    t: time,
+    m: messageId,
+    v1: value1,
+    v2: value2,
   };
   conn.sendUTF(JSON.stringify(obj));
 }
 
-function sendToAllClients(session, time, messageId, value1, value2){
+function sendToAllClients(session, time, messageId, value1, value2) {
   var obj = {
-    t:time,
-    m:messageId,
-    v1:value1,
-    v2:value2
+    t: time,
+    m: messageId,
+    v1: value1,
+    v2: value2,
   };
-  wsServer.connections.forEach(function each(conn){
-    if (conn.sessionId == session.id){
+  wsServer.connections.forEach(function each(conn) {
+    if (conn.sessionId == session.id) {
       conn.sendUTF(JSON.stringify(obj));
     }
   });
 }
 
-function sendToAllClientsWithDelay(session, timeDelay, messageId, value1, value2){
+function sendToAllClientsWithDelay(
+  session,
+  timeDelay,
+  messageId,
+  value1,
+  value2
+) {
   var time = new Date().getTime() + timeDelay;
   sendToAllClients(session, time, messageId, value1, value2);
 }
 
-function sendToAllAdmins(session, time, messageId, value1, value2){
+function sendToAllAdmins(session, time, messageId, value1, value2) {
   var obj = {
-    t:time,
-    m:messageId,
-    v1:value1,
-    v2:value2
+    t: time,
+    m: messageId,
+    v1: value1,
+    v2: value2,
   };
-  wsServer.connections.forEach(function each(conn){
-    if (conn.sessionId == session.id && conn.isAdmin){
+  wsServer.connections.forEach(function each(conn) {
+    if (conn.sessionId == session.id && conn.isAdmin) {
       conn.sendUTF(JSON.stringify(obj));
     }
   });
 }
 
-function sendToAllAdminsWithDelay(session, timeDelay, messageId, value1, value2){
+function sendToAllAdminsWithDelay(
+  session,
+  timeDelay,
+  messageId,
+  value1,
+  value2
+) {
   var time = new Date().getTime() + timeDelay;
   sendToAllAdmins(session, time, messageId, value1, value2);
 }
 
-function sendUpdateVotingToClient(conn, session){
+function sendUpdateVotingToClient(conn, session) {
   var countDic = countVoteForSession(session);
   var timestamp = new Date().getTime();
   sendToClient(conn, 0, MSG_UPDATE_VOTING, countDic, timestamp);
 }
 
-function countVoteForSession(session){
-  var listConn = wsServer.connections.filter(conn => conn.sessionId == session.id);
-  var voteData = listConn.map(o=> o.currentVoteTo);
+function countVoteForSession(session) {
+  var listConn = wsServer.connections.filter(
+    (conn) => conn.sessionId == session.id
+  );
+  var voteData = listConn.map((o) => o.currentVoteTo);
   var counts = {};
-  
-  for (var i=0; i<voteData.length; i++) {
+
+  for (var i = 0; i < voteData.length; i++) {
     var num = voteData[i];
-    if (typeof(num) != 'undefined' && num != -1){
+    if (typeof num != "undefined" && num != -1) {
       counts[num] = counts[num] ? counts[num] + 1 : 1;
     }
   }
   return counts;
 }
 
-function startVotingForSessionWithDelay(session, timeDelay){
+function startVotingForSessionWithDelay(session, timeDelay) {
   var sessionId = session.id;
   session.currentVotingDuration = session.votingDuration;
   session.currentBeginTimeStamp = new Date().getTime() + timeDelay;
-  session.currentEndTimeStamp = session.currentBeginTimeStamp + session.currentVotingDuration*1000;
+  session.currentEndTimeStamp =
+    session.currentBeginTimeStamp + session.currentVotingDuration * 1000;
   session.isVoting = true;
   session.isStandby = false;
-  wsServer.connections.forEach(function each(conn){
-    if (conn.sessionId == sessionId){
+  wsServer.connections.forEach(function each(conn) {
+    if (conn.sessionId == sessionId) {
       conn.currentVoteTo = -1;
     }
   });
 
-  sendToAllClients(session, 0, MSG_BEGIN_VOTING, session.currentEndTimeStamp, session.currentVotingDuration);
+  sendToAllClients(
+    session,
+    0,
+    MSG_BEGIN_VOTING,
+    session.currentEndTimeStamp,
+    session.currentVotingDuration
+  );
 
   //start voting data timer
   session.votingTimeStamp = 0;
   session.didSendStopVoting = false;
-  session.votingTimer = setInterval((session) => {
-    session.votingTimeStamp += session.synTimeInterval*1000;
+  session.votingTimer = setInterval(
+    (session) => {
+      session.votingTimeStamp += session.synTimeInterval * 1000;
 
-    var countDic = countVoteForSession(session);
-    var timestamp = new Date().getTime();
-    sendToAllClients(session, 0, MSG_UPDATE_VOTING, countDic, timestamp);
+      var countDic = countVoteForSession(session);
+      var timestamp = new Date().getTime();
+      sendToAllClients(session, 0, MSG_UPDATE_VOTING, countDic, timestamp);
 
-    if (!session.didSendStopVoting &&
-        session.votingTimeStamp >= (session.currentVotingDuration-1)*1000){
-      stopVotingForSession(session);
-      session.didSendStopVoting = true;
-    }
+      if (
+        !session.didSendStopVoting &&
+        session.votingTimeStamp >= (session.currentVotingDuration - 1) * 1000
+      ) {
+        stopVotingForSession(session);
+        session.didSendStopVoting = true;
+      }
 
-    if (session.votingTimeStamp >= session.currentVotingDuration*1000){
-      clearInterval(session.votingTimer);
-      session.votingTimer = null;
-    }
-  }, session.synTimeInterval*1000, session);
+      if (session.votingTimeStamp >= session.currentVotingDuration * 1000) {
+        clearInterval(session.votingTimer);
+        session.votingTimer = null;
+      }
+    },
+    session.synTimeInterval * 1000,
+    session
+  );
 }
 
-function stopVotingForSession(session){
+function stopVotingForSession(session) {
   session.isStandby = true;
   session.isVoting = false;
-  if (session.holdDuration > 0){
+  if (session.holdDuration > 0) {
     session.isHolding = true;
   }
 
@@ -329,11 +348,11 @@ function stopVotingForSession(session){
   var listId = Object.keys(votingData);
   var mostVoteCount = 0;
   var mostVoteRingId = 0;
-  for(var i=0; i<listId.length; i++){
+  for (var i = 0; i < listId.length; i++) {
     var id = listId[i];
-    if (id != -1){
+    if (id != -1) {
       var count = votingData[id];
-      if (count > mostVoteCount){
+      if (count > mostVoteCount) {
         mostVoteCount = count;
         mostVoteRingId = id;
       }
@@ -341,70 +360,91 @@ function stopVotingForSession(session){
   }
 
   session.setCurrentIndexTo(mostVoteRingId);
-  sendToAllAdmins(session, 0, MSG_SELECT_HISTORY, session.history, session.historyIndex);
-  if (!session.isPause){
+  sendToAllAdmins(
+    session,
+    0,
+    MSG_SELECT_HISTORY,
+    session.history,
+    session.historyIndex
+  );
+  if (!session.isPause) {
     var timestamp = new Date().getTime() + 1000 + 100;
     sendToAllClients(session, timestamp, MSG_SHOW, mostVoteRingId, 0);
   }
 
   //unlock
-  session.standbyTimer = setTimeout(function(session){
-    session.isStandby = false;
-    if (session.holdDuration > 0){
-      startHoldingForSessionWithDelay(session, 0);
-    }
-    session.standbyTimer = null;
-  }, 1000, session);
+  session.standbyTimer = setTimeout(
+    function (session) {
+      session.isStandby = false;
+      if (session.holdDuration > 0) {
+        startHoldingForSessionWithDelay(session, 0);
+      }
+      session.standbyTimer = null;
+    },
+    1000,
+    session
+  );
 }
 
-function startHoldingForSessionWithDelay(session, delay){
+function startHoldingForSessionWithDelay(session, delay) {
   session.isHolding = true;
   sendToAllAdmins(session, 0, MSG_CHECK_HOLD, session.isHolding, 0);
   //holding cooldown
   session.currentHoldingDuration = session.holdDuration;
   session.currentBeginHoldTimeStamp = new Date().getTime() + delay;
-  session.currentEndHoldTimeStamp = session.currentBeginHoldTimeStamp + session.currentHoldingDuration*1000;
-  sendToAllClients(session, 0, MSG_BEGIN_HOLDING, session.currentEndHoldTimeStamp, session.currentHoldingDuration);
+  session.currentEndHoldTimeStamp =
+    session.currentBeginHoldTimeStamp + session.currentHoldingDuration * 1000;
+  sendToAllClients(
+    session,
+    0,
+    MSG_BEGIN_HOLDING,
+    session.currentEndHoldTimeStamp,
+    session.currentHoldingDuration
+  );
 
   //unlock
-  session.holdingTimer = setTimeout(function(session){
-    session.isHolding = false;
-    sendToAllAdmins(session, 0, MSG_CHECK_HOLD, session.isHolding, 0);
-    session.holdingTimer = null;
-  }, session.holdDuration*1000, session);
+  session.holdingTimer = setTimeout(
+    function (session) {
+      session.isHolding = false;
+      sendToAllAdmins(session, 0, MSG_CHECK_HOLD, session.isHolding, 0);
+      session.holdingTimer = null;
+    },
+    session.holdDuration * 1000,
+    session
+  );
 }
 
-function stopSession(session){
+function stopSession(session) {
   //stop holding timer
-  if (session.holdingTimer != null){
+  if (session.holdingTimer != null) {
     clearTimeout(session.holdingTimer);
     session.holdingTimer = null;
   }
   //stop standby timer
-  if (session.standbyTimer != null){
+  if (session.standbyTimer != null) {
     clearTimeout(session.standbyTimer);
     session.standbyTimer = null;
   }
   //stop voting timer
-  if (session.votingTimer != null){
+  if (session.votingTimer != null) {
     clearInterval(session.votingTimer);
     session.votingTimer = null;
   }
   db.session.remove(session);
 
   sendToAllClientsWithDelay(session, 100, MSG_FINISH, 0, 0);
-  console.log('session stopped...');
+  console.log("session stopped...");
 }
 
-function jumpScoreForSession(session, value){
-  if (session.isHolding && session.holdingTimer != null){
+function jumpScoreForSession(session, value) {
+  if (session.isHolding && session.holdingTimer != null) {
     cancelHoldingTimer(session, 1);
   }
-  if (session.standbyTimer){
+  if (session.standbyTimer) {
     clearTimeout(session.standbyTimer);
     session.standbyTimer = null;
   }
-  if (session.isVoting && session.votingTimer != null){
+  if (session.isVoting && session.votingTimer != null) {
     cancelVotingTimer(session);
   }
   //---------
@@ -413,42 +453,53 @@ function jumpScoreForSession(session, value){
   session.historyIndex = value;
 
   session.setCurrentIndexTo(index);
-  sendToAllAdmins(session, 0, MSG_SELECT_HISTORY, session.history, session.historyIndex);
-  if (!session.isPause){
+  sendToAllAdmins(
+    session,
+    0,
+    MSG_SELECT_HISTORY,
+    session.history,
+    session.historyIndex
+  );
+  if (!session.isPause) {
     var timestamp = new Date().getTime() + 100;
     sendToAllClients(session, timestamp, MSG_SHOW, index, 0);
   }
 }
 
-function pauseSession(session, value){
+function pauseSession(session, value) {
   session.isPause = value;
   sendToAllClients(session, 0, MSG_PAUSE, value, session.currentIndex);
 }
 
-function cancelHoldingTimer(session, onOff){
+function cancelHoldingTimer(session, onOff) {
   clearTimeout(session.holdingTimer);
   session.holdingTimer = null;
   sendToAllClients(session, 0, MSG_BEGIN_HOLDING, 0, onOff);
 }
 
-function cancelVotingTimer(session){
+function cancelVotingTimer(session) {
   clearInterval(session.votingTimer);
   session.votingTimer = null;
   sendToAllClients(session, 0, MSG_BEGIN_VOTING, 0, 0);
 }
 
-function updateNumberOfConnectionForSession(session){
-  var countPlayer = wsServer.connections.filter(conn=>conn.sessionId == session.id 
-    && !conn.isAdmin 
-    && conn.isStaff).length;
-  var countRider = wsServer.connections.filter(conn=>conn.sessionId == session.id 
-      && !conn.isAdmin 
-      && !conn.isStaff).length;
-  sendToAllAdmins(session, 0, MSG_SHOW_NUMBER_CONNECTION, countPlayer, countRider);
+function updateNumberOfConnectionForSession(session) {
+  var countPlayer = wsServer.connections.filter(
+    (conn) => conn.sessionId == session.id && !conn.isAdmin && conn.isStaff
+  ).length;
+  var countRider = wsServer.connections.filter(
+    (conn) => conn.sessionId == session.id && !conn.isAdmin && !conn.isStaff
+  ).length;
+  sendToAllAdmins(
+    session,
+    0,
+    MSG_SHOW_NUMBER_CONNECTION,
+    countPlayer,
+    countRider
+  );
 }
 
-
-function messageHandle(conn, message){
+function messageHandle(conn, message) {
   var obj = JSON.parse(message.utf8Data);
   var sessionId = obj.sid;
   var clientIndex = obj.cid;
@@ -456,80 +507,119 @@ function messageHandle(conn, message){
   var msg = obj.msg;
   var value = obj.val;
   var session = db.session.getById(sessionId);
-  if (session != null){
-    var isStaff = (password == session.playerPassword || password == session.adminPassword)? true:false;
-    var isAdmin = (password == session.adminPassword)? true:false;
+  if (session != null) {
+    var isStaff =
+      password == session.playerPassword || password == session.adminPassword
+        ? true
+        : false;
+    var isAdmin = password == session.adminPassword ? true : false;
 
-    if (msg == MSG_PING){
+    if (msg == MSG_PING) {
       var timeStamp = new Date().getTime();
       conn.sessionId = sessionId;
       conn.isAdmin = isAdmin;
       conn.isStaff = isStaff;
       sendToClient(conn, 0, msg, timeStamp, value);
-    }else if (msg == MSG_TAP){
-      if (!session.isHolding
-        && clientIndex == session.currentIndex
-        && !session.isPause
-         && value != -1){
-
-        if (session.votingDuration == 0
-          || session.listPreImages.includes(session.currentIndex)){
+    } else if (msg == MSG_TAP) {
+      if (
+        !session.isHolding &&
+        clientIndex == session.currentIndex &&
+        !session.isPause &&
+        value != -1
+      ) {
+        if (
+          session.votingDuration == 0 ||
+          session.listPreImages.includes(session.currentIndex)
+        ) {
           session.setCurrentIndexTo(value);
-          sendToAllAdmins(session, 0, MSG_SELECT_HISTORY, session.history, session.historyIndex);
-          sendToAllClientsWithDelay(session, 100, MSG_SHOW, session.currentIndex);
-          if (session.holdDuration > 0){
+          sendToAllAdmins(
+            session,
+            0,
+            MSG_SELECT_HISTORY,
+            session.history,
+            session.historyIndex
+          );
+          sendToAllClientsWithDelay(
+            session,
+            100,
+            MSG_SHOW,
+            session.currentIndex
+          );
+          if (session.holdDuration > 0) {
             startHoldingForSessionWithDelay(session, 0);
           }
-        }else{
+        } else {
           //change vote of client to new value
-          if (!session.isStandby){
-            if (!session.isVoting){
+          if (!session.isStandby) {
+            if (!session.isVoting) {
               startVotingForSessionWithDelay(session, 100);
             }
             conn.currentVoteTo = value;
-            sendUpdateVotingToClient(conn, session);  
+            sendUpdateVotingToClient(conn, session);
           }
         }
       }
-    }else if (msg == MSG_SHOW){
-  
-    }else if (msg == MSG_NEED_DISPLAY){
-      if (!session.isPause){
+    } else if (msg == MSG_SHOW) {
+    } else if (msg == MSG_NEED_DISPLAY) {
+      if (!session.isPause) {
         sendToClient(conn, 0, MSG_SHOW, session.currentIndex, 0);
       }
-      if (session.isVoting){
+      if (session.isVoting) {
         conn.currentVoteTo = -1;
-        sendToClient(conn, 0, MSG_BEGIN_VOTING, session.currentEndTimeStamp, session.currentVotingDuration);
+        sendToClient(
+          conn,
+          0,
+          MSG_BEGIN_VOTING,
+          session.currentEndTimeStamp,
+          session.currentVotingDuration
+        );
       }
-      if (session.isHolding){
-        sendToClient(conn, 0, MSG_BEGIN_HOLDING, session.currentEndHoldTimeStamp, session.currentHoldingDuration);
+      if (session.isHolding) {
+        sendToClient(
+          conn,
+          0,
+          MSG_BEGIN_HOLDING,
+          session.currentEndHoldTimeStamp,
+          session.currentHoldingDuration
+        );
       }
-      if (isAdmin){
-        sendToClient(conn, 0, MSG_SELECT_HISTORY, session.history, session.historyIndex);
+      if (isAdmin) {
+        sendToClient(
+          conn,
+          0,
+          MSG_SELECT_HISTORY,
+          session.history,
+          session.historyIndex
+        );
       }
       updateNumberOfConnectionForSession(session);
       sendToAllClients(session, 0, MSG_CHECK_HOLD, session.isHolding, 0);
-      sendToAllClients(session, 0, MSG_PAUSE, session.isPause, session.currentIndex);
-    }else if (msg == MSG_UPDATE_VOTING){
-  
-    }else if (msg == MSG_CHECK_HOLD){
-      if (isAdmin){
-        if (session.isHolding && session.holdingTimer != null){
+      sendToAllClients(
+        session,
+        0,
+        MSG_PAUSE,
+        session.isPause,
+        session.currentIndex
+      );
+    } else if (msg == MSG_UPDATE_VOTING) {
+    } else if (msg == MSG_CHECK_HOLD) {
+      if (isAdmin) {
+        if (session.isHolding && session.holdingTimer != null) {
           cancelHoldingTimer(session, 0);
         }
         session.isHolding = value;
         sendToAllClients(session, 0, MSG_CHECK_HOLD, value, 0);
       }
-    }else if (msg == MSG_FINISH){
-      if (isAdmin){
+    } else if (msg == MSG_FINISH) {
+      if (isAdmin) {
         stopSession(session);
       }
-    }else if (msg == MSG_PAUSE){
-      if (isAdmin){
+    } else if (msg == MSG_PAUSE) {
+      if (isAdmin) {
         pauseSession(session, value);
       }
-    }else if (msg == MSG_SELECT_HISTORY){
-      if (isAdmin){
+    } else if (msg == MSG_SELECT_HISTORY) {
+      if (isAdmin) {
         jumpScoreForSession(session, value);
       }
     }
@@ -539,7 +629,7 @@ function messageHandle(conn, message){
 /**
  * Tempo Database
  */
-class BMAdmin{
+class BMAdmin {
   constructor(id, name, password, isActive) {
     this.id = id;
     this.name = name;
@@ -548,7 +638,7 @@ class BMAdmin{
   }
 }
 
-class BMSession{
+class BMSession {
   constructor(id, adminId, folder, sessionName, adminpassword, playerpassword) {
     this.id = id;
     this.ownerId = adminId;
@@ -566,7 +656,7 @@ class BMSession{
 
     this.currentEndHoldTimeStamp = 0;
     this.currentHoldingDuration = 0;
-    
+
     this.currentIndex = 0;
 
     this.isHolding = true;
@@ -581,116 +671,215 @@ class BMSession{
     this.loadScoreAtFolder(folder);
   }
 
-  loadScoreAtFolder(folderName){
+  checkScoreHasSounds(score) {
+    const dir = `${dataDir}/${score}`;
+
+    if (!fs.existsSync(dir)) {
+      return;
+    }
+
+    const fileList = fs.readdirSync(dir);
+    return fileList.includes("Sounds") && fileList.includes("Frames");
+  }
+
+  loadScoreAtFolder(folderName) {
     this.folder = folderName;
+    this.hasSounds = this.checkScoreHasSounds(folderName);
+
+    if (this.hasSounds) {
+      this.buildSoundsHTML();
+    }
+
     this.buildSVGContent();
+
     this.initState();
   }
 
   //this use listFiles generate from buildSVGContent. So run it after that method
-  initState(){
-    if (this.listFiles.length > 0){
+  initState() {
+    if (this.listFiles.length > 0) {
       //history
       this.history = [];
       this.historyIndex = 0;
 
       //random pick first index (files begin with Pre or Start)
-      var listPreFile = this.listFiles.filter(o=>o.startsWith('PRE'));
-      var listStartFile = this.listFiles.filter(o=>o.startsWith('START'));
-      var startedFile = (listStartFile.length > 0)? this.randomItem(listStartFile):this.randomItem(listPreFile);
+      var listPreFile = this.listFiles.filter((o) => o.startsWith("PRE"));
+      var listStartFile = this.listFiles.filter((o) => o.startsWith("START"));
+      var startedFile =
+        listStartFile.length > 0
+          ? this.randomItem(listStartFile)
+          : this.randomItem(listPreFile);
       this.setCurrentIndexTo(this.listFiles.indexOf(startedFile));
     }
   }
 
-  setCurrentIndexTo(index){
+  setCurrentIndexTo(index) {
     this.currentIndex = parseInt(index);
     this.isVoting = false;
     this.isStandby = false;
-    if (this.history.length > 0){
-      var countRemove = Math.max(0, this.history.length - (this.historyIndex + 1));
-      var indexRemove = Math.min(this.history.length - 1, this.historyIndex + 1);
-      if (countRemove > 0){
-        this.history.splice(indexRemove-1, countRemove+1);
+
+    if (this.history.length > 0) {
+      var countRemove = Math.max(
+        0,
+        this.history.length - (this.historyIndex + 1)
+      );
+      var indexRemove = Math.min(
+        this.history.length - 1,
+        this.historyIndex + 1
+      );
+      if (countRemove > 0) {
+        this.history.splice(indexRemove - 1, countRemove + 1);
       }
     }
     var objectName = this.listFiles[index];
+
     this.history.push(objectName);
     this.historyIndex = this.history.length - 1;
-}
+  }
 
-  buildSVGContent(){
-    console.log('building svg content...');
-    var dir = dataDir + '/' + this.folder;
-    if (fs.existsSync(dir)){
+  buildSoundsHTML() {
+    const dir = `${dataDir}/${this.folder}/Sounds`;
+
+    if (!fs.existsSync(dir)) {
+      return;
+    }
+
+    const fileList = fs.readdirSync(dir);
+    const audioHTMLElements = fileList.map(
+      (fileName) =>
+        `<audio id="${utils.removeFileExt(
+          fileName
+        )}" src="/audio/${utils.slugify(this.folder)}/${utils.removeFileExt(
+          fileName
+        )}"></audio>`
+    );
+
+    this.soundsHTML = audioHTMLElements.join("");
+  }
+
+  buildSVGContent() {
+    const dir = this.hasSounds
+      ? `${dataDir}/${this.folder}/Frames`
+      : `${dataDir}/${this.folder}`;
+
+    if (fs.existsSync(dir)) {
       this.listFiles = fs.readdirSync(dir);
-      this.listFilesInLowerCase = [];
-      for (var i = 0; i<this.listFiles.length; i++) {
-        this.listFilesInLowerCase.push(this.listFiles[i].toLowerCase());
-      }
+      this.listFilesInLowerCase = this.listFiles.map((fileName) =>
+        fileName.toLowerCase()
+      );
 
       this.listPreImages = [];
       this.listMultiChooseImages = [];
-      this.svgContent = '';
-      if (this.listFiles.length > 0){
-        this.listFiles.forEach(filename => {
-          var dir = dataDir + '/' + this.folder + '/' + filename;
-          var content = fs.readFileSync(dir, 'utf8');
+      this.svgContent = "";
+
+      if (this.listFiles.length > 0) {
+        this.listFiles.forEach((filename) => {
+          var filePath = `${dir}/${filename}`;
+          var content = fs.readFileSync(filePath, "utf8");
           var svg = this.regexWithPattern(content, /<svg.*?<\/svg>/is, 0);
-          var svgIndex = this.listFilesInLowerCase.indexOf(filename.toLowerCase());
-          if (filename.startsWith('PRE') || filename.startsWith('START')){
+          var svgIndex = this.listFilesInLowerCase.indexOf(
+            filename.toLowerCase()
+          );
+          if (filename.startsWith("PRE") || filename.startsWith("START")) {
             this.listPreImages.push(svgIndex);
           }
-          svg = svg.replace('<svg', '<svg id="svg' + svgIndex + '" class="hidden" file="' + filename + '" ');
+          svg = svg.replace(
+            "<svg",
+            `<svg id="svg${svgIndex}" class="hidden" file="${filename}" `
+          );
           var listA = svg.match(/<a.*?>/g);
-          if (listA != null){
-            if (listA.length > 1 && !filename.startsWith("PRE")){
+          if (listA != null) {
+            if (listA.length > 1 && !filename.startsWith("PRE")) {
               this.listMultiChooseImages.push(svgIndex);
             }
-            listA.forEach(a => {
-              var link = this.regexWithPattern(a, /.*?="(.*?)"/is, 1)
-              var aIndex = this.listFilesInLowerCase.indexOf(link.toLowerCase());
-              var newA = '<a href="javascript:tapOn(' + aIndex + ');">';
+            listA.forEach((a) => {
+              var link = this.regexWithPattern(a, /.*?="(.*?)"/is, 1);
+              var aIndex = this.listFilesInLowerCase.indexOf(
+                link.toLowerCase()
+              );
+              var newA = `<a href="javascript:tapOn(${aIndex});">`;
               svg = svg.replace(a, newA);
-              if (!filename.startsWith('PRE')){
-                newA = newA.replace(' ', '\\s*');
-                newA = newA.replace('(', '\\(');
-                newA = newA.replace(')', '\\)');
-                var pattern = newA + '.*?serif:id="Ring and Background".*?>.*?<ellipse.*?/>.*?(<ellipse.*?/>)';
-                var ellipse = this.regexWithPattern(svg, new RegExp(pattern, 'is'), 1);
-                if (ellipse != null){
+              if (!filename.startsWith("PRE")) {
+                newA = newA.replace(" ", "\\s*");
+                newA = newA.replace("(", "\\(");
+                newA = newA.replace(")", "\\)");
+
+                var pattern = `${newA}.*?serif:id="Ring and Background".*?>.*?<ellipse.*?/>.*?(<ellipse.*?/>)`;
+                var ellipse = this.regexWithPattern(
+                  svg,
+                  new RegExp(pattern, "is"),
+                  1
+                );
+                if (ellipse != null) {
                   //add elipse
-                  var cx = parseFloat(this.regexWithPattern(ellipse, /<ellipse.*?cx="(.*?)"/is, 1));
-                  var cy = parseFloat(this.regexWithPattern(ellipse, /<ellipse.*?cy="(.*?)"/is, 1));
-                  var rx = parseFloat(this.regexWithPattern(ellipse, /<ellipse.*?rx="(.*?)"/is, 1)) * 0.9126;
-                  var ry = parseFloat(this.regexWithPattern(ellipse, /<ellipse.*?rx="(.*?)"/is, 1)) * 0.9126;
-                  var style = this.regexWithPattern(ellipse, /<ellipse.*?style="(.*?)"/is, 1)
-                  var ellipseId = svgIndex + '-' + aIndex;
-                  ellipse = this.regexWithPattern(svg, new RegExp(pattern, 'is'), 0);  
-                  var newEllipse = ellipse + '\r\n<ellipse id="' + ellipseId + '" class="hidden" cx="' + cx + '" cy="' + cy + '" rx="' + rx + '" ry="' + ry + '" style="' + style + '"></ellipse>';
+                  var cx = parseFloat(
+                    this.regexWithPattern(ellipse, /<ellipse.*?cx="(.*?)"/is, 1)
+                  );
+                  var cy = parseFloat(
+                    this.regexWithPattern(ellipse, /<ellipse.*?cy="(.*?)"/is, 1)
+                  );
+                  var rx =
+                    parseFloat(
+                      this.regexWithPattern(
+                        ellipse,
+                        /<ellipse.*?rx="(.*?)"/is,
+                        1
+                      )
+                    ) * 0.9126;
+                  var ry =
+                    parseFloat(
+                      this.regexWithPattern(
+                        ellipse,
+                        /<ellipse.*?rx="(.*?)"/is,
+                        1
+                      )
+                    ) * 0.9126;
+                  var style = this.regexWithPattern(
+                    ellipse,
+                    /<ellipse.*?style="(.*?)"/is,
+                    1
+                  );
+                  var ellipseId = `${svgIndex}-${aIndex}`;
+                  ellipse = this.regexWithPattern(
+                    svg,
+                    new RegExp(pattern, "is"),
+                    0
+                  );
+
+                  const newEllipse = `${ellipse}\r\n<ellipse id="${ellipseId}" class="hidden" cx="${cx}" cy="${cy}" rx="${rx}" ry="${ry}" style="${style}"></ellipse>`;
                   svg = svg.replace(ellipse, newEllipse);
 
                   //add text area
-                  pattern = newA + '(.*?serif:id="Ring and Background".*?)<g id="Notes';
-                  var midGap = this.regexWithPattern(svg, new RegExp(pattern, 'is'), 1);
-                  var textId = 'ta-' + svgIndex + '-' + aIndex;
-                  var newTextArea = midGap + '\r\n' +
-                  '<g xmlns="http://www.w3.org/2000/svg" transform="matrix(-3.99305,0,0,-3.99305,0,0)">\r\n' +
-                    '<text id="' + textId + '" x="-212.19" y="-231.138" style="font-family:\'ArialMT\', \'Arial\', sans-serif; font-size: 72px; fill-opacity: 1.0;"></text>\r\n' +
-                  '</g>\r\n';
+                  pattern = `${newA}(.*?serif:id="Ring and Background".*?)<g id="Notes`;
+                  var midGap = this.regexWithPattern(
+                    svg,
+                    new RegExp(pattern, "is"),
+                    1
+                  );
+                  var textId = `ta-${svgIndex}-${aIndex}`;
 
+                  const newTextArea = `${midGap}\r\n<g xmlns="http://www.w3.org/2000/svg" transform="matrix(-3.99305,0,0,-3.99305,0,0)">\r\n<text id="${textId}" x="-212.19" y="-231.138" style="font-family:\'ArialMT\', \'Arial\', sans-serif; font-size: 72px; fill-opacity: 1.0;"></text>\r\n</g>\r\n`;
                   svg = svg.replace(midGap, newTextArea);
                 }
-                pattern = newA + '.*?<g[^>]*?id="Notes.*?>(.*?</g>[^<]*?</g>)';
-                var notesEllipse = this.regexWithPattern(svg, new RegExp(pattern, 'is'), 1);
-                if (notesEllipse != null){
-                  var listEllipse = this.regexFull(notesEllipse, '<ellipse[^>]*?>');
+                pattern = `${newA}.*?<g[^>]*?id="Notes.*?>(.*?</g>[^<]*?</g>)`;
+                var notesEllipse = this.regexWithPattern(
+                  svg,
+                  new RegExp(pattern, "is"),
+                  1
+                );
+                if (notesEllipse != null) {
+                  var listEllipse = this.regexFull(
+                    notesEllipse,
+                    "<ellipse[^>]*?>"
+                  );
                   if (listEllipse != null) {
                     for (var i = 0; i < listEllipse.length; i++) {
                       var oldEllipse = listEllipse[i];
-                      var part = oldEllipse.match(/(<ellipse[^>]*?)(style=".*?fill:rgb\((.*?),(.*?),(.*?)\).*?")([^>]*?>)/is);
+                      var part = oldEllipse.match(
+                        /(<ellipse[^>]*?)(style=".*?fill:rgb\((.*?),(.*?),(.*?)\).*?")([^>]*?>)/is
+                      );
                       if (part != null) {
-                        var newPart = 'id="dot' + svgIndex + '" r="' + part[3] + '" g="' + part[4] + '" b="' + part[5] + '" ';
-                        var newEllipse = part[1] + newPart + part[2] + part[6];
+                        const newEllipse = `${part[1]}id="dot${svgIndex}" r="${part[3]}" g="${part[4]}" b="${part[5]}" ${part[2]}${part[6]}`;
                         svg = svg.replace(oldEllipse, newEllipse);
                       }
                     }
@@ -700,29 +889,28 @@ class BMSession{
             });
           }
           this.svgContent += svg;
-          this.svgContent += '\n';
+          this.svgContent += "\n";
         });
         //final
-
       }
     }
-    console.log('finish building svg content...');
+    console.log("finish building svg content...");
   }
 
-  regexWithPattern(str, pattern, groupId){
+  regexWithPattern(str, pattern, groupId) {
     var match = str.match(pattern);
-    if (match != null){
+    if (match != null) {
       return match[groupId];
     }
     return null;
   }
 
-  regexFull(str, patternInStr){
-    return str.match(new RegExp(patternInStr, 'gis'))
+  regexFull(str, patternInStr) {
+    return str.match(new RegExp(patternInStr, "gis"));
   }
 
-  randomItem(arr){
-    return arr[Math.floor(Math.random()*arr.length)];
+  randomItem(arr) {
+    return arr[Math.floor(Math.random() * arr.length)];
   }
 }
 
@@ -730,27 +918,30 @@ class BMAdminTable {
   constructor() {
     this.clear();
   }
-  clear(){
+
+  clear() {
     this.data = [];
     this.count = 0;
   }
-  add(id, name, password, isActive){
+
+  add(id, name, password, isActive) {
     this.count++;
     var a = new BMAdmin(id, name, password, isActive);
     this.data.push(a);
     return a;
   }
-  addWithIdAuto(name, password, isActive){
+
+  addWithIdAuto(name, password, isActive) {
     this.count++;
     var max = 0;
-    for(var i=0; i<this.data.length; i++){
+    for (var i = 0; i < this.data.length; i++) {
       var id = parseInt(this.data[i].id);
-      if (id > max){
+      if (id > max) {
         max = id;
       }
     }
-    var checkExist = this.data.filter(o=>o.name.trim() == name.trim());
-    if (checkExist.length == 0){
+    var checkExist = this.data.filter((o) => o.name.trim() == name.trim());
+    if (checkExist.length == 0) {
       max++;
       var a = new BMAdmin(max.toString(), name, password, isActive);
       this.data.push(a);
@@ -758,25 +949,28 @@ class BMAdminTable {
     }
     return null;
   }
-  getById(id){
-    return this.data.find(e => e.id.trim() == id);
+
+  getById(id) {
+    return this.data.find((e) => e.id.trim() == id);
   }
-  getByName(name){
-    return this.data.find(e => e.name.trim() == name);
+
+  getByName(name) {
+    return this.data.find((e) => e.name.trim() == name);
   }
-  dumpToFile(path){
-    var str = '';
-    for(var i=0; i<this.data.length; i++){
-      str += this.data[i].id.trim() + '\r\n';
-      str += this.data[i].name.trim() + '\r\n';
-      str += this.data[i].password.trim() + '\r\n';
-      if (i == this.data.length - 1){
+
+  dumpToFile(path) {
+    var str = "";
+    for (var i = 0; i < this.data.length; i++) {
+      str += this.data[i].id.trim() + "\r\n";
+      str += this.data[i].name.trim() + "\r\n";
+      str += this.data[i].password.trim() + "\r\n";
+      if (i == this.data.length - 1) {
         str += this.data[i].isActive.trim();
-      }else{
-        str += this.data[i].isActive.trim() + '\r\n';
+      } else {
+        str += this.data[i].isActive.trim() + "\r\n";
       }
     }
-    fs.writeFileSync(path, str, 'utf8');
+    fs.writeFileSync(path, str, "utf8");
   }
 }
 
@@ -785,38 +979,49 @@ class BMSessionTable {
     this.data = [];
     this.count = 0;
   }
-  add(adminId, folder, sessionName, adminpassword, playerpassword){
+  add(adminId, folder, sessionName, adminpassword, playerpassword) {
     //check folder exist
-    var dir = dataDir + '/' + folder;
-    if (fs.existsSync(dir)){
+    var dir = dataDir + "/" + folder;
+    if (fs.existsSync(dir)) {
       this.count++;
-      var s = new BMSession(this.count, adminId, folder, sessionName, adminpassword, playerpassword);
+      var s = new BMSession(
+        this.count,
+        adminId,
+        folder,
+        sessionName,
+        adminpassword,
+        playerpassword
+      );
       this.data.push(s);
-      return s;          
+      return s;
     }
     return null;
   }
-  remove(session){
+
+  remove(session) {
     this.data.splice(this.data.indexOf(session), 1);
   }
-  getById(id){
-    return this.data.find(e => e.id == id);
+
+  getById(id) {
+    return this.data.find((e) => e.id == id);
   }
-  getByAdminId(id){
-    return this.data.find(e => e.adminId.trim() == id);
+
+  getByAdminId(id) {
+    return this.data.find((e) => e.adminId.trim() == id);
   }
-  getBySessionName(name){
-    return this.data.find(e => e.sessionName.trim() == name);
+
+  getBySessionName(name) {
+    return this.data.find((e) => e.sessionName.trim() == name);
   }
 }
 
-class BMDatabase{
+class BMDatabase {
   constructor() {
     this.admin = new BMAdminTable();
     this.session = new BMSessionTable();
     this.shouldAutoRedirect = false;
-    this.autoRedirectSession = '';
-    this.autoRedirectPassword = '';
+    this.autoRedirectSession = "";
+    this.autoRedirectPassword = "";
 
     this.wsPort = websocketport;
     this.hostAddress = hostaddress;
@@ -835,21 +1040,21 @@ class BMDatabase{
     this.MSG_SHOW_NUMBER_CONNECTION = MSG_SHOW_NUMBER_CONNECTION;
   }
 
-  dumpToFile(path){
-    var str = '';
-    str += (this.shouldAutoRedirect? '1':'0') + '\r\n';
-    str += this.autoRedirectSession.trim() + '\r\n';
-    str += this.autoRedirectPassword.trim() + '\r\n';
+  dumpToFile(path) {
+    var str = "";
+    str += (this.shouldAutoRedirect ? "1" : "0") + "\r\n";
+    str += this.autoRedirectSession.trim() + "\r\n";
+    str += this.autoRedirectPassword.trim() + "\r\n";
 
-    fs.writeFileSync(path, str, 'utf8');
+    fs.writeFileSync(path, str, "utf8");
   }
 
-  getListScore(){
+  getListScore() {
     var listFiles = fs.readdirSync(dataDir);
     var scoreList = [];
     for (var i = 0; i < listFiles.length; i++) {
-      var path = dataDir + '/' + listFiles[i];
-      if (fs.lstatSync(path).isDirectory()){
+      var path = dataDir + "/" + listFiles[i];
+      if (fs.lstatSync(path).isDirectory()) {
         scoreList.push(listFiles[i]);
       }
     }
@@ -858,35 +1063,34 @@ class BMDatabase{
 }
 
 var db = new BMDatabase();
-db.adminUsername = 'admin';
-db.adminPassword = 'g3tn3st3d';
+db.adminUsername = "admin";
+db.adminPassword = "g3tn3st3d";
 
 const wsPort = process.env.WS_PORT || 8080;
 const serverIp = process.env.SERVER_IP;
-const wsPath = `wss://${serverIp}`;
+const wsPath = `ws://${serverIp}`;
 
-console.log(`App is running on port ${wsPort}`)
-console.log(`Websocket path is ${wsPath}`)
-
+console.log(`App is running on port ${wsPort}`);
+console.log(`Websocket path is ${wsPath}`);
 
 /**
  * Admin data
  */
 
-var adminDataFile = accountDir + '/admin.dat';
-if (fs.existsSync(adminDataFile)){
-  var contents = fs.readFileSync(adminDataFile, 'utf8');
-  var lines = contents.split('\n');
-  for(var i=0; i<lines.length; i++){
+var adminDataFile = accountDir + "/admin.dat";
+if (fs.existsSync(adminDataFile)) {
+  var contents = fs.readFileSync(adminDataFile, "utf8");
+  var lines = contents.split("\n");
+  for (var i = 0; i < lines.length; i++) {
     var id = lines[i].trim();
-    var user = lines[i+1].trim();
-    var pass = lines[i+2].trim();
-    var isActive = lines[i+3].trim();
+    var user = lines[i + 1].trim();
+    var pass = lines[i + 2].trim();
+    var isActive = lines[i + 3].trim();
     i += 3;
     var ad = db.admin.add(id, user, pass, isActive);
   }
-}else{
-  console.log('Cound not find admin.dat. Creating a new one');
+} else {
+  console.log("Cound not find admin.dat. Creating a new one");
   db.admin.add("1", "kip", "123", "1");
   db.admin.dumpToFile(adminDataFile);
 }
@@ -895,37 +1099,41 @@ if (fs.existsSync(adminDataFile)){
  * Config
  */
 
-var configDataFile = accountDir + '/db.dat';
-if (fs.existsSync(configDataFile)){
-  var contents = fs.readFileSync(configDataFile, 'utf8');
-  var lines = contents.split('\n');
+var configDataFile = accountDir + "/db.dat";
+if (fs.existsSync(configDataFile)) {
+  var contents = fs.readFileSync(configDataFile, "utf8");
+  var lines = contents.split("\n");
 
-  db.shouldAutoRedirect = lines[0].trim() == "1"? true:false;
+  db.shouldAutoRedirect = lines[0].trim() == "1" ? true : false;
   db.autoRedirectSession = lines[1].trim();
   db.autoRedirectPassword = lines[2].trim();
-}else{
-  console.log('Cound not find db.dat. Creating a new one');
+} else {
+  console.log("Cound not find db.dat. Creating a new one");
   db.shouldAutoRedirect = false;
-  db.autoRedirectSession = '';
-  db.autoRedirectPassword = '';
+  db.autoRedirectSession = "";
+  db.autoRedirectPassword = "";
   db.dumpToFile(configDataFile);
 }
 
 //new session
-var kip = db.admin.getByName('kip');
+var kip = db.admin.getByName("kip");
 var ownerId = kip.id;
-var folderName = 'Serotonin-v2';
-var displayName = 'mcknight';
-var adminPass = 'managerpassword';
-var playerPass = 'mcknight';
+var folderName = "Serotonin-v2";
+var displayName = "mcknight";
+var adminPass = "managerpassword";
+var playerPass = "mcknight";
 db.wsPath = wsPath;
 
-var session = db.session.add(ownerId, folderName, displayName, adminPass, playerPass);
+var session = db.session.add(
+  ownerId,
+  folderName,
+  displayName,
+  adminPass,
+  playerPass
+);
 session.votingDuration = 0;
 session.holdDuration = 0;
 
-app.set('Database', db);
-app.set('ForceRefresh', forceRefresh);
-app.set('ForceStop', forceStop);
-
-
+app.set("Database", db);
+app.set("ForceRefresh", forceRefresh);
+app.set("ForceStop", forceStop);
