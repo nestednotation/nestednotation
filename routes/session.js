@@ -1,6 +1,6 @@
 var express = require("express");
 var router = express.Router();
-var fs = require("fs");
+const utils = require("../utils");
 
 router.get("/", function (req, res, next) {
   var query = req.query;
@@ -80,7 +80,8 @@ router.get("/*", function (req, res, next) {
           msgShowNumberConnection: db.MSG_SHOW_NUMBER_CONNECTION,
 
           svg: session.svgContent,
-          audio: session.soundsHTML,
+          scoreSlug: utils.slugify(session.folder),
+          soundList: session.soundList && JSON.stringify(session.soundList),
           wsPath: db.wsPath,
         });
       }
