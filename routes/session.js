@@ -1,55 +1,64 @@
-var express = require('express');
+var express = require("express");
 var router = express.Router();
-var fs = require('fs');
+const utils = require("../utils");
 
-
-router.get('/', function(req, res, next) {
+router.get("/", function (req, res, next) {
   var query = req.query;
   var sessionName = query.s;
   var password = query.p;
-  if (sessionName == null || sessionName.length == 0){
-    res.status(301).redirect('/?msg=1');
-  }else{
-    var db = req.app.get('Database');
+  if (sessionName == null || sessionName.length == 0) {
+    res.status(301).redirect("/?msg=1");
+  } else {
+    var db = req.app.get("Database");
     var session = db.session.getBySessionName(sessionName);
-    if (session == null){
-      res.status(301).redirect('/?msg=1');
-    }else{
-      if (session.adminPassword == password
-        || session.playerPassword == password
-        || password.length == 0){
-          var type = session.adminPassword == password? 1:session.playerPassword == password?2:0;
-        res.status(301).redirect('/session/' + session.id + '/?p=' + password + '&t=' + type);
-      }else{
-        res.status(301).redirect('/?msg=1');
+    if (session == null) {
+      res.status(301).redirect("/?msg=1");
+    } else {
+      if (
+        session.adminPassword == password ||
+        session.playerPassword == password ||
+        password.length == 0
+      ) {
+        var type =
+          session.adminPassword == password
+            ? 1
+            : session.playerPassword == password
+            ? 2
+            : 0;
+        res
+          .status(301)
+          .redirect(
+            "/session/" + session.id + "/?p=" + password + "&t=" + type
+          );
+      } else {
+        res.status(301).redirect("/?msg=1");
       }
     }
   }
 });
 
-router.get('/*', function(req, res, next) {
-  if (req.path.endsWith("svgcontent.html")){
-    var path = req.path.match('\/(.*?)\/.*$');
+router.get("/*", function (req, res, next) {
+  if (req.path.endsWith("svgcontent.html")) {
+    var path = req.path.match("/(.*?)/.*$");
     var sessionId = path[1];
-    var db = req.app.get('Database');
+    var db = req.app.get("Database");
     var session = db.session.getById(sessionId);
     res.send(session.svgContent);
-  }else{
-    var path = req.path.match('\/(.*?)\/*$');
+  } else {
+    var path = req.path.match("/(.*?)/*$");
     var sessionId = path[1];
     var password = req.query.p;
-    if (sessionId == null 
-      || password == null){
-      res.status(301).redirect('/?msg=1');
-    }else{
-      var db = req.app.get('Database');
+    if (sessionId == null || password == null) {
+      res.status(301).redirect("/?msg=1");
+    } else {
+      var db = req.app.get("Database");
       var session = db.session.getById(sessionId);
-      if (session == null){
-        res.status(301).redirect('/?msg=1');
-      }else{
+      if (session == null) {
+        res.status(301).redirect("/?msg=1");
+      } else {
         var noSleepDuration = 60;
-        res.render('session', {
-          title: 'Session',
+        res.render("session", {
+          title: "Session",
           staffCode: password,
           sessionId: sessionId,
           hostAddress: db.hostAddress,
@@ -71,7 +80,9 @@ router.get('/*', function(req, res, next) {
           msgShowNumberConnection: db.MSG_SHOW_NUMBER_CONNECTION,
 
           svg: session.svgContent,
-          wsPath: db.wsPath
+          scoreSlug: utils.slugify(session.folder),
+          soundList: session.soundList && JSON.stringify(session.soundList),
+          wsPath: db.wsPath,
         });
       }
     }
