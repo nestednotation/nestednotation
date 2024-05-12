@@ -21,13 +21,56 @@ function volumeToGain(v) {
   return 0.001 * Math.pow(1000.0, (v - 1.0) / 99.0);
 }
 
+const DEFAULT_VOLUME = 80;
+
 class SessionAudio {
+  currFrameId = null;
+
   soundMap = {};
+  frameMap = {};
 
-  constructor() {}
+  noteModeEnabled = true;
+  chordModeEnabled = false;
 
-  loadSounds(soundList) {
-    const { scoreSlug } = window;
+  soundEnabled = true;
+
+  init() {
+    const soundButton = document.getElementById("sound-btn");
+    const noteButton = document.getElementById("note-mode-btn");
+    const chordButton = document.getElementById("chord-mode-btn");
+
+    soundButton.addEventListener("click", () => {
+      this.soundEnabled = !this.soundEnabled;
+
+      soundButton.dataset.sound = this.soundEnabled ? "true" : "false";
+      Howler.mute(!this.soundEnabled);
+    });
+
+    noteButton.addEventListener("click", () => {
+      this.noteModeEnabled = !this.noteModeEnabled;
+
+      noteButton.dataset.enabled = this.noteModeEnabled ? "true" : "false";
+      if (!this.noteModeEnabled && !this.chordModeEnabled) {
+        this.stopAll();
+      }
+    });
+
+    chordButton.addEventListener("click", () => {
+      this.chordModeEnabled = !this.chordModeEnabled;
+
+      chordButton.dataset.enabled = this.chordModeEnabled ? "true" : "false";
+      if (this.chordModeEnabled) {
+        this.playAllFrameSound(this.currFrameId);
+      } else {
+        this.stopAll();
+      }
+    });
+
+    this.loadSounds();
+  }
+
+  loadSounds() {
+    const { scoreSlug, soundList } = window;
 
     for (let soundFile of soundList) {
       const key = removeFileExt(soundFile);
@@ -37,60 +80,212 @@ class SessionAudio {
       });
     }
 
-    this.initSoundEvents();
+    this.generateSoundMap();
   }
 
-  initSoundEvents() {
+  generateSoundMap() {
     const mainSvgContainer = document.getElementById("MainSVGContent");
-    const soundNodes = mainSvgContainer.querySelectorAll("[sound]");
+    const frameSvg = mainSvgContainer.querySelectorAll("svg[id]");
 
-    for (const node of soundNodes) {
-      this.attachSoundToSvg(node);
+    for (const frame of frameSvg) {
+      const frameSound = this.extractSoundFromFrame(frame);
+      this.frameMap[frame.id] = frameSound;
     }
   }
 
-  attachSoundToSvg(node) {
+  extractSoundFromFrame(frame) {
+    const frameSoundMap = {};
+
+    const svgSoundNode = frame.querySelectorAll("[sound]");
+    for (const node of svgSoundNode) {
+      const soundData = this.extractSoundFromNode(node);
+      frameSoundMap[soundData.id] = soundData;
+
+      node.addEventListener("click", () => {
+        this.toggleSound(frame.id, soundData.id);
+      });
+    }
+
+    return frameSoundMap;
+  }
+
+  extractSoundFromNode(node) {
     const soundNames = node.getAttribute("sound")?.split(",");
     if (!soundNames) {
       return;
     }
 
-    const volume = Number(node.getAttribute("volume") ?? 70);
-    const autoPlay = JSON.parse(node.getAttribute("autoplay") ?? "true");
+    const volume = Number(node.getAttribute("volume") ?? DEFAULT_VOLUME);
+    const autoPlay = JSON.parse(node.getAttribute("autoplay") ?? true);
+    const sounds = soundNames.map((name) => this.soundMap[name]);
 
-    node.addEventListener("click", () => {
-      soundNames.forEach((soundName) => {
-        const sound = this.soundMap[soundName];
+    return { sounds, autoPlay, volume, id: soundNames };
+  }
 
-        if (!sound) {
-          return;
-        }
-        const isPlaying = sound.playing();
-        if (isPlaying) {
-          sound.stop();
-        } else {
-          sound.volume(volumeToGain(volume));
-          sound.play();
-        }
+  toggleSound(frameId, soundId) {
+    const soundData = this.frameMap[frameId][soundId];
+    if (!soundData) {
+      console.error("Sound combination not found");
+      return;
+    }
+
+    if (!this.noteModeEnabled) {
+      console.log("Note mode disabled");
+      return;
+    }
+
+    const { sounds, volume } = soundData;
+    const isPlaying = soundData.sounds.some((s) => s.playing());
+    if (isPlaying) {
+      sounds.forEach((s) => this.fadeOut(s, volume));
+    } else {
+      sounds.forEach((s) => {
+        this.fadeIn(s, volume);
       });
-    });
+    }
+  }
+
+  handleChangeFrame(nextFrameId) {
+    const prevId = this.currFrameId;
+    const nextId = nextFrameId;
+
+    this.currFrameId = nextFrameId;
+    if (!prevId) {
+      this.stopAll();
+      return;
+    }
+
+    if (this.chordModeEnabled) {
+      const prevSoundData = this.frameMap[prevId];
+      const nextSoundData = this.frameMap[nextId];
+      const continueSoundSet = {};
+      for (const [soundId, sound] of Object.entries(prevSoundData)) {
+        const soundInNext = nextSoundData[soundId];
+        const { sounds, autoPlay, volume } = sound;
+
+        if (!soundInNext) {
+          sounds.forEach((s) => {
+            this.fadeOut(s, volume);
+          });
+          continue;
+        }
+
+        if (!autoPlay) {
+          sounds.forEach((s) => {
+            s.stop();
+          });
+          continue;
+        }
+
+        continueSoundSet[soundId] = sounds.some((s) => s.playing());
+      }
+
+      for (const [soundId, sound] of Object.entries(nextSoundData)) {
+        const { sounds, volume, autoPlay } = sound;
+
+        if (continueSoundSet[soundId] || !autoPlay) {
+          continue;
+        }
+
+        sounds.forEach((s) => {
+          this.fadeIn(s, volume);
+        });
+      }
+
+      return;
+    }
+
+    if (this.noteModeEnabled) {
+      const prevSoundData = this.frameMap[prevId];
+      const nextSoundData = this.frameMap[nextId];
+      for (const [soundId, sound] of Object.entries(prevSoundData)) {
+        const soundInNext = nextSoundData[soundId];
+        const { sounds, volume, autoPlay } = sound;
+
+        if (!soundInNext) {
+          sounds.forEach((s) => {
+            this.fadeOut(s, volume);
+          });
+          continue;
+        }
+
+        if (!autoPlay) {
+          sounds.forEach((s) => {
+            s.stop();
+          });
+          continue;
+        }
+
+        const { volume: nextVolume } = soundInNext;
+        sounds.forEach((s) => {
+          s.fade(volumeToGain(volume), volumeToGain(nextVolume), 1000);
+        });
+      }
+    }
+  }
+
+  playAllFrameSound(frameId) {
+    const frameData = this.frameMap[frameId];
+    for (const soundData of Object.values(frameData)) {
+      const { sounds, volume, autoPlay } = soundData;
+      const isPlaying = sounds.some((s) => s.playing());
+      if (!autoPlay || isPlaying) {
+        continue;
+      }
+
+      sounds.forEach((s) => {
+        this.fadeIn(s, volume);
+      });
+    }
   }
 
   stopAll() {
     Howler.stop();
   }
+
+  fadeOut(sound, currVolume) {
+    console.log("Fade out ", sound._src);
+
+    sound.fade(volumeToGain(currVolume), 0, 1000);
+    setTimeout(() => sound.stop(), 1000);
+  }
+
+  fadeIn(sound, volume) {
+    console.log("Fade in ", sound._src);
+
+    sound.volume(0);
+    sound.play();
+    sound.fade(0, volumeToGain(volume), 1000);
+  }
 }
 
 const audioPlayer = new SessionAudio();
 
-window.addEventListener("update-view", () => {
-  audioPlayer.stopAll();
+window.audioPlayer = audioPlayer;
+
+window.addEventListener("update-view", ({ detail }) => {
+  const { newIndex } = detail;
+
+  // newIndex === -1 => pausing
+  if (newIndex === -1) {
+    Howler.mute(true);
+    return;
+  } else {
+    Howler.mute(!audioPlayer.soundEnabled);
+  }
+
+  const frameId = `svg${newIndex}`;
+  if (frameId === audioPlayer.currFrameId) {
+    return;
+  }
+
+  audioPlayer.handleChangeFrame(frameId);
 });
 
 document.addEventListener(
   "DOMContentLoaded",
   () => {
-    audioPlayer.loadSounds(window.soundList);
+    audioPlayer.init();
   },
   false
 );
