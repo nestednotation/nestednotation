@@ -382,7 +382,7 @@ function cooldownCallback() {
 function hideAllCooldownCircles() {
   var list = getListCooldownCircle();
   for (var i = 0; i < 10; i++) {
-    list[i].setAttribute("class", "inactive circleEmpty");
+    list[i].setAttribute("class", "circle");
   }
 }
 
@@ -426,7 +426,7 @@ function setCooldownTimeTo(second) {
     for (var i = 0; i < 10; i++) {
       list[i].setAttribute(
         "class",
-        i + 1 <= second ? "circleFill" : "circleEmpty"
+        i + 1 <= second ? "circle active" : "circle active filled"
       );
       if (i + 1 > cooldownDuration) {
         list[i].setAttribute("class", "hidden");
@@ -446,7 +446,7 @@ function setHoldingTimeTo(second) {
     for (var i = 0; i < 10; i++) {
       list[i].setAttribute(
         "class",
-        i + 1 <= second ? "circleFill" : "circleEmpty"
+        i + 1 <= second ? "circle active" : "circle active filled"
       );
       if (i + 1 > holdingDuration) {
         list[i].setAttribute("class", "hidden");
@@ -538,25 +538,21 @@ function highlightInnerRingText(index) {
 }
 
 function setIndicatorCooldown(value) {
-  document.getElementById("circleCooldown").style.strokeOpacity =
-    value == true ? 1 : 0.2;
-  document.getElementById("circleCooldown").style.fillOpacity =
-    value == true ? 1 : 0.2;
-  document.getElementById("pathCooldown").style.strokeOpacity =
-    value == true ? 1 : 0.2;
-  document.getElementById("pathCooldown").style.fillOpacity =
-    value == true ? 1 : 0.2;
+  const cooldownIconClass = document.getElementById("cooldownIcon").classList;
+  if (value) {
+    cooldownIconClass.add("active");
+  } else {
+    cooldownIconClass.remove("active");
+  }
 }
 
 function setIndicatorHold(value) {
-  document.getElementById("circleHold").style.strokeOpacity =
-    value == true ? 1 : 0.2;
-  document.getElementById("circleHold").style.fillOpacity =
-    value == true ? 1 : 0.2;
-  document.getElementById("pathHold").style.strokeOpacity =
-    value == true ? 1 : 0.2;
-  document.getElementById("pathHold").style.fillOpacity =
-    value == true ? 1 : 0.2;
+  const holdIconClass = document.getElementById("holdIcon").classList;
+  if (value) {
+    holdIconClass.add("active");
+  } else {
+    holdIconClass.remove("active");
+  }
 
   setOverlay(value);
 }
