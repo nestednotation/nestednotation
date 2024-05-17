@@ -52,15 +52,15 @@
                     </g>
                 </g>
                 <g id="Notes" transform="matrix(1,0,0,1,0,81.033)">
-                    <g id="_10" serif:id="10" transform="matrix(-1.39762,2.4207,-2.45799,-1.41909,2667.89,-328.094)">
+                    <g id="_10" sound="INST_22_Bb" serif:id="10" transform="matrix(-1.39762,2.4207,-2.45799,-1.41909,2667.89,-328.094)">
                         <ellipse cx="766" cy="526.5" rx="33" ry="32.5" style="stroke:white;stroke-width:9.86px;"/>
                     </g>
-                    <g id="_31" serif:id="3" transform="matrix(-1.39762,2.4207,-2.45799,-1.41909,3685.18,-55.5762)">
+                    <g id="_31" sound="INST_03_Low_Eb" serif:id="3" transform="matrix(-1.39762,2.4207,-2.45799,-1.41909,3685.18,-55.5762)">
                         <ellipse cx="766" cy="526.5" rx="33" ry="32.5" style="stroke:white;stroke-width:9.86px;"/>
                     </g>
                 </g>
                 <g id="Treble-Marker" serif:id="Treble Marker" transform="matrix(1,0,0,1,0,81.033)">
-                    <g id="_7" serif:id="7">
+                    <g id="_7" sound="INST_31_High_G" serif:id="7">
                         <g id="_7u" serif:id="7u" transform="matrix(-1.39762,2.4207,-2.45799,-1.41909,2868.72,413.119)">
                             <ellipse cx="766" cy="526.5" rx="33" ry="32.5" style="fill:white;stroke:white;stroke-width:13.7px;"/>
                         </g>
@@ -118,7 +118,7 @@
                 </g>
             </g>
 			</a>
-            <g id="Header">
+            <g id="Header" sound="ENV_03_LION" autoplay="false">
                 <g transform="matrix(1.06635,-1.00849e-32,0,0.818182,36.6495,-1084.64)">
                     <g id="you-are-a-lion" serif:id="you are a lion">
                         <g id="Lyric-Text" serif:id="Lyric Text" transform="matrix(66.6667,0,0,66.6667,628.364,1776)">
