@@ -10,6 +10,7 @@ var finishRouter = require('./routes/finish');
 var setupRouter = require('./routes/setup');
 var adminRouter = require('./routes/admin');
 var smRouter = require('./routes/sm');
+var audioRouter = require('./routes/audio');
 
 var app = express();
 console.log('App is starting...');
@@ -30,6 +31,8 @@ app.use('/finish', finishRouter);
 app.use('/setup', setupRouter);
 app.use('/admin', adminRouter);
 app.use('/sm', smRouter);
+app.use('/audio', audioRouter);
+
 
 
 // catch 404 and forward to error handler
