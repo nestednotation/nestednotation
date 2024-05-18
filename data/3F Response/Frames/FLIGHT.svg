@@ -207,6 +207,7 @@
       </g>
     </g>
   </g>
+	<a xlink:href="FLIGHT-TO-FAIL.svg">
   <g id="FLIGHT-FAILLINK">
     <path d="M1567.94,1294c-0,-19.317 -15.683,-35 -35,-35l-70,-0c-19.317,-0 -35,15.683 -35,35l-0,119c-0,19.317 15.683,35 35,35l70,-0c19.317,-0 35,-15.683 35,-35l-0,-119Z" style="fill:#fff;"/>
     <g id="fight" transform="matrix(1,-1.2326e-32,0,1,684.277,-410.8)">
@@ -286,6 +287,8 @@
     <circle cx="1484.61" cy="1259.37" r="26.667" style="fill:#fff;stroke:#737373;stroke-width:2.5px;stroke-linecap:round;"/>
     <circle cx="1511.28" cy="1259.37" r="26.667" style="fill:none;stroke:#737373;stroke-width:2.5px;stroke-linecap:round;"/>
   </g>
+	</a>
+	<a xlink:href="FLIGHT-TO-SUCCESS.svg">
   <g id="FLIGHT-SUCCESSLINK">
     <path d="M278.042,433c-0,-19.317 -15.683,-35 -35,-35l-70,0c-19.317,0 -35,15.683 -35,35l-0,120c-0,19.317 15.683,35 35,35l70,0c19.317,0 35,-15.683 35,-35l-0,-120Z" style="fill:#fff;"/>
     <g id="fight1" serif:id="fight" transform="matrix(1,-1.2326e-32,0,1,-605.623,-1374.8)">
@@ -386,6 +389,8 @@
     <circle cx="194.708" cy="575.367" r="26.667" style="fill:#fff;stroke:#737373;stroke-width:2.5px;stroke-linecap:round;"/>
     <circle cx="221.375" cy="575.367" r="26.667" style="fill:none;stroke:#737373;stroke-width:2.5px;stroke-linecap:round;"/>
   </g>
+	</a>
+	<a xlink:href="PREFLIGHT.svg">
   <g id="REFOCUSLINK">
     <path d="M913,1710c0,-13.246 -10.754,-24 -24,-24l-92,-0c-13.246,-0 -24,10.754 -24,24l0,48c0,13.246 10.754,24 24,24l92,-0c13.246,-0 24,-10.754 24,-24l0,-48Z" style="fill:#fff;"/>
     <path id="fight2" serif:id="fight" d="M780.217,1709.04l0.166,-0.042c0.042,-0.083 0.125,-0.208 0.125,-0.375c0,-0.167 -0.041,-0.333 -0.166,-0.5c-0.459,-0.625 -2.334,-4.667 -3.042,-7.542c-0.792,-2.875 -0.833,-5.208 -0.833,-8.375c-0,-3.208 0.416,-5.5 1.208,-8.208c0.417,-1.417 0.875,-2.375 1.292,-3.083c0.208,-0.334 0.875,-1.375 1.041,-1.584c0.209,-0.375 0.334,-0.708 0.334,-1c-0,-0.208 -0.084,-0.375 -0.167,-0.5c-0.042,-0.041 -0.125,-0.041 -0.167,-0.041c-0.25,-0 -0.875,0.166 -1.083,0.416c-0.208,0.417 -0.792,1.459 -1.25,2.459c-0.5,0.958 -1.542,3.291 -2.042,4.666c-0.458,1.25 -1.041,3.209 -1.041,7.25l-0,0.667c0.041,2.25 0.375,4.292 0.666,5.875c0.334,1.583 0.625,2.75 0.792,3.333c0.333,1.084 2.417,5.042 3,5.959c0.292,0.5 0.917,0.625 1.167,0.625Z" style="fill-rule:nonzero;"/>
@@ -400,6 +405,7 @@
     <circle cx="829.667" cy="1757.83" r="26.667" style="fill:#fff;stroke:#737373;stroke-width:2.5px;stroke-linecap:round;"/>
     <circle cx="856.333" cy="1757.83" r="26.667" style="fill:none;stroke:#737373;stroke-width:2.5px;stroke-linecap:round;"/>
   </g>
+	</a>
   <path d="M1307,1109c-101.887,416.89 -271,487 -460,466c-154.979,70.644 -286.072,-155.895 -406,-696c199.541,75.362 401.355,35.02 627,-176c-104,220 -46.031,450.659 239,406Z" style="fill:none;stroke:#e6e6e6;stroke-width:2.5px;stroke-linecap:round;"/>
   <path d="M897,1366c6,-509 -100,-849 -396,-697c211,-215 615,-281 631,-172c282,-12 318,331 235,403c-129,-125 -444,156 -470,466Z" style="fill:none;stroke:#737373;stroke-width:4.17px;stroke-linecap:round;"/>
   <g id="FLIGHTSUCCESSsound" sound="3F-Flightsuccess-1">
