@@ -19,7 +19,7 @@
       <path d="M1319.83,997.985l-30.418,-0" style="fill:none;stroke:#000;stroke-width:0.48px;"/>
     </g>
     <g id="Child-Rings" serif:id="Child Rings">
-      <g id="_10" sound="3F-Low-F, 3F-Mid-Db, 3F-Mid-Eb, 3F-High-A" serif:id="10">
+      <g id="_10" sound="3F-Low-F,3F-Mid-Db,3F-Mid-Eb,3F-High-A" serif:id="10">
         <g id="Ring-and-Background" serif:id="Ring and Background">
           <circle id="white-background" serif:id="white background" cx="440.775" cy="767.013" r="110.931" style="fill:#fff;"/>
           <g id="Ring">
@@ -53,7 +53,7 @@
           </g>
         </g>
       </g>
-      <g id="_7" sound="3F-Low-F, 3F-Mid-Db, 3F-Mid-G, 3F-High-Bb" serif:id="7">
+      <g id="_7" sound="3F-Low-F,3F-Mid-Db,3F-Mid-G,3F-High-Bb" serif:id="7">
         <g id="Ring-and-Background1" serif:id="Ring and Background">
           <circle id="white-background1" serif:id="white background" cx="609.543" cy="1398.64" r="110.931" style="fill:#fff;"/>
           <g id="Ring1" serif:id="Ring">
@@ -87,7 +87,7 @@
           </g>
         </g>
       </g>
-      <g id="_54" sound="3F-Low-E, 3F-Mid-Db, 3F-Mid-Ab, 3F-High-Bb" serif:id="5">
+      <g id="_54" sound="3F-Low-E,3F-Mid-Db,3F-Mid-Ab,3F-High-Bb" serif:id="5">
         <g id="Ring-and-Background2" serif:id="Ring and Background">
           <circle id="white-background2" serif:id="white background" cx="1083.84" cy="1396.91" r="110.931" style="fill:#fff;"/>
           <g id="Ring2" serif:id="Ring">
