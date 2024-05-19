@@ -19,7 +19,7 @@
       <path d="M1319.83,997.985l-30.418,-0" style="fill:none;stroke:#000;stroke-width:0.48px;"/>
     </g>
     <g id="Child-Rings" serif:id="Child Rings">
-      <g id="_10-Flight" serif:id="10 Flight">
+      <g id="_10-Flight" sound="3F-Mid-Ab,3F-Mid-F,3F-Low-Db,3F-High-Eb" serif:id="10 Flight">
         <g id="Ring-and-Background" serif:id="Ring and Background">
           <circle id="white-background" serif:id="white background" cx="440.775" cy="767.013" r="110.931" style="fill:#fff;"/>
           <g id="Ring">
@@ -39,21 +39,21 @@
           </g>
         </g>
         <g id="Notes">
-          <path id="_8" sound="3F-Mid-Ab" serif:id="8" d="M375.242,820.224c-4.236,7.337 -13.631,9.854 -20.967,5.618c-7.336,-4.235 -9.854,-13.63 -5.618,-20.967c4.235,-7.336 13.63,-9.853 20.967,-5.618c7.336,4.236 9.854,13.631 5.618,20.967Z" style="stroke:#fff;stroke-width:5.21px;stroke-linecap:round;"/>
-          <path id="_5" sound="3F-Mid-F" serif:id="5" d="M499.586,853.364c-4.235,7.336 -13.63,9.854 -20.967,5.618c-7.336,-4.236 -9.853,-13.631 -5.618,-20.967c4.236,-7.336 13.631,-9.854 20.967,-5.618c7.337,4.236 9.854,13.631 5.618,20.967Z" style="stroke:#fff;stroke-width:5.21px;stroke-linecap:round;"/>
-          <path id="_1" sound="3F-Low-Db" serif:id="1" d="M499.127,696.522c-4.236,7.337 -13.631,9.854 -20.967,5.619c-7.337,-4.236 -9.854,-13.631 -5.619,-20.967c4.236,-7.337 13.631,-9.854 20.967,-5.619c7.337,4.236 9.854,13.631 5.619,20.967Z" style="stroke:#fff;stroke-width:5.21px;stroke-linecap:round;"/>
+          <path id="_8" serif:id="8" d="M375.242,820.224c-4.236,7.337 -13.631,9.854 -20.967,5.618c-7.336,-4.235 -9.854,-13.63 -5.618,-20.967c4.235,-7.336 13.63,-9.853 20.967,-5.618c7.336,4.236 9.854,13.631 5.618,20.967Z" style="stroke:#fff;stroke-width:5.21px;stroke-linecap:round;"/>
+          <path id="_5" serif:id="5" d="M499.586,853.364c-4.235,7.336 -13.63,9.854 -20.967,5.618c-7.336,-4.236 -9.853,-13.631 -5.618,-20.967c4.236,-7.336 13.631,-9.854 20.967,-5.618c7.337,4.236 9.854,13.631 5.618,20.967Z" style="stroke:#fff;stroke-width:5.21px;stroke-linecap:round;"/>
+          <path id="_1" serif:id="1" d="M499.127,696.522c-4.236,7.337 -13.631,9.854 -20.967,5.619c-7.337,-4.236 -9.854,-13.631 -5.619,-20.967c4.236,-7.337 13.631,-9.854 20.967,-5.619c7.337,4.236 9.854,13.631 5.619,20.967Z" style="stroke:#fff;stroke-width:5.21px;stroke-linecap:round;"/>
         </g>
         <g id="Root-Markers" serif:id="Root Markers">
           <path id="_11" serif:id="1" d="M474.19,709.095l-3.439,19.114l-11.394,-6.578l14.833,-12.536Zm-5.126,8.879l-0.856,4.757c0,0 -2.835,-1.637 -2.835,-1.637l3.691,-3.12Z"/>
         </g>
         <g id="Treble-Marker" serif:id="Treble Marker">
-          <g id="_3" sound="3F-High-Eb" serif:id="3">
+          <g id="_3" serif:id="3">
             <path id="_31" serif:id="3" d="M546.507,774.561c-4.287,7.425 -13.795,9.973 -21.221,5.686c-7.425,-4.287 -9.972,-13.795 -5.686,-21.22c4.287,-7.425 13.796,-9.973 21.221,-5.686c7.425,4.286 9.973,13.795 5.686,21.22Z" style="fill:#fff;stroke:#fff;stroke-width:6.5px;stroke-linecap:round;"/>
             <circle id="_3a" serif:id="3a" cx="532.886" cy="766.794" r="12.477" style="fill:#fff;stroke:#000;stroke-width:3.25px;stroke-linecap:round;"/>
           </g>
         </g>
       </g>
-      <g id="_8-Fight" serif:id="8 Fight">
+      <g id="_8-Fight" sound="3F-Low-Gb,3F-Mid-Eb,3F-High-Ab,3F-Mid-C" serif:id="8 Fight">
         <g id="Ring-and-Background1" serif:id="Ring and Background">
           <circle id="white-background1" serif:id="white background" cx="437.136" cy="1227.44" r="110.931" style="fill:#fff;"/>
           <g id="Ring1" serif:id="Ring">
@@ -73,21 +73,21 @@
           </g>
         </g>
         <g id="Notes1" serif:id="Notes">
-          <path id="_6" sound="3F-Low-Gb" serif:id="6" d="M450.429,1325.92c-4.236,7.336 -13.631,9.854 -20.967,5.618c-7.336,-4.235 -9.854,-13.63 -5.618,-20.967c4.235,-7.336 13.63,-9.853 20.967,-5.618c7.336,4.236 9.854,13.631 5.618,20.967Z" style="stroke:#fff;stroke-width:5.21px;stroke-linecap:round;"/>
-          <path id="_32" sound="3F-Mid-Eb" serif:id="3" d="M541.422,1235c-4.236,7.337 -13.631,9.854 -20.967,5.618c-7.336,-4.235 -9.854,-13.63 -5.618,-20.967c4.236,-7.336 13.631,-9.853 20.967,-5.618c7.336,4.236 9.854,13.631 5.618,20.967Z" style="stroke:#fff;stroke-width:5.21px;stroke-linecap:round;"/>
-          <path id="_0" sound="3F-Mid-C" serif:id="0" d="M450.429,1143.75c-4.236,7.336 -13.631,9.854 -20.967,5.618c-7.336,-4.235 -9.854,-13.63 -5.618,-20.967c4.235,-7.336 13.63,-9.854 20.967,-5.618c7.336,4.236 9.854,13.631 5.618,20.967Z" style="stroke:#fff;stroke-width:5.21px;stroke-linecap:round;"/>
+          <path id="_6" serif:id="6" d="M450.429,1325.92c-4.236,7.336 -13.631,9.854 -20.967,5.618c-7.336,-4.235 -9.854,-13.63 -5.618,-20.967c4.235,-7.336 13.63,-9.853 20.967,-5.618c7.336,4.236 9.854,13.631 5.618,20.967Z" style="stroke:#fff;stroke-width:5.21px;stroke-linecap:round;"/>
+          <path id="_32" serif:id="3" d="M541.422,1235c-4.236,7.337 -13.631,9.854 -20.967,5.618c-7.336,-4.235 -9.854,-13.63 -5.618,-20.967c4.236,-7.336 13.631,-9.853 20.967,-5.618c7.336,4.236 9.854,13.631 5.618,20.967Z" style="stroke:#fff;stroke-width:5.21px;stroke-linecap:round;"/>
+          <path id="_0" serif:id="0" d="M450.429,1143.75c-4.236,7.336 -13.631,9.854 -20.967,5.618c-7.336,-4.235 -9.854,-13.63 -5.618,-20.967c4.235,-7.336 13.63,-9.854 20.967,-5.618c7.336,4.236 9.854,13.631 5.618,20.967Z" style="stroke:#fff;stroke-width:5.21px;stroke-linecap:round;"/>
         </g>
         <g id="Root-Markers1" serif:id="Root Markers">
           <path id="_61" serif:id="6" d="M437.136,1294.13l-6.578,-18.272l13.156,-0l-6.578,18.272Zm0,-10.252l-1.637,-4.548c0,0 3.274,0 3.274,0l-1.637,4.548Z"/>
         </g>
         <g id="Treble-Marker1" serif:id="Treble Marker">
-          <g id="_81" sound="3F-High-Ab" serif:id="8">
+          <g id="_81" serif:id="8">
             <path id="_8u" serif:id="8u" d="M370.996,1281.57c-4.287,7.425 -13.796,9.973 -21.221,5.686c-7.425,-4.286 -9.973,-13.795 -5.686,-21.22c4.287,-7.425 13.795,-9.973 21.221,-5.686c7.425,4.287 9.973,13.795 5.686,21.22Z" style="fill:#fff;stroke:#fff;stroke-width:6.5px;stroke-linecap:round;"/>
             <circle id="_8a" serif:id="8a" cx="357.542" cy="1273.8" r="12.477" style="fill:#fff;stroke:#000;stroke-width:3.25px;stroke-linecap:round;"/>
           </g>
         </g>
       </g>
-      <g id="_5-Freeze" serif:id="5 Freeze">
+      <g id="_5-Freeze" sound="3F-Low-Ab,3F-Mid-F,3F-Mid-C,3F-High-G" serif:id="5 Freeze">
         <g id="Ring-and-Background2" serif:id="Ring and Background">
           <circle id="white-background2" serif:id="white background" cx="1083.84" cy="1396.91" r="110.931" style="fill:#fff;"/>
           <g id="Ring2" serif:id="Ring">
@@ -107,21 +107,21 @@
           </g>
         </g>
         <g id="Notes2" serif:id="Notes">
-          <path id="_82" sound="3F-Low-Ab" serif:id="8" d="M1018.31,1450.12c-4.235,7.336 -13.63,9.854 -20.967,5.618c-7.336,-4.236 -9.854,-13.631 -5.618,-20.967c4.236,-7.336 13.631,-9.854 20.967,-5.618c7.336,4.235 9.854,13.63 5.618,20.967Z" style="stroke:#fff;stroke-width:5.21px;stroke-linecap:round;"/>
-          <path id="_51" sound="3F-Mid-F" serif:id="5" d="M1142.65,1483.26c-4.236,7.337 -13.631,9.854 -20.967,5.619c-7.337,-4.236 -9.854,-13.631 -5.618,-20.967c4.235,-7.337 13.63,-9.854 20.967,-5.618c7.336,4.235 9.853,13.63 5.618,20.966Z" style="stroke:#fff;stroke-width:5.21px;stroke-linecap:round;"/>
-          <path id="_01" sound="3F-Mid-C" serif:id="0" d="M1097.13,1313.22c-4.235,7.336 -13.63,9.853 -20.967,5.618c-7.336,-4.236 -9.853,-13.631 -5.618,-20.967c4.236,-7.337 13.631,-9.854 20.967,-5.618c7.337,4.235 9.854,13.63 5.618,20.967Z" style="stroke:#fff;stroke-width:5.21px;stroke-linecap:round;"/>
+          <path id="_82" serif:id="8" d="M1018.31,1450.12c-4.235,7.336 -13.63,9.854 -20.967,5.618c-7.336,-4.236 -9.854,-13.631 -5.618,-20.967c4.236,-7.336 13.631,-9.854 20.967,-5.618c7.336,4.235 9.854,13.63 5.618,20.967Z" style="stroke:#fff;stroke-width:5.21px;stroke-linecap:round;"/>
+          <path id="_51" serif:id="5" d="M1142.65,1483.26c-4.236,7.337 -13.631,9.854 -20.967,5.619c-7.337,-4.236 -9.854,-13.631 -5.618,-20.967c4.235,-7.337 13.63,-9.854 20.967,-5.618c7.336,4.235 9.853,13.63 5.618,20.966Z" style="stroke:#fff;stroke-width:5.21px;stroke-linecap:round;"/>
+          <path id="_01" serif:id="0" d="M1097.13,1313.22c-4.235,7.336 -13.63,9.853 -20.967,5.618c-7.336,-4.236 -9.853,-13.631 -5.618,-20.967c4.236,-7.337 13.631,-9.854 20.967,-5.618c7.337,4.235 9.854,13.63 5.618,20.967Z" style="stroke:#fff;stroke-width:5.21px;stroke-linecap:round;"/>
         </g>
         <g id="Root-Markers2" serif:id="Root Markers">
           <path id="_83" serif:id="8" d="M1026.01,1430.18l12.535,-14.834l6.579,11.394l-19.114,3.44Zm8.879,-5.127l3.12,-3.691c-0,-0 1.637,2.835 1.637,2.835l-4.757,0.856Z"/>
         </g>
         <g id="Treble-Marker2" serif:id="Treble Marker">
-          <g id="_7" sound="3F-High-G" serif:id="7">
+          <g id="_7" serif:id="7">
             <path id="_7u" serif:id="7u" d="M1051.99,1483.77c-4.287,7.425 -13.795,9.972 -21.22,5.686c-7.426,-4.287 -9.973,-13.796 -5.687,-21.221c4.287,-7.425 13.796,-9.973 21.221,-5.686c7.425,4.287 9.973,13.796 5.686,21.221Z" style="fill:#fff;stroke:#fff;stroke-width:6.5px;stroke-linecap:round;"/>
             <circle id="_7a" serif:id="7a" cx="1038.53" cy="1476.01" r="12.477" style="fill:#fff;stroke:#000;stroke-width:3.25px;stroke-linecap:round;"/>
           </g>
         </g>
       </g>
-      <g id="_0-Refocus" serif:id="0 Refocus">
+      <g id="_0-Refocus" sound="3F-Low-Bb,3F-Mid-F,3F-Mid-C,3F-High-Ab" serif:id="0 Refocus">
         <g id="Ring-and-Background3" serif:id="Ring and Background">
           <circle id="white-background3" serif:id="white background" cx="845.733" cy="530.807" r="110.931" style="fill:#fff;"/>
           <g id="Ring3" serif:id="Ring">
@@ -141,15 +141,15 @@
           </g>
         </g>
         <g id="Notes3" serif:id="Notes">
-          <path id="_10" sound="3F-Low-Bb" serif:id="10" d="M780.746,493.023c-4.236,7.337 -13.631,9.854 -20.967,5.618c-7.336,-4.235 -9.854,-13.63 -5.618,-20.967c4.235,-7.336 13.63,-9.853 20.967,-5.618c7.336,4.236 9.853,13.631 5.618,20.967Z" style="stroke:#fff;stroke-width:5.21px;stroke-linecap:round;"/>
-          <path id="_52" sound="3F-Mid-F" serif:id="5" d="M904.545,617.158c-4.236,7.336 -13.631,9.854 -20.967,5.618c-7.336,-4.236 -9.854,-13.631 -5.618,-20.967c4.236,-7.336 13.631,-9.854 20.967,-5.618c7.336,4.236 9.854,13.631 5.618,20.967Z" style="stroke:#fff;stroke-width:5.21px;stroke-linecap:round;"/>
-          <path id="_02" sound="3F-Mid-C" serif:id="0" d="M859.026,447.119c-4.236,7.336 -13.631,9.854 -20.967,5.618c-7.337,-4.235 -9.854,-13.63 -5.618,-20.967c4.235,-7.336 13.63,-9.854 20.967,-5.618c7.336,4.236 9.853,13.631 5.618,20.967Z" style="stroke:#fff;stroke-width:5.21px;stroke-linecap:round;"/>
+          <path id="_10"  serif:id="10" d="M780.746,493.023c-4.236,7.337 -13.631,9.854 -20.967,5.618c-7.336,-4.235 -9.854,-13.63 -5.618,-20.967c4.235,-7.336 13.63,-9.853 20.967,-5.618c7.336,4.236 9.853,13.631 5.618,20.967Z" style="stroke:#fff;stroke-width:5.21px;stroke-linecap:round;"/>
+          <path id="_52" serif:id="5" d="M904.545,617.158c-4.236,7.336 -13.631,9.854 -20.967,5.618c-7.336,-4.236 -9.854,-13.631 -5.618,-20.967c4.236,-7.336 13.631,-9.854 20.967,-5.618c7.336,4.236 9.854,13.631 5.618,20.967Z" style="stroke:#fff;stroke-width:5.21px;stroke-linecap:round;"/>
+          <path id="_02" serif:id="0" d="M859.026,447.119c-4.236,7.336 -13.631,9.854 -20.967,5.618c-7.337,-4.235 -9.854,-13.63 -5.618,-20.967c4.235,-7.336 13.63,-9.854 20.967,-5.618c7.336,4.236 9.853,13.631 5.618,20.967Z" style="stroke:#fff;stroke-width:5.21px;stroke-linecap:round;"/>
         </g>
         <g id="Root-Markers3" serif:id="Root Markers">
           <path id="_101" serif:id="10" d="M788.043,497.301l12.535,14.833l6.578,-11.393l-19.113,-3.44Zm8.878,5.126l4.757,0.856c0,0 -1.637,2.836 -1.637,2.836l-3.12,-3.692Z"/>
         </g>
         <g id="Treble-Marker3" serif:id="Treble Marker">
-          <g id="_84" sound="3F-High-Ab" serif:id="8">
+          <g id="_84" serif:id="8">
             <path id="_8u1" serif:id="8u" d="M779.614,584.76c-4.286,7.425 -13.795,9.973 -21.22,5.686c-7.425,-4.286 -9.973,-13.795 -5.686,-21.22c4.287,-7.425 13.795,-9.973 21.22,-5.686c7.426,4.287 9.973,13.795 5.686,21.22Z" style="fill:#fff;stroke:#fff;stroke-width:6.5px;stroke-linecap:round;"/>
             <circle id="_8a1" serif:id="8a" cx="766.161" cy="576.993" r="12.477" style="fill:#fff;stroke:#000;stroke-width:3.25px;stroke-linecap:round;"/>
           </g>
