@@ -56,9 +56,8 @@ html
         td
           div(id="divhistory", style="display: none;")
             select(id="history", onchange="sendHistory(this);")
-    
     div(class="control-container")
-      div(class="count-down-container ")
+      div(class="count-down-container")
         div(id="circle_10", class="circle")
         div(id="circle_9", class="circle")
         div(id="circle_8", class="circle")
@@ -69,15 +68,12 @@ html
         div(id="circle_3", class="circle")
         div(id="circle_2", class="circle")
         div(id="circle_1", class="circle")
-      button(id="sound-btn", data-sound="true", title="Toggle sound")
-        img(src="/svg/sound-off-icon.svg", class="off")
-        img(src="/svg/sound-on-icon.svg", class="on")
-      button(id="note-mode-btn", data-enabled="true", title="Toggle Note mode")
+      button(type="button", id="mode-btn", data-mode="note", title="Toggle sound")
         img(src="/svg/note-mode-icon.svg", id="note-mode-icon")
-      button(id="chord-mode-btn", data-enabled="false", title="Toggle Chord mode")
         img(src="/svg/chord-mode-icon.svg", id="chord-mode-icon")
-      img(id="cooldownIcon",src="/svg/cooldown-icon.svg")
-      img(id="holdIcon", src="/svg/hold-icon.svg")
+        img(src="/svg/sound-off-icon.svg", id="sound-off-icon")
+      img(id="cooldown-icon",src="/svg/cooldown-icon.svg")
+      img(id="hold-icon", src="/svg/hold-icon.svg")
 
     div(style="clear: both;")
     

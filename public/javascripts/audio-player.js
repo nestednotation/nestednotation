@@ -23,46 +23,157 @@ function volumeToGain(v) {
 
 const DEFAULT_VOLUME = 80;
 
+function mergeSoundsAndVolumes(sounds, volumes) {
+  if (volumes.length === 1) {
+    return sounds.map((s) => ({
+      sound: s,
+      name: s.name,
+      volume: volumes[0] ?? DEFAULT_VOLUME,
+    }));
+  }
+
+  if (volumes.length === sounds.length) {
+    return sounds.map((s, idx) => ({
+      sound: s,
+      name: s.name,
+      volume: volumes[idx],
+    }));
+  }
+
+  console.warn(
+    "Volume values mismatch with sound values, will fallback to default volume (80)"
+  );
+
+  return sounds.map((s) => ({
+    sound: s,
+    name: s.name,
+    volume: DEFAULT_VOLUME,
+  }));
+}
+
+class Note {
+  isAutoplay = true;
+  isPlaying = false;
+  sounds = [];
+  parent = null;
+
+  constructor(sounds, isAutoplay = true) {
+    this.isAutoplay = isAutoplay;
+    this.sounds = sounds;
+
+    sounds.forEach((sound) => sound.sound.notes.push(this));
+  }
+
+  play() {
+    this.sounds.forEach((s) => {
+      const { sound, volume } = s;
+
+      sound.volume(volumeToGain(volume));
+      sound.play();
+    });
+
+    this.isPlaying = true;
+  }
+
+  stop() {
+    this.isPlaying = false;
+
+    this.sounds.forEach((s) => {
+      const { sound } = s;
+
+      if (sound.notes.some((n) => n.isPlaying)) {
+        return;
+      }
+
+      sound.stop();
+    });
+  }
+
+  toggleSound() {
+    if (this.isPlaying) {
+      this.stop();
+    } else {
+      this.play();
+    }
+  }
+}
+
+class Frame {
+  id = null;
+  notes = [];
+  soundMap = {};
+
+  constructor(id, notes) {
+    this.notes = notes;
+    this.id = id;
+    this.soundMap = this.getSoundMap();
+  }
+
+  playAll() {
+    this.notes.forEach((e) => {
+      e.isAutoplay && e.play();
+    });
+  }
+
+  stopAll() {
+    this.notes.forEach((e) => {
+      e.stop();
+    });
+  }
+
+  loadSounds() {
+    Object.values(this.soundMap).forEach((s) => s.sound.load());
+  }
+
+  getSoundMap() {
+    return this.notes.reduce((acc, curr) => {
+      for (const s of curr.sounds) {
+        acc[s.name] = s;
+      }
+      return acc;
+    }, {});
+  }
+}
+
 class SessionAudio {
   currFrameId = null;
 
   soundMap = {};
   frameMap = {};
 
+  frames = [];
+
+  mode = "note";
   noteModeEnabled = true;
   chordModeEnabled = false;
 
   soundEnabled = true;
 
   init() {
-    const soundButton = document.getElementById("sound-btn");
-    const noteButton = document.getElementById("note-mode-btn");
-    const chordButton = document.getElementById("chord-mode-btn");
+    const modeButton = document.getElementById("mode-btn");
+    const modeStep = { note: "chord", chord: "mute", mute: "note" };
 
-    soundButton.addEventListener("click", () => {
-      this.soundEnabled = !this.soundEnabled;
+    modeButton.addEventListener("click", () => {
+      // 3 mode: note, chord, mute
+      const currMode = modeButton.dataset.mode;
+      const nextMode = modeStep[currMode];
 
-      soundButton.dataset.sound = this.soundEnabled ? "true" : "false";
-      Howler.mute(!this.soundEnabled);
-    });
-
-    noteButton.addEventListener("click", () => {
-      this.noteModeEnabled = !this.noteModeEnabled;
-
-      noteButton.dataset.enabled = this.noteModeEnabled ? "true" : "false";
-      if (!this.noteModeEnabled && !this.chordModeEnabled) {
-        this.stopAll();
-      }
-    });
-
-    chordButton.addEventListener("click", () => {
-      this.chordModeEnabled = !this.chordModeEnabled;
-
-      chordButton.dataset.enabled = this.chordModeEnabled ? "true" : "false";
-      if (this.chordModeEnabled) {
-        this.playAllFrameSound(this.currFrameId);
-      } else {
-        this.stopAll();
+      modeButton.dataset.mode = nextMode;
+      switch (nextMode) {
+        case "note": {
+          this.mode = "note";
+          break;
+        }
+        case "chord": {
+          this.frameMap[this.currFrameId]?.playAll();
+          this.mode = "chord";
+          break;
+        }
+        case "mute": {
+          this.mode = "mute";
+          this.frameMap[this.currFrameId]?.stopAll();
+          break;
+        }
       }
     });
 
@@ -72,12 +183,15 @@ class SessionAudio {
   loadSounds() {
     const { scoreSlug, soundList } = window;
 
-    for (let soundFile of soundList) {
+    for (const soundFile of soundList) {
       const key = removeFileExt(soundFile);
       this.soundMap[key] = new Howl({
         src: [`/audio/${scoreSlug}/${soundFile}`],
         loop: true,
+        preload: false,
       });
+
+      this.soundMap[key].notes = [];
     }
 
     this.generateSoundMap();
@@ -88,61 +202,43 @@ class SessionAudio {
     const frameSvg = mainSvgContainer.querySelectorAll("svg[id]");
 
     for (const frame of frameSvg) {
-      const frameSound = this.extractSoundFromFrame(frame);
-      this.frameMap[frame.id] = frameSound;
+      const notes = this.extractFrameNotes(frame);
+      const frameInstance = new Frame(frame.id, notes);
+      this.frameMap[frame.id] = frameInstance;
+      notes.forEach((n) => (n.parent = frameInstance));
     }
   }
 
-  extractSoundFromFrame(frame) {
-    const frameSoundMap = {};
+  extractFrameNotes(frame) {
+    const notes = [];
 
-    const svgSoundNode = frame.querySelectorAll("[sound]");
-    for (const node of svgSoundNode) {
-      const soundData = this.extractSoundFromNode(node);
-      frameSoundMap[soundData.id] = soundData;
+    const svgSoundNodes = frame.querySelectorAll("[sound]");
+    for (const svgNode of svgSoundNodes) {
+      const soundNames = svgNode.getAttribute("sound")?.split(",");
+      if (!soundNames) {
+        return;
+      }
 
-      node.addEventListener("click", () => {
-        this.toggleSound(frame.id, soundData.id);
+      const volumes = svgNode
+        .getAttribute("volume")
+        ?.split(",")
+        .map(Number) ?? [DEFAULT_VOLUME];
+      const autoPlay = JSON.parse(svgNode.getAttribute("autoplay") ?? true);
+      const sounds = soundNames.map((name) => {
+        const soundInstant = this.soundMap[name];
+        soundInstant.name = name;
+        return soundInstant;
+      });
+
+      const note = new Note(mergeSoundsAndVolumes(sounds, volumes), autoPlay);
+
+      notes.push(note);
+      svgNode.addEventListener("click", () => {
+        note.toggleSound();
       });
     }
 
-    return frameSoundMap;
-  }
-
-  extractSoundFromNode(node) {
-    const soundNames = node.getAttribute("sound")?.split(",");
-    if (!soundNames) {
-      return;
-    }
-
-    const volume = Number(node.getAttribute("volume") ?? DEFAULT_VOLUME);
-    const autoPlay = JSON.parse(node.getAttribute("autoplay") ?? true);
-    const sounds = soundNames.map((name) => this.soundMap[name]);
-
-    return { sounds, autoPlay, volume, id: soundNames };
-  }
-
-  toggleSound(frameId, soundId) {
-    const soundData = this.frameMap[frameId][soundId];
-    if (!soundData) {
-      console.error("Sound combination not found");
-      return;
-    }
-
-    if (!this.noteModeEnabled) {
-      console.log("Note mode disabled");
-      return;
-    }
-
-    const { sounds, volume } = soundData;
-    const isPlaying = soundData.sounds.some((s) => s.playing());
-    if (isPlaying) {
-      sounds.forEach((s) => this.fadeOut(s, volume));
-    } else {
-      sounds.forEach((s) => {
-        this.fadeIn(s, volume);
-      });
-    }
+    return notes;
   }
 
   handleChangeFrame(nextFrameId) {
@@ -151,111 +247,115 @@ class SessionAudio {
 
     this.currFrameId = nextFrameId;
     if (!prevId) {
-      this.stopAll();
+      this.frameMap[nextId].loadSounds();
+      Howler.stop();
       return;
     }
 
-    if (this.chordModeEnabled) {
-      const prevSoundData = this.frameMap[prevId];
-      const nextSoundData = this.frameMap[nextId];
-      const continueSoundSet = {};
-      for (const [soundId, sound] of Object.entries(prevSoundData)) {
-        const soundInNext = nextSoundData[soundId];
-        const { sounds, autoPlay, volume } = sound;
+    if (this.mode === "chord") {
+      const prevSoundData = this.frameMap[prevId].soundMap;
+      const nextSoundData = this.frameMap[nextId].soundMap;
 
-        if (!soundInNext) {
-          sounds.forEach((s) => {
-            this.fadeOut(s, volume);
-          });
-          continue;
+      const continueSound = {};
+      Object.entries(prevSoundData).map(([key, val]) => {
+        if (nextSoundData[key]) {
+          continueSound[key] = volumeToGain(val.volume);
+        } else {
+          const { sound, volume } = val;
+          sound.fade(volumeToGain(volume), 0, 1000);
+
+          setTimeout(() => {
+            sound.unload();
+          }, 1000);
         }
+      });
 
-        if (!autoPlay) {
-          sounds.forEach((s) => {
-            s.stop();
-          });
-          continue;
+      console.log(
+        "Common sounds between prev and current frame:",
+        Object.keys(continueSound)
+      );
+
+      Object.entries(nextSoundData).map(([key, val]) => {
+        const { sound, volume } = val;
+        if (continueSound[key]) {
+          sound.play();
+          sound.fade(continueSound[key], volumeToGain(volume), 1000);
+        } else {
+          sound.load();
+          sound.fade(0, volumeToGain(volume), 1000);
+          sound.play();
         }
+      });
 
-        continueSoundSet[soundId] = sounds.some((s) => s.playing());
-      }
+      this.frameMap[prevId].notes.forEach((n) => {
+        n.isPlaying = false;
+      });
 
-      for (const [soundId, sound] of Object.entries(nextSoundData)) {
-        const { sounds, volume, autoPlay } = sound;
-
-        if (continueSoundSet[soundId] || !autoPlay) {
-          continue;
-        }
-
-        sounds.forEach((s) => {
-          this.fadeIn(s, volume);
-        });
-      }
-
-      return;
+      this.frameMap[nextId].notes.forEach((n) => {
+        n.isPlaying = true;
+      });
     }
 
-    if (this.noteModeEnabled) {
-      const prevSoundData = this.frameMap[prevId];
-      const nextSoundData = this.frameMap[nextId];
-      for (const [soundId, sound] of Object.entries(prevSoundData)) {
-        const soundInNext = nextSoundData[soundId];
-        const { sounds, volume, autoPlay } = sound;
+    if (this.mode === "note") {
+      const prevSoundData = this.frameMap[prevId].soundMap;
+      const nextSoundData = this.frameMap[nextId].soundMap;
 
-        if (!soundInNext) {
-          sounds.forEach((s) => {
-            this.fadeOut(s, volume);
-          });
-          continue;
+      const continueSound = {};
+      Object.entries(prevSoundData).map(([key, val]) => {
+        if (nextSoundData[key]) {
+          continueSound[key] = volumeToGain(val.volume);
+        } else {
+          const { sound, volume } = val;
+          sound.fade(volumeToGain(volume), 0, 1000);
+
+          setTimeout(() => {
+            sound.unload();
+          }, 1000);
         }
+      });
 
-        if (!autoPlay) {
-          sounds.forEach((s) => {
-            s.stop();
-          });
-          continue;
+      this.frameMap[prevId].notes.forEach((n) => {
+        n.isPlaying = false;
+      });
+
+      console.log(
+        "Common sounds between prev and current frame:",
+        Object.keys(continueSound)
+      );
+
+      Object.entries(nextSoundData).map(([key, val]) => {
+        const { sound, volume } = val;
+        if (continueSound[key]) {
+          sound.fade(continueSound[key], volumeToGain(volume), 1000);
+
+          const parentNote = sound.notes.find(
+            (note) => note.parent === this.frameMap[nextId]
+          );
+
+          // Check if the note have all sounds play in next frame
+          // => should mark as isPlaying, else assume as partial playing
+          if (parentNote?.sounds.every((s) => s.sound.playing())) {
+            parentNote.isPlaying = true;
+          }
+        } else {
+          sound.load();
         }
-
-        const { volume: nextVolume } = soundInNext;
-        sounds.forEach((s) => {
-          s.fade(volumeToGain(volume), volumeToGain(nextVolume), 1000);
-        });
-      }
-    }
-  }
-
-  playAllFrameSound(frameId) {
-    const frameData = this.frameMap[frameId];
-    for (const soundData of Object.values(frameData)) {
-      const { sounds, volume, autoPlay } = soundData;
-      const isPlaying = sounds.some((s) => s.playing());
-      if (!autoPlay || isPlaying) {
-        continue;
-      }
-
-      sounds.forEach((s) => {
-        this.fadeIn(s, volume);
       });
     }
   }
 
-  stopAll() {
-    Howler.stop();
+  getPlayingSound() {
+    return Object.values(this.soundMap).filter((s) => s.playing());
   }
 
-  fadeOut(sound, currVolume) {
-    console.log("Fade out ", sound._src);
-
-    sound.fade(volumeToGain(currVolume), 0, 1000);
-    setTimeout(() => sound.stop(), 1000);
+  getPlayingSoundName() {
+    return this.getPlayingSound()
+      .map((s) => s.name)
+      .sort();
   }
 
-  fadeIn(sound, volume) {
-    console.log("Fade in ", sound._src);
-
-    sound.volume(0);
-    sound.play();
-    sound.fade(0, volumeToGain(volume), 1000);
+  getCurrentFrameSound() {
+    return this.frameMap[this.currFrameId].soundMap;
   }
 }
 
@@ -263,7 +363,7 @@ const audioPlayer = new SessionAudio();
 
 window.audioPlayer = audioPlayer;
 
-window.addEventListener("update-view", ({ detail }) => {
+const handleOnUpdateView = ({ detail }) => {
   const { newIndex } = detail;
 
   // newIndex === -1 => pausing
@@ -280,7 +380,9 @@ window.addEventListener("update-view", ({ detail }) => {
   }
 
   audioPlayer.handleChangeFrame(frameId);
-});
+};
+
+window.addEventListener("update-view", handleOnUpdateView);
 
 document.addEventListener(
   "DOMContentLoaded",
@@ -289,3 +391,9 @@ document.addEventListener(
   },
   false
 );
+
+window.onbeforeunload = () => {
+  Howler.unload();
+  window.audioPlayer = null;
+  window.removeEventListener("update-view", handleOnUpdateView);
+};

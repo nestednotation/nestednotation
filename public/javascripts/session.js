@@ -538,7 +538,7 @@ function highlightInnerRingText(index) {
 }
 
 function setIndicatorCooldown(value) {
-  const cooldownIconClass = document.getElementById("cooldownIcon").classList;
+  const cooldownIconClass = document.getElementById("cooldown-icon").classList;
   if (value) {
     cooldownIconClass.add("active");
   } else {
@@ -547,7 +547,7 @@ function setIndicatorCooldown(value) {
 }
 
 function setIndicatorHold(value) {
-  const holdIconClass = document.getElementById("holdIcon").classList;
+  const holdIconClass = document.getElementById("hold-icon").classList;
   if (value) {
     holdIconClass.add("active");
   } else {
