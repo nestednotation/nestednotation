@@ -1,19 +1,13 @@
 <svg width="55" height="55" viewBox="0 0 55 55" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <g clip-path="url(#clip0_23_68)">
-    <path
-      d="M52.5 27.5C52.5 41.3071 41.3071 52.5 27.5 52.5C13.6929 52.5 2.5 41.3071 2.5 27.5C2.5 13.6929 13.6929 2.5 27.5 2.5C41.3071 2.5 52.5 13.6929 52.5 27.5Z"
-      stroke="currentColor" stroke-width="5" stroke-miterlimit="1.5" stroke-linecap="round" stroke-linejoin="round" />
-    <path fill-rule="evenodd" clip-rule="evenodd" d="M36.64 14V41.5L24.856 35.6071H17V19.8929H24.856L36.64 14Z"
-      fill="currentColor" stroke="currentColor" stroke-width="0.65" stroke-miterlimit="1.5" stroke-linecap="round"
-      stroke-linejoin="round" />
-    <path d="M14 41L41 14" stroke="white" stroke-width="7" stroke-miterlimit="1.5" stroke-linecap="round"
-      stroke-linejoin="round" />
-    <path d="M10 45L45 10" stroke="currentColor" stroke-width="5" stroke-miterlimit="1.5" stroke-linecap="round"
-      stroke-linejoin="round" />
+  <g clip-path="url(#clip0_33_43)">
+  <path d="M52.5 27.5C52.5 41.3071 41.3071 52.5 27.5 52.5C13.6929 52.5 2.5 41.3071 2.5 27.5C2.5 13.6929 13.6929 2.5 27.5 2.5C41.3071 2.5 52.5 13.6929 52.5 27.5Z" stroke="black" stroke-width="5" stroke-miterlimit="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <path fill-rule="evenodd" clip-rule="evenodd" d="M26.125 16.5V38.5L17.875 33.7857H12.375V21.2143H17.875L26.125 16.5Z" fill="black" stroke="black" stroke-width="0.649445" stroke-miterlimit="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M31.9524 33L41.25 22.1528" stroke="black" stroke-width="1.38856" stroke-miterlimit="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M41.25 32.8472L32.0833 22.1528" stroke="black" stroke-width="1.65649" stroke-miterlimit="1.5" stroke-linecap="round" stroke-linejoin="round"/>
   </g>
   <defs>
-    <clipPath id="clip0_23_68">
-      <rect width="55" height="55" fill="white" />
-    </clipPath>
+  <clipPath id="clip0_33_43">
+  <rect width="55" height="55" fill="white"/>
+  </clipPath>
   </defs>
 </svg>
