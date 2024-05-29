@@ -159,29 +159,33 @@ class SessionAudio {
       const nextMode = modeStep[currMode];
 
       modeButton.dataset.mode = nextMode;
-      switch (nextMode) {
-        case "note": {
-          this.mode = "note";
-          break;
-        }
-        case "chord": {
-          this.frameMap[this.currFrameId]?.playAll();
-          this.mode = "chord";
-          break;
-        }
-        case "mute": {
-          this.mode = "mute";
-          this.frameMap[this.currFrameId]?.stopAll();
-          break;
-        }
-      }
+      this.handleChangeMode(nextMode);
     });
 
     this.loadSounds();
   }
 
+  handleChangeMode(mode) {
+    switch (mode) {
+      case "note": {
+        this.mode = "note";
+        break;
+      }
+      case "chord": {
+        this.frameMap[this.currFrameId]?.playAll();
+        this.mode = "chord";
+        break;
+      }
+      case "mute": {
+        this.mode = "mute";
+        this.frameMap[this.currFrameId]?.stopAll();
+        break;
+      }
+    }
+  }
+
   loadSounds() {
-    const { scoreSlug, soundList } = window;
+    const { scoreSlug, soundList, isHtml5 } = window;
 
     for (const soundFile of soundList) {
       const key = removeFileExt(soundFile);
@@ -189,6 +193,7 @@ class SessionAudio {
         src: [`/audio/${scoreSlug}/${soundFile}`],
         loop: true,
         preload: false,
+        html5: isHtml5,
       });
 
       this.soundMap[key].notes = [];
@@ -252,6 +257,8 @@ class SessionAudio {
       return;
     }
 
+    const { fadeDuration = 1000 } = window;
+
     if (this.mode === "chord") {
       const prevSoundData = this.frameMap[prevId].soundMap;
       const nextSoundData = this.frameMap[nextId].soundMap;
@@ -262,11 +269,11 @@ class SessionAudio {
           continueSound[key] = volumeToGain(val.volume);
         } else {
           const { sound, volume } = val;
-          sound.fade(volumeToGain(volume), 0, 1000);
+          sound.fade(volumeToGain(volume), 0, fadeDuration);
 
           setTimeout(() => {
             sound.unload();
-          }, 1000);
+          }, fadeDuration);
         }
       });
 
@@ -279,10 +286,10 @@ class SessionAudio {
         const { sound, volume } = val;
         if (continueSound[key]) {
           sound.play();
-          sound.fade(continueSound[key], volumeToGain(volume), 1000);
+          sound.fade(continueSound[key], volumeToGain(volume), fadeDuration);
         } else {
           sound.load();
-          sound.fade(0, volumeToGain(volume), 1000);
+          sound.fade(0, volumeToGain(volume), fadeDuration);
           sound.play();
         }
       });
@@ -306,11 +313,11 @@ class SessionAudio {
           continueSound[key] = volumeToGain(val.volume);
         } else {
           const { sound, volume } = val;
-          sound.fade(volumeToGain(volume), 0, 1000);
+          sound.fade(volumeToGain(volume), 0, fadeDuration);
 
           setTimeout(() => {
             sound.unload();
-          }, 1000);
+          }, fadeDuration);
         }
       });
 
@@ -326,7 +333,7 @@ class SessionAudio {
       Object.entries(nextSoundData).map(([key, val]) => {
         const { sound, volume } = val;
         if (continueSound[key]) {
-          sound.fade(continueSound[key], volumeToGain(volume), 1000);
+          sound.fade(continueSound[key], volumeToGain(volume), fadeDuration);
 
           const parentNote = sound.notes.find(
             (note) => note.parent === this.frameMap[nextId]

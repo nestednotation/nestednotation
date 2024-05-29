@@ -79,6 +79,8 @@ router.get("/*", function (req, res, next) {
           msgSelectHistory: db.MSG_SELECT_HISTORY,
           msgShowNumberConnection: db.MSG_SHOW_NUMBER_CONNECTION,
 
+          fadeDuration: JSON.stringify(session.fadeDuration),
+          isHtml5: JSON.stringify(session.isHtml5),
           svg: session.svgContent,
           scoreSlug: utils.slugify(session.folder),
           soundList: session.soundList && JSON.stringify(session.soundList),

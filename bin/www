@@ -639,7 +639,16 @@ class BMAdmin {
 }
 
 class BMSession {
-  constructor(id, adminId, folder, sessionName, adminpassword, playerpassword) {
+  constructor(
+    id,
+    adminId,
+    folder,
+    sessionName,
+    adminpassword,
+    playerpassword,
+    isHtml5 = false,
+    fadeDuration = 1000
+  ) {
     this.id = id;
     this.ownerId = adminId;
     this.sessionName = sessionName;
@@ -667,6 +676,9 @@ class BMSession {
     this.standbyDuration = 3;
     this.holdDuration = 0;
     this.votingDuration = 10;
+
+    this.isHtml5 = isHtml5;
+    this.fadeDuration = fadeDuration;
 
     this.loadScoreAtFolder(folder);
   }
@@ -966,7 +978,15 @@ class BMSessionTable {
     this.data = [];
     this.count = 0;
   }
-  add(adminId, folder, sessionName, adminpassword, playerpassword) {
+  add(
+    adminId,
+    folder,
+    sessionName,
+    adminpassword,
+    playerpassword,
+    isHtml5,
+    fadeDuration
+  ) {
     //check folder exist
     var dir = dataDir + "/" + folder;
     if (fs.existsSync(dir)) {
@@ -977,7 +997,9 @@ class BMSessionTable {
         folder,
         sessionName,
         adminpassword,
-        playerpassword
+        playerpassword,
+        isHtml5,
+        fadeDuration
       );
       this.data.push(s);
       return s;

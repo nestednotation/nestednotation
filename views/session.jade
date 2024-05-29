@@ -26,6 +26,9 @@ html
       var wsPort = '#{webSocketPort}';
       var wsPath = '#{wsPath}'
 
+      var isHtml5 = JSON.parse('!{isHtml5}');
+      var fadeDuration = JSON.parse('!{fadeDuration}')
+
       var CONST_NO_SLEEP_DURATION = #{noSleepDuration};
       var MSG_PING = #{msgPing};
       var MSG_TAP = #{msgTap};
