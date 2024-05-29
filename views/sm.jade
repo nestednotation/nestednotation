@@ -51,6 +51,16 @@ block content
                         input(type="text", name="hd", value=d.holdDuration)
                 tr
                     td
+                        label(for="fadeDuration") &nbsp;fade duration(ms)&nbsp;
+                    td
+                        input(type="number", name="fadeDuration", value=d.fadeDuration)
+                tr
+                    td
+                        label(for="isHtml5") &nbsp;html5&nbsp;
+                    td
+                        input(type="checkbox", name="isHtml5", value="true", checked=(d.isHtml5 ? "checked" : undefined))
+                tr
+                    td
                         input(type="submit", value="Update session")
                     td
                 tr
@@ -118,6 +128,16 @@ block content
                     label(for="hd") &nbsp;holding duration&nbsp;
                 td
                     input(type="text", name="hd", value=10)
+            tr
+                td
+                    label(for="fadeDuration") &nbsp;fade duration(ms)&nbsp;
+                td
+                    input(type="number", name="fadeDuration", value=1000)
+            tr
+                td
+                    label(for="isHtml5") &nbsp;html5&nbsp;
+                td
+                    input(type="checkbox", name="isHtml5", value="true")
             tr
                 td
                     input(type="submit", value="New session")
