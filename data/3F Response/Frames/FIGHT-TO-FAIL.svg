@@ -27,7 +27,7 @@
       <path id="_01" sound="3F-Low-C" serif:id="0" d="M913.712,566.597c-21.99,38.086 -70.763,51.155 -108.85,29.166c-38.087,-21.989 -51.155,-70.762 -29.166,-108.848c21.989,-38.085 70.763,-51.154 108.85,-29.165c38.086,21.989 51.155,70.762 29.166,108.847Z" style="stroke:#fff;stroke-width:24px;"/>
     </g>
     <g id="Treble-Marker" serif:id="Treble Marker">
-      <g id="_8" sound="3F-Mid-Ab" serif:id="8">
+      <g id="_8" sound="3F-High-Ab" serif:id="8">
         <path id="_8u" serif:id="8u" d="M504.492,1277.29c-21.989,38.086 -70.763,51.155 -108.849,29.166c-38.087,-21.989 -51.156,-70.762 -29.167,-108.848c21.99,-38.085 70.764,-51.154 108.85,-29.165c38.087,21.989 51.156,70.762 29.166,108.847Z" style="fill:#fff;stroke:#fff;stroke-width:33.33px;"/>
         <circle id="_8a" serif:id="8a" cx="435.484" cy="1237.45" r="64" style="fill:#fff;stroke:#000;stroke-width:16.67px;"/>
       </g>
