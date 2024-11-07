@@ -104,8 +104,8 @@
                     </g>
                 </g>
                 <g id="Treble-Marker" serif:id="Treble Marker">
-                    <g id="_72" serif:id="7">
-                        <g id="_7u" sound="Low-G,High-G" autoplay="false" serif:id="7u" transform="matrix(-1.39762,2.4207,-2.45799,-1.41909,2868.72,413.119)">
+                    <g id="_72" sound="Low-G,High-G" autoplay="false" serif:id="7">
+                        <g id="_7u" serif:id="7u" transform="matrix(-1.39762,2.4207,-2.45799,-1.41909,2868.72,413.119)">
                             <ellipse cx="766" cy="526.5" rx="33" ry="32.5" style="fill:white;stroke:white;stroke-width:13.7px;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:1.5;"/>
                         </g>
                         <g id="_7a" serif:id="7a" transform="matrix(1.12855,0,0,1.10639,-523.367,951.498)">
