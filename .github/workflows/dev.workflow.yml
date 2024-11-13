@@ -22,6 +22,7 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     needs: send-noti
+    name: Deploy Nested Notation to dev
     steps:
       - name: Pull code and restart pm2
         uses: appleboy/ssh-action@master
@@ -41,6 +42,7 @@ jobs:
   send-noti-on-success:
     runs-on: ubuntu-latest
     needs: deploy
+    name: Send noti to telegram on success
     steps:
       - name: Send Telegram Message
         uses: appleboy/telegram-action@master
