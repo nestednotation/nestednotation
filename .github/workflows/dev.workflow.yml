@@ -8,6 +8,17 @@ env:
   SSH_PORT: 22
 
 jobs:
+  send-noti:
+      runs-on: ubuntu-latest
+      name: Send noti to telegram on 
+      steps:
+        - name: Send Telegram Message
+          uses: appleboy/telegram-action@master
+          with:
+            to: ${{ secrets.TELEGRAM_RECEIVER }}
+            token: ${{ secrets.TELEGRAM_TOKEN }}
+            message: "🚀🚀🚀 Start deploy Nested Notation to dev  🚀🚀🚀"
+    
   deploy:
     runs-on: ubuntu-latest
     steps:
@@ -26,17 +37,14 @@ jobs:
             npm install
             pm2 start ecosystem.config.js -f
 
-  send-noti:
-      runs-on: ubuntu-latest
-      name: Send email on every push
-      steps:
-      - name: Send Mail Action
-        id: sendmail
-        uses: vineetchoudhary/mailgun-action@master
-        with:
-          api-key: ${{ secrets.MAIL_GUN_API }}
-          domain: ${{ secrets.MAIL_GUN_DOMAIN }}
-          to: doanhoaisonfithcmus@gmail.com
-      - name: Send Mail Action Response
-        run: echo "${{ steps.sendmail.outputs.response }}"
+  send-noti-on-success:
+     runs-on: ubuntu-latest
+     steps:
+       - name: Send Telegram Message
+         uses: appleboy/telegram-action@master
+         with:
+           to: ${{ secrets.TELEGRAM_RECEIVER }}
+           token: ${{ secrets.TELEGRAM_TOKEN }}
+           message: "🚀🚀🚀 Deploy Nested Notation to dev successfully 🚀🚀🚀"
+      
         
