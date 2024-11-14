@@ -19,7 +19,7 @@ jobs:
           token: ${{ secrets.TELEGRAM_TOKEN }}
           message: |
             🚀 Start deploy Nested Notation to dev 🚀
-            Commit message: ${{ github.event.head_commit.message}}
+            Commit message ✨: ${{ github.event.head_commit.message}}
             See changes: https://github.com/${{ github.repository }}/commit/${{github.sha}}
 
 
