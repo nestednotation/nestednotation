@@ -36,7 +36,6 @@ jobs:
           port: 22
           password: ${{ secrets.SSH_PASSWORD }}
           script: |
-            exit
             whoami
             pwd
             cd nestednotation
