@@ -25,10 +25,10 @@ jobs:
       - name: Pull code and restart pm2
         uses: appleboy/ssh-action@master
         with:
-          host: ${{ secrets.HOST }}
+          host: ${{ secrets.HOST_PRO }}
           username: ${{ secrets.SSH_USERNAME_PROD }}
           port: 22
-          password: ${{ secrets.SSH_PASSWORD }}
+          password: ${{ secrets.SSH_PASSWORD_PRO }}
           script: |
             whoami
             pwd
