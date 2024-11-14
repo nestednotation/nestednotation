@@ -32,6 +32,7 @@ app.use('/setup', setupRouter);
 app.use('/admin', adminRouter);
 app.use('/sm', smRouter);
 app.use('/audio', audioRouter);
+console.log("Test CI/CD")
 
 
 
