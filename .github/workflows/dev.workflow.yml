@@ -17,7 +17,7 @@ jobs:
         with:
           to: ${{ secrets.TELEGRAM_RECEIVER }}
           token: ${{ secrets.TELEGRAM_TOKEN }}
-          message: "🚀🚀🚀 Start deploy Nested Notation to dev  🚀🚀🚀"
+          message: "🚀 Start deploy Nested Notation to dev 🚀"
 
   deploy:
     runs-on: ubuntu-latest
@@ -49,4 +49,4 @@ jobs:
         with:
           to: ${{ secrets.TELEGRAM_RECEIVER }}
           token: ${{ secrets.TELEGRAM_TOKEN }}
-          message: "🚀🚀🚀 Deploy Nested Notation to dev successfully 🚀🚀🚀"
+          message: "✅ Deploy Nested Notation to dev successfully ✅"
