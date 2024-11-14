@@ -46,6 +46,6 @@ jobs:
         with:
           to: ${{ secrets.TELEGRAM_RECEIVER }}
           token: ${{ secrets.TELEGRAM_TOKEN }}
-          message: ${{ success() && '✅ Deploy Nested Notation to main successfully ✅' || '❌ Deploy Nested Notation to main failed ❌'}}
+          message: ${{ job.status && '✅ Deploy Nested Notation to main successfully ✅' || '❌ Deploy Nested Notation to main failed ❌'}}
         
   
