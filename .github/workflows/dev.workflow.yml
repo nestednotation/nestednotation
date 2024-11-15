@@ -49,10 +49,10 @@ jobs:
       - name: Send Telegram Message
         if: success()
         uses: appleboy/telegram-action@master
-        format: html
         with:
           to: ${{ secrets.TELEGRAM_RECEIVER }}
           token: ${{ secrets.TELEGRAM_TOKEN }}
+          format: html
           message: |
             🚀🚀🚀
             Deploy <b>Nested Notation</b> to production successfully 
