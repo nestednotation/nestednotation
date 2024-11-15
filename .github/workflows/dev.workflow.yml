@@ -57,7 +57,7 @@ jobs:
           format: html
           message: |
             ✅
-            Deploy <b>Nested Notation</b> to production successfully 
+            Deploy <b>Nested Notation</b> to dev successfully 
             Deployed by: <b>${{ github.event.head_commit.author.name}}</b>
             See changes: https://github.com/${{ github.repository }}/commit/${{github.sha}}
             ✅
