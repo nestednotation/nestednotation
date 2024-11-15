@@ -53,7 +53,7 @@ jobs:
           token: ${{ secrets.TELEGRAM_TOKEN }}
           message: |
             🚀 Deploy Nested Notation to production successfully 🚀
-            See changes:
+            See changes: ${{ github.event.head_commit.message}}
       - name: Send Telegram Message
         if: failure()
         uses: appleboy/telegram-action@master
