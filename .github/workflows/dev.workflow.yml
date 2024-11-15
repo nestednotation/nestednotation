@@ -8,7 +8,7 @@ env:
   SSH_PORT: 22
 
 jobs:
-  send-noti:
+  send-noti-on-start:
     runs-on: ubuntu-latest
     name: Send noti to telegram on
     steps:
@@ -23,10 +23,9 @@ jobs:
             Commit by 🚀: ${{ github.event.head_commit.author.name}}
             See changes: https://github.com/${{ github.repository }}/commit/${{github.sha}}
 
-
   deploy:
     runs-on: ubuntu-latest
-    needs: send-noti
+    needs: send-noti-on-start
     name: Deploy Nested Notation to dev
     steps:
       - name: Pull code and restart pm2
@@ -43,15 +42,24 @@ jobs:
             git pull origin develop
             npm install
             pm2 start ecosystem.config.js -f
-
-  send-noti-on-success:
+  send-noti-on-complete:
     runs-on: ubuntu-latest
     needs: deploy
-    name: Send noti to telegram on success
     steps:
       - name: Send Telegram Message
+        if: success()
         uses: appleboy/telegram-action@master
         with:
           to: ${{ secrets.TELEGRAM_RECEIVER }}
           token: ${{ secrets.TELEGRAM_TOKEN }}
-          message: ${{ job.status == 'success' && '✅ Deploy Nested Notation to dev successfully ✅' || '❌ Deploy Nested Notation to dev failed ❌'}}
+          message: |
+            🚀 Deploy Nested Notation to production successfully 🚀
+            See changes:
+      - name: Send Telegram Message
+        if: failure()
+        uses: appleboy/telegram-action@master
+        with:
+          to: ${{ secrets.TELEGRAM_RECEIVER }}
+          token: ${{ secrets.TELEGRAM_TOKEN }}
+          message: |
+            ❌ Deploy Nested Notation to dev failed ❌
