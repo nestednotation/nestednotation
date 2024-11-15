@@ -17,12 +17,12 @@ jobs:
         with:
           to: ${{ secrets.TELEGRAM_RECEIVER }}
           token: ${{ secrets.TELEGRAM_TOKEN }}
+          format: html
           message: |
             🚀 Start deploy Nested Notation to dev 🚀
             Commit message ✨: ${{ github.event.head_commit.message}}
-            Commit by 🚀: ${{ github.event.head_commit.author.name}}
+            Commit by: <b> ${{ github.event.head_commit.author.name}} </b>
             See changes: https://github.com/${{ github.repository }}/commit/${{github.sha}}
-
   deploy:
     runs-on: ubuntu-latest
     needs: send-noti-on-start
@@ -54,7 +54,6 @@ jobs:
           token: ${{ secrets.TELEGRAM_TOKEN }}
           format: html
           message: |
-            🚀🚀🚀
             Deploy <b>Nested Notation</b> to production successfully 
             Deployed by: <b>${{ github.event.head_commit.author.name}}</b>
             See changes: ${{ github.event.head_commit.message}}
@@ -65,8 +64,9 @@ jobs:
           to: ${{ secrets.TELEGRAM_RECEIVER }}
           token: ${{ secrets.TELEGRAM_TOKEN }}
           message: |
-            ❌❌❌
+            ✅
             Deploy Nested Notation to dev failed 
             Deployed by: <b>${{ github.event.head_commit.author.name}}</b>
             See changes: ${{ github.event.head_commit.message}}
             Error Details: ${{ github.action_status.message }}
+            ✅
