@@ -20,7 +20,7 @@ jobs:
           format: html
           message: |
             🚀
-            Start deploy Nested Notation to dev 
+            Start deploy <b>Nested Notation</b> to dev 
             Commit message ✨: <b> ${{ github.event.head_commit.message}} </b>
             Commit by: <b> ${{ github.event.head_commit.author.name}} </b>
             See changes: https://github.com/${{ github.repository }}/commit/${{github.sha}}

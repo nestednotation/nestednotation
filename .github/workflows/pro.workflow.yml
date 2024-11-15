@@ -18,10 +18,13 @@ jobs:
           to: ${{ secrets.TELEGRAM_RECEIVER }}
           token: ${{ secrets.TELEGRAM_TOKEN }}
           message: |
-            🚀 Start deploy Nested Notation to production 🚀
+            🚀
+            Start deploy <b>Nested Notation</b> to production
             Commit message ✨: ${{ github.event.head_commit.message}}
-            Commited by 🚀: ${{ github.event.head_commit.author.name}}
+            Commited by 🚀: <b>${{ github.event.head_commit.author.name}}</b>
             See changes: https://github.com/${{ github.repository }}/commit/${{github.sha}}
+            🚀
+
   deploy:
     runs-on: ubuntu-latest
     needs: send-noti-on-start
@@ -52,8 +55,11 @@ jobs:
           to: ${{ secrets.TELEGRAM_RECEIVER }}
           token: ${{ secrets.TELEGRAM_TOKEN }}
           message: |
-            🚀 Deploy Nested Notation to production successfully 🚀
+            ✅
+            Deploy <b>Nested Notation</b> to production successfully
             See changes: ${{ github.event.head_commit.message}}
+            Deployed by: <b>${{ github.event.head_commit.author.name}}</b>
+            ✅
       - name: Send Telegram Message
         if: failure()
         uses: appleboy/telegram-action@master
@@ -61,4 +67,10 @@ jobs:
           to: ${{ secrets.TELEGRAM_RECEIVER }}
           token: ${{ secrets.TELEGRAM_TOKEN }}
           message: |
-            ❌ Deploy Nested Notation to dev failed ❌
+            ❌
+            Deploy Nested Notation to Prod failed 
+            Deployed by: <b>${{ github.event.head_commit.author.name}}</b>
+            See changes: ${{ github.event.head_commit.message}}
+            Error Details: ${{ github.action_status.message }}
+            ❌
+
