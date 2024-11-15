@@ -17,6 +17,7 @@ jobs:
         with:
           to: ${{ secrets.TELEGRAM_RECEIVER }}
           token: ${{ secrets.TELEGRAM_TOKEN }}
+          format: html
           message: |
             🚀
             Start deploy <b>Nested Notation</b> to production
@@ -51,6 +52,7 @@ jobs:
       - name: Send Telegram Message
         if: success()
         uses: appleboy/telegram-action@master
+        format: html
         with:
           to: ${{ secrets.TELEGRAM_RECEIVER }}
           token: ${{ secrets.TELEGRAM_TOKEN }}
@@ -63,6 +65,7 @@ jobs:
       - name: Send Telegram Message
         if: failure()
         uses: appleboy/telegram-action@master
+        format: html
         with:
           to: ${{ secrets.TELEGRAM_RECEIVER }}
           token: ${{ secrets.TELEGRAM_TOKEN }}
