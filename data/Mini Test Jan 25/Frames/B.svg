@@ -658,7 +658,7 @@
             </g>
 			</a>
             <g id="S-melisma" serif:id="S melisma" transform="matrix(0.176471,0,0,0.120968,1501.48,1511.44)">
-                <g id="Sounder" transform="matrix(-0.599416,1.0382,-1.04729,-0.604638,2283.89,960.213)">
+                <g id="Sounder" sound="Mid-B,Mid-Db,Mid-Eb,Mid-E,Mid-Ab,Mid-Bb" transform="matrix(-0.599416,1.0382,-1.04729,-0.604638,2283.89,960.213)">
                     <ellipse cx="692" cy="1046" rx="458" ry="454" style="fill:white;"/>
                 </g>
                 <g id="Ring8" serif:id="Ring" transform="matrix(-1.09813,0,0,-1.09811,1579.66,2245.28)">

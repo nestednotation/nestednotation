@@ -600,7 +600,7 @@
                 </g>
             </g>
 			</a>
-            <g id="S-melisma" serif:id="S melisma" transform="matrix(0.176471,0,0,0.120968,763.477,1511.44)">
+            <g id="S-melisma" sound="Mid-C,Mid-B,Mid-Eb,Mid-F,Mid-G,Mid-Ab" serif:id="S melisma" transform="matrix(0.176471,0,0,0.120968,763.477,1511.44)">
                 <g id="Sounder" transform="matrix(-0.599416,1.0382,-1.04729,-0.604638,2283.89,960.213)">
                     <ellipse cx="692" cy="1046" rx="458" ry="454" style="fill:white;"/>
                 </g>
