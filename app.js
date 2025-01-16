@@ -14,7 +14,7 @@ var audioRouter = require('./routes/audio');
 
 var app = express();
 console.log('App is starting...');
-console.log('App started');
+console.log('App Started');
 
 // view engine setup
 app.set('views', path.join(__dirname, 'views'));
