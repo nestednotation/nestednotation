@@ -32,7 +32,7 @@ app.use('/setup', setupRouter);
 app.use('/admin', adminRouter);
 app.use('/sm', smRouter);
 app.use('/audio', audioRouter);
-console.log("App started");
+console.log("App startED");
 
 
 // catch 404 and forward to error handler
