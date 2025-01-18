@@ -227,9 +227,9 @@ input[type="button"] {
   display: none;
 }
 
-#mode-btn[data-mode="note"] #note-mode-icon,
-#mode-btn[data-mode="chord"] #chord-mode-icon,
-#mode-btn[data-mode="mute"] #sound-off-icon {
+#mode-btn[data-mode="NOTE"] #note-mode-icon,
+#mode-btn[data-mode="CHORD"] #chord-mode-icon,
+#mode-btn[data-mode="MUTE"] #sound-off-icon {
   display: block;
 }
 
