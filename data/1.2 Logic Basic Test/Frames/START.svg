@@ -83,8 +83,8 @@
 	  </a>
   </g>
   <g id="Sound-and-LInk" serif:id="Sound and LInk">
-	 <a href="Success.svg">
-    <g id="A" sound="Sound5">
+	 <a href="Success.svg" sound="Sound5">
+    <g id="A">
       <rect x="178.68" y="165.608" width="50.64" height="66" style="fill:#82a494;stroke:#000;stroke-width:0.05px;"/>
       <g transform="matrix(0.24,0,0,0.24,-1518.65,75.52)">
         <g transform="matrix(66.6667,0,0,66.6667,7101.7,434.167)">
@@ -123,8 +123,8 @@
       </g>
     </g>
 	  </a>
-	  <a href="Success.svg">
-    <g id="B" sound="Sound6.m4a">
+	  <a href="Success.svg" sound="Sound6">
+    <g id="B">
       <rect x="178.68" y="231.72" width="50.64" height="66" style="fill:#b79f76;stroke:#000;stroke-width:0.05px;"/>
       <g transform="matrix(0.24,0,0,0.24,-1518.65,141.632)">
         <g transform="matrix(66.6667,0,0,66.6667,7101.7,434.167)">
@@ -163,8 +163,8 @@
       </g>
     </g>
 	  </a>
-	  <a href="Success.svg">
-    <g id="C" sound="Sound7">
+	  <a href="Success.svg" sound="Sound7">
+    <g id="C">
       <rect x="178.68" y="297.72" width="50.64" height="66" style="fill:#587f6f;stroke:#000;stroke-width:0.05px;"/>
       <g transform="matrix(0.24,0,0,0.24,-1518.65,207.736)">
         <g transform="matrix(66.6667,0,0,66.6667,7101.7,434.167)">
@@ -203,8 +203,8 @@
       </g>
     </g>
 	  </a>
-	  <a href="Success.svg">
-    <g id="D" sound="Sound8">
+	  <a href="Success.svg" sound="Sound8">
+    <g id="D">
       <rect x="178.68" y="363.72" width="50.64" height="66" style="fill:#686f7e;stroke:#000;stroke-width:0.05px;"/>
       <g transform="matrix(0.24,0,0,0.24,-1518.65,273.648)">
         <g transform="matrix(66.6667,0,0,66.6667,7101.7,434.167)">
