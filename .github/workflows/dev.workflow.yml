@@ -44,7 +44,7 @@ jobs:
             git reset --hard
             git pull origin develop
             npm install
-            pm2 start ecosystem.config.js -f
+            pm2 start ecosystem.config.js -f  --env development
   send-noti-on-complete:
     runs-on: ubuntu-latest
     needs: deploy
