@@ -42,9 +42,10 @@ jobs:
             whoami
             pwd
             cd nestednotation
+            git reset --hard
             git pull origin main
             npm install
-            pm2 start ecosystem.config.js -f
+            pm2 start ecosystem.config.js -f  --env production
   send-noti-on-complete:
     runs-on: ubuntu-latest
     needs: deploy
