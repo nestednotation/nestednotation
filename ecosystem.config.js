@@ -15,7 +15,6 @@ module.exports = {
         WS_PORT:2381,
         SERVER_IP:'proapi.nestednotation.com'
       },
-      
     },
   ],
 };
