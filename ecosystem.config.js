@@ -14,8 +14,12 @@ module.exports = {
         PORT:3000,
         WS_PORT:2381,
         SERVER_IP:'proapi.nestednotation.com'
+<<<<<<< HEAD
       },,
       
+=======
+      },
+>>>>>>> 13a375050efec185e1e2cca226f361df2e0efb13
     },
   ],
 };
