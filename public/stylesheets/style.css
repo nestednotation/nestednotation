@@ -260,6 +260,7 @@ body {
   display: flex;
   align-items: flex-end;
   justify-content: center;
+  color: #000;
 }
 
 .change-mode-btn:hover {
