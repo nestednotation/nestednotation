@@ -41,6 +41,7 @@ jobs:
             whoami
             pwd
             cd nestednotation
+            git reset --hard
             git pull origin develop
             npm install
             pm2 start ecosystem.config.js -f
