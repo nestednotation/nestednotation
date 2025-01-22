@@ -446,8 +446,14 @@ body {
   pointer-events: none;
 }
 
+/* Hide user vote in play mode */
 .play-mode text[id^="ta-"] {
   display: none;
+}
+
+.loading-sound.play-mode svg {
+  pointer-events: none;
+  filter: grayscale(100%);
 }
 
 @keyframes playingNode {
@@ -462,5 +468,30 @@ body {
   }
   100% {
     opacity: 1;
+  }
+}
+
+.loading-sound #loading-sound-indicator {
+  display: block;
+}
+
+#loading-sound-indicator {
+  font-size: 24px;
+  color: #9a9a9a;
+  overflow: hidden;
+  animation: loadingText 2s infinite linear;
+  width: fit-content;
+  margin: auto;
+  background: linear-gradient(currentColor 0 0) 0 100%/0% 2px no-repeat;
+  position: fixed;
+  bottom: calc(min(10vh, 60px) + 30px);
+  left: 50%;
+  transform: translateX(-50%);
+  display: none;
+}
+
+@keyframes loadingText {
+  to {
+    background-size: 100% 2px;
   }
 }

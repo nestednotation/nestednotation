@@ -1,4 +1,3 @@
-const SESSION_PLAY_MODES = { NOTE: "NOTE", CHORD: "CHORD", MUTE: "MUTE" };
 const NEW_SESSION_MODES = {
   PLAY: "PLAY",
   GUIDE: "GUIDE",
@@ -29,12 +28,13 @@ function volumeToGain(v) {
 
 const DEFAULT_VOLUME = 80;
 
-function mergeSoundsAndVolumes(sounds, volumes) {
+function mergeSoundsAndVolumes(sounds, volumes, autoplay) {
   if (volumes.length === 1) {
     return sounds.map((s) => ({
       soundInstance: s,
       name: s.name,
       volume: volumes[0] ?? DEFAULT_VOLUME,
+      autoplay,
     }));
   }
 
@@ -43,6 +43,7 @@ function mergeSoundsAndVolumes(sounds, volumes) {
       soundInstance: s,
       name: s.name,
       volume: volumes[idx],
+      autoplay,
     }));
   }
 
@@ -54,6 +55,7 @@ function mergeSoundsAndVolumes(sounds, volumes) {
     soundInstance: s,
     name: s.name,
     volume: DEFAULT_VOLUME,
+    autoplay,
   }));
 }
 
@@ -62,6 +64,7 @@ class Note {
   _isPlaying = false;
 
   sounds = [];
+  soundId = null;
   frameInstance = null;
 
   domElement = null;
@@ -83,12 +86,20 @@ class Note {
     this.frameInstance = frameInstance;
     this.isAutoplay = isAutoplay;
     this.sounds = sounds;
+    this.soundId = this.generateSoundId();
 
     sounds.forEach((sound) => sound.soundInstance.notes.push(this));
 
     this.domElement = svgElement;
     this.domElement.dataset.playing = "false";
     this.domElement.addEventListener("click", this.onNoteClicked.bind(this));
+  }
+
+  generateSoundId() {
+    return this.sounds
+      .map((s) => s.name)
+      .sort()
+      .join("|");
   }
 
   play() {
@@ -117,7 +128,7 @@ class Note {
   }
 
   onNoteClicked(e) {
-    // In GUIDE mode, sound should not be toggle
+    // In GUIDE mode, sound can't be interacted
     if (this.viewMode === NEW_SESSION_MODES.GUIDE) {
       return;
     }
@@ -134,6 +145,7 @@ class Note {
 class Frame {
   id = null;
   notes = [];
+
   soundMap = {};
 
   sessionInstance = null;
@@ -159,6 +171,8 @@ class Frame {
 
   loadSounds() {
     Object.values(this.soundMap).forEach((s) => s.soundInstance.load());
+
+    return Object.keys(this.soundMap);
   }
 
   getSoundMap() {
@@ -185,7 +199,7 @@ class Frame {
         .getAttribute("volume")
         ?.split(",")
         .map(Number) ?? [DEFAULT_VOLUME];
-      const autoPlay = JSON.parse(
+      const autoplay = JSON.parse(
         svgSoundNode.getAttribute("autoplay") ?? true
       );
       const nodeSounds = soundNames.map((name) => {
@@ -197,8 +211,8 @@ class Frame {
       const note = new Note(
         this,
         svgSoundNode,
-        mergeSoundsAndVolumes(nodeSounds, nodeVolums),
-        autoPlay
+        mergeSoundsAndVolumes(nodeSounds, nodeVolums, autoplay),
+        autoplay
       );
 
       notes.push(note);
@@ -216,10 +230,10 @@ class AudioSession {
   // Map of frame id to Frame instance
   frameMap = {};
 
-  mode = SESSION_PLAY_MODES.NOTE;
-
   _newMode = NEW_SESSION_MODES.PLAY;
   guideLock = false;
+
+  soundLoadSet = new Set();
 
   autoPlay = false;
 
@@ -262,32 +276,6 @@ class AudioSession {
   }
 
   init() {
-    this.loadSounds();
-  }
-
-  onPlayModeChange() {
-    // 3 mode: NOTE, CHORD, MUTE
-    // The cylce is: NOTE -> CHORD -> MUTE -> NOTE
-    switch (this.mode) {
-      case SESSION_PLAY_MODES.NOTE: {
-        this.mode = SESSION_PLAY_MODES.CHORD;
-        this.frameMap[this.currFrameId]?.playAll();
-        break;
-      }
-      case SESSION_PLAY_MODES.CHORD: {
-        this.mode = SESSION_PLAY_MODES.MUTE;
-        this.frameMap[this.currFrameId]?.stopAll();
-        break;
-      }
-      case SESSION_PLAY_MODES.MUTE:
-      default: {
-        this.mode = SESSION_PLAY_MODES.NOTE;
-        break;
-      }
-    }
-  }
-
-  loadSounds() {
     const { scoreSlug, soundList, isHtml5 } = window;
 
     for (const soundFile of soundList) {
@@ -297,10 +285,24 @@ class AudioSession {
         loop: true,
         preload: false,
         html5: isHtml5,
+        onload: function () {
+          const soundLoadedEvent = new CustomEvent("sound-loaded", {
+            detail: {
+              key: key,
+              soundInstance: this,
+            },
+          });
+
+          window.dispatchEvent(soundLoadedEvent);
+        },
       });
 
       this.soundMap[key].notes = [];
     }
+
+    window.addEventListener("sound-loaded", (e) => {
+      this.handleCheckSoundLoad(e.detail);
+    });
 
     this.generateSoundMap();
   }
@@ -330,7 +332,8 @@ class AudioSession {
 
     this.currFrameId = nextFrameId;
     if (!prevId) {
-      this.frameMap[nextId].loadSounds();
+      const soundKeyToLoads = this.frameMap[nextId].loadSounds();
+      soundKeyToLoads.forEach((s) => this.markSoundAsLoading(s));
       Howler.stop();
       return;
     }
@@ -361,7 +364,12 @@ class AudioSession {
       );
 
       Object.entries(nextSoundData).map(([key, val]) => {
-        const { soundInstance, volume } = val;
+        const { soundInstance, volume, autoplay } = val;
+
+        if (!autoplay) {
+          return;
+        }
+
         if (continueSound[key]) {
           soundInstance.play();
           soundInstance.fade(
@@ -370,6 +378,7 @@ class AudioSession {
             fadeDuration
           );
         } else {
+          this.markSoundAsLoading(key);
           soundInstance.load();
           soundInstance.fade(0, volumeToGain(volume), fadeDuration);
           soundInstance.play();
@@ -381,7 +390,9 @@ class AudioSession {
       });
 
       this.frameMap[nextId].notes.forEach((n) => {
-        n.isPlaying = true;
+        if (n.isAutoplay) {
+          n.isPlaying = true;
+        }
       });
     } else {
       const prevSoundData = this.frameMap[prevId].soundMap;
@@ -429,6 +440,7 @@ class AudioSession {
             parentNote.isPlaying = true;
           }
         } else {
+          this.markSoundAsLoading(key);
           soundInstance.load();
         }
       });
@@ -462,6 +474,21 @@ class AudioSession {
     } else {
       this.frameMap[this.currFrameId]?.stopAll();
     }
+  }
+
+  markSoundAsLoading(soundKey) {
+    this.soundLoadSet.add(soundKey);
+
+    document.body.classList.toggle("loading-sound", true);
+  }
+
+  handleCheckSoundLoad(loadedSound) {
+    this.soundLoadSet.delete(loadedSound.key);
+
+    document.body.classList.toggle(
+      "loading-sound",
+      this.soundLoadSet.size !== 0
+    );
   }
 }
 
