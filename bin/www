@@ -668,7 +668,7 @@ class BMSession {
 
     this.currentIndex = 0;
 
-    this.isHolding = true;
+    this.isHolding = false;
     this.isPause = false;
     this.holdingTimer = null;
 
