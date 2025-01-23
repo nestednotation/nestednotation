@@ -668,7 +668,7 @@ class BMSession {
 
     this.currentIndex = 0;
 
-    this.isHolding = true;
+    this.isHolding = false;
     this.isPause = false;
     this.holdingTimer = null;
 
@@ -791,12 +791,19 @@ class BMSession {
             if (listA.length > 1 && !filename.startsWith("PRE")) {
               this.listMultiChooseImages.push(svgIndex);
             }
+
+            const HREF_REGX = /(?<=href=")(.*?)(?=")/;
+            const LINK_REGEX = /((xlink:href)|(href))="(.*?)"/;
             listA.forEach((a) => {
-              var link = this.regexWithPattern(a, /.*?="(.*?)"/is, 1);
-              var aIndex = this.listFilesInLowerCase.indexOf(
-                link.toLowerCase()
+              const matchedHref = HREF_REGX.exec(a)?.[0];
+              const aIndex = this.listFilesInLowerCase.indexOf(
+                matchedHref?.toLowerCase()
               );
-              var newA = `<a href="javascript:tapOn(${aIndex});">`;
+
+              let newA = a.replace(
+                LINK_REGEX,
+                `href="javascript:tapOn(${aIndex});"`
+              );
               svg = svg.replace(a, newA);
               if (!filename.startsWith("PRE")) {
                 newA = newA.replace(" ", "\\s*");

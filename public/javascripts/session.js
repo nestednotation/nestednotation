@@ -74,7 +74,7 @@ function fn() {
     divhistory.style.display = "block";
 
     var tablefooter = document.getElementById("tablefooter");
-    tablefooter.style.display = "block";
+    tablefooter.style.display = "flex";
   }
 
   ws = new WebSocket(wsPath);
@@ -554,6 +554,7 @@ function setIndicatorHold(value) {
     holdIconClass.remove("active");
   }
 
+  document.body.classList.toggle("holding", value);
   setOverlay(value);
 }
 

@@ -64,6 +64,7 @@ router.get("/*", function (req, res, next) {
           hostAddress: db.hostAddress,
           webSocketPort: db.wsPort,
           noSleepDuration: noSleepDuration,
+          scoreTitle: session.folder,
 
           msgPing: db.MSG_PING,
           msgTap: db.MSG_TAP,

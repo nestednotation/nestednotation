@@ -151,32 +151,34 @@ input[type="button"] {
 }
 
 .control-container {
-  float: right;
   display: flex;
-  row-gap: 2.5%;
-  column-gap: 3.5%;
+  justify-content: space-between;
   flex-wrap: wrap;
-  justify-content: end;
-  height: 8vh;
+  gap: 8px;
 }
 
-.control-container * {
+.user-control-container {
+  display: flex;
+  column-gap: max(1%, 16px);
+  flex-wrap: wrap;
+  justify-content: end;
+  align-items: center;
+  height: 4vh;
+}
+
+.user-control-container * {
   box-sizing: border-box;
 }
 
-.control-container button {
-  padding: 0;
-  border: none;
-  background: none;
-  cursor: pointer;
+.count-down-container {
+  display: none;
+  gap: 3.5%;
+  height: 35%;
+  justify-content: end;
 }
 
-.count-down-container {
+.count-down-container:has(.circle.active) {
   display: flex;
-  gap: 3.5%;
-  width: 100%;
-  height: 20%;
-  justify-content: end;
 }
 
 .count-down-container .circle {
@@ -196,17 +198,15 @@ input[type="button"] {
 }
 
 #cooldown-icon,
-#hold-icon,
-#mode-btn {
-  height: 60%;
+#hold-icon {
+  height: 100%;
   aspect-ratio: 1;
+  display: none;
 }
 
-#sound-btn img,
-#note-mode-btn img,
-#chord-mode-btn img {
-  width: 100%;
-  height: 100%;
+#cooldown-icon.active,
+#hold-icon.active {
+  display: block;
 }
 
 #cooldown-icon,
@@ -219,20 +219,280 @@ input[type="button"] {
   opacity: 1;
 }
 
-#note-mode-icon,
-#chord-mode-icon,
-#sound-off-icon {
+.guide-mode.holding svg {
+  filter: grayscale(100%);
+}
+
+.session-control-container {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+/* Styles related to play/guide mode */
+body {
+  padding-bottom: min(10vh, 60px);
+}
+
+.guide-mode [sound]:not([href]) {
+  filter: grayscale(100%);
+  pointer-events: none;
+}
+
+.change-mode-container {
+  position: fixed;
+  width: 100%;
+  height: min(10vh, 60px);
+  display: flex;
+  bottom: 0px;
+  left: 0px;
+  background: #fff;
+  justify-content: center;
+  align-items: center;
+}
+
+.change-mode-btn {
+  width: min(40%, 100px);
+  height: 100%;
+  background: none;
+  border: none;
+  padding: 4px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  color: #000;
+}
+
+.change-mode-btn:hover {
+  cursor: pointer;
+}
+
+.mode-indicator-container {
+  position: absolute;
+  left: 50%;
+  top: 4px;
+  transform: translateX(-50%);
+  background: #dadada;
+  border-radius: 8px;
+  height: 50%;
+  width: min(80%, 200px);
+  display: flex;
+  pointer-events: none;
+  z-index: -1;
+}
+
+.mode-indicator {
+  background: #ff7700;
+  border-radius: 8px;
+  height: 100%;
+  width: 50%;
+  transition: transform 0.2s ease-in-out;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.mode-indicator img {
+  height: calc(100% - 4px);
+  aspect-ratio: 1;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.change-mode-container[data-guide-lock="true"] .mode-indicator img {
+  opacity: 1;
+}
+
+.change-mode-container[data-mode="PLAY"] .mode-indicator {
+  transform: translateX(0%);
+}
+
+.change-mode-container[data-mode="GUIDE"] .mode-indicator {
+  transform: translateX(100%);
+}
+
+.session-status-container {
+  position: fixed;
+  bottom: min(10vh, 60px);
+  left: 0;
+  padding-inline: 4px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.session-status-container button {
+  font-size: 16px;
+}
+
+/* Side menu styles */
+
+.side-menu-trigger {
+  background: none;
+  border: none;
+  height: 100%;
+  aspect-ratio: 1;
+  padding: 4px;
+}
+
+.side-menu-trigger img {
   height: 100%;
   width: 100%;
+}
+
+.side-menu-container {
+  position: fixed;
+  width: 100%;
+  height: 100%;
+  background: #00000048;
+  top: 0;
+  left: 0;
+  transition: background 0.2s;
+}
+
+.side-menu-container img {
+  width: 24px;
+  height: 24px;
+  pointer-events: none;
+  user-select: none;
+}
+
+.side-menu-title {
+  background: #fff;
+  padding: 8px 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transition: transform 0.2s;
+}
+
+.close-side-menu-btn {
+  background: none;
+  border: none;
+  padding: 8px;
+  margin-left: auto;
+}
+
+.side-menu-list {
+  background: #fff;
+  width: min(90%, 270px);
+  height: 100%;
+  margin-left: auto;
+  transition: transform 0.2s;
+}
+
+.side-menu-list ul {
+  list-style: none;
+  margin: 0;
+  padding: 8px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.side-menu-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  user-select: none;
+}
+
+.autoplay-toggler {
+  height: 24px;
+  border-radius: 9999px;
+  width: 42px;
+  background: #000;
+  position: relative;
+  transition: background 0.2s;
+}
+
+.autoplay-toggler-knob {
+  position: absolute;
+  border-radius: 9999px;
+  height: 20px;
+  width: 20px;
+  background: #fff;
+  left: 2px;
+  top: 2px;
+  transition: left 0.2s;
+}
+
+.autoplay-toggler[data-active="true"] {
+  background: #009d00;
+}
+
+.autoplay-toggler[data-active="true"] .autoplay-toggler-knob {
+  left: 20px;
+}
+
+.side-menu-container[data-show="false"] {
+  background: #00000000;
+}
+
+.side-menu-container[data-show="false"] .side-menu-list {
+  transform: translateX(105%);
+}
+
+.side-menu-container[data-show="false"] .side-menu-title {
+  transform: translateY(-105%);
+}
+
+.play-mode [sound][data-playing="true"] {
+  animation: playingNode 6s infinite;
+}
+
+/* User can't click on links in play mode */
+.play-mode [href]:not([sound]) {
+  pointer-events: none;
+}
+
+/* Hide user vote in play mode */
+.play-mode text[id^="ta-"] {
   display: none;
 }
 
-#mode-btn[data-mode="note"] #note-mode-icon,
-#mode-btn[data-mode="chord"] #chord-mode-icon,
-#mode-btn[data-mode="mute"] #sound-off-icon {
+.loading-sound.play-mode svg {
+  pointer-events: none;
+  filter: grayscale(100%);
+}
+
+@keyframes playingNode {
+  0% {
+    opacity: 0.1;
+  }
+  33% {
+    opacity: 1;
+  }
+  66% {
+    opacity: 0.1;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+.loading-sound #loading-sound-indicator {
   display: block;
 }
 
-#sound-off-icon {
-  opacity: 0.2;
+#loading-sound-indicator {
+  font-size: 24px;
+  color: #9a9a9a;
+  overflow: hidden;
+  animation: loadingText 2s infinite linear;
+  width: fit-content;
+  margin: auto;
+  background: linear-gradient(currentColor 0 0) 0 100%/0% 2px no-repeat;
+  position: fixed;
+  bottom: calc(min(10vh, 60px) + 30px);
+  left: 50%;
+  transform: translateX(-50%);
+  display: none;
+}
+
+@keyframes loadingText {
+  to {
+    background-size: 100% 2px;
+  }
 }
