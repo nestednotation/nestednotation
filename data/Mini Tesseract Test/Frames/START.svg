@@ -4,7 +4,6 @@
     <g transform="matrix(1,0,0,1,-7531,-5968)">
         <g id="Arefocus" transform="matrix(0.944444,0,0,1.37778,7531,5968.54)">
             <rect x="0" y="0" width="1800" height="1800" style="fill:none;"/>
-			<a href="A.svg">
             <g id="S" transform="matrix(0.91466,0,0,0.626984,193.138,243.957)">
                 <g id="Ring" transform="matrix(-1.09813,0,0,-1.09811,1579.66,2245.28)">
                     <g id="Backer" transform="matrix(0.545852,-0.945443,0.9537,0.550619,-641.299,1170.26)">
@@ -77,7 +76,8 @@
                     </g>
                 </g>
             </g>
-			</a>
+			
+		<a href="A.svg">
             <g id="Map" transform="matrix(1.05882,-5.55112e-17,1.11022e-16,0.725806,-1914.88,-260.171)">
                 <g id="Frame" transform="matrix(0.375,0,0,0.375,2062.5,262.5)">
                     <g transform="matrix(1.26667,0,6.08689e-35,1.68889,-908,-308.889)">
@@ -160,6 +160,7 @@
                     <circle cx="1553.15" cy="2344.49" r="5.906" style="fill:white;stroke:rgb(236,153,89);stroke-width:5.56px;"/>
                 </g>
             </g>
+			</a>
             <g id="S-melisma" serif:id="S melisma" transform="matrix(0.176471,0,0,0.120968,763.477,1511.44)">
                 <g id="Sounder" transform="matrix(-0.599416,1.0382,-1.04729,-0.604638,2283.89,960.213)">
                     <ellipse cx="692" cy="1046" rx="458" ry="454" style="fill:white;"/>

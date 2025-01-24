@@ -8,9 +8,11 @@
                 <g id="_11" serif:id="11" transform="matrix(-1.05882,0,0,0.725806,1797.25,0)">
                     <path d="M1200.91,894.587L1687.02,416.376L1687.02,10L1180.01,9.905L975.379,762.641C1061.91,786.499 1136.58,828.837 1200.91,894.587Z" style="fill:rgb(96,119,119);stroke:rgb(118,118,118);stroke-width:8.33px;"/>
                 </g>
+				<a href="B2A.svg">
                 <g id="_8" serif:id="8" transform="matrix(1.05882,0,0,-0.725806,1.05882,1800.73)">
                     <path d="M372.045,1113L9.541,1018.47L10,416L496.539,894.896C440.322,951.547 397.828,1022.2 372.045,1113Z" style="fill:rgb(154,148,93);stroke:rgb(118,118,118);stroke-width:8.33px;"/>
                 </g>
+				</a>
                 <g id="_4" serif:id="4" transform="matrix(-1.05882,0,0,-0.725806,1800.09,1797.82)">
                     <path d="M371.045,1113L10.541,1015.47L10,415L495.539,892.896C439.322,949.547 396.828,1022.2 371.045,1113Z" style="fill:rgb(132,117,126);stroke:rgb(118,118,118);stroke-width:8.33px;"/>
                 </g>
@@ -217,7 +219,6 @@
                             </g>
                         </g>
                     </g>
-					<a href="B2A.svg">
                     <g id="_87" sound="Low-Ab,Mid-Db,Mid-Eb,High-Bb" serif:id="8" transform="matrix(0.250435,0,0,0.250435,774.503,-517.22)">
                         <g id="Ring--Sounder--Background2" serif:id="Ring, Sounder, Background" transform="matrix(1,-0,-0,1,50.3923,-72.3542)">
                             <g id="Sounder2" serif:id="Sounder" transform="matrix(-3.18712,0,0,-3.33574,11387.2,25305.3)">
@@ -292,7 +293,6 @@
                             </g>
                         </g>
                     </g>
-					</a>
                     <g id="_42" sound="Low-Db,Mid-B,Mid-G,High-E" serif:id="4" transform="matrix(0.250435,0,0,0.250435,-164.123,-516.558)">
                         <g id="Ring--Sounder--Background3" serif:id="Ring, Sounder, Background" transform="matrix(1,-0,-0,1,50.3923,-72.3542)">
                             <g id="Sounder3" serif:id="Sounder" transform="matrix(-3.18712,0,0,-3.33574,11387.2,25305.3)">

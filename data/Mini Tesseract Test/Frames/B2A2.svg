@@ -5,11 +5,12 @@
         <g id="B2A2" transform="matrix(0.944444,0,0,1.37778,11119,9629.01)">
             <rect x="0" y="0" width="1800" height="1800" style="fill:none;"/>
             <g id="Fields" opacity="0.2">
+				<a href="A.svg">
                 <g id="_8" serif:id="8" transform="matrix(1.05882,0,0,-0.725806,1.05882,1800.73)">
                     <path d="M372.045,1113L9.541,1018.47L10,416L496.539,894.896C440.322,951.547 397.828,1022.2 372.045,1113Z" style="fill:rgb(154,148,93);stroke:rgb(118,118,118);stroke-width:8.33px;"/>
                 </g>
+				</a>
             </g>
-			<a href="A.svg">
             <g id="S" transform="matrix(0.91466,0,0,0.626984,193.138,243.957)">
                 <g id="Ring" transform="matrix(-1.09813,0,0,-1.09811,1579.66,2245.28)">
                     <g id="Backer" transform="matrix(0.545852,-0.945443,0.9537,0.550619,-641.299,1170.26)">
@@ -82,7 +83,6 @@
                     </g>
                 </g>
             </g>
-			</a>
             <g id="song-7-masks" serif:id="song 7 masks" transform="matrix(0.730223,0,0,0.500556,-1867.73,645.271)">
                 <g id="Songs">
                     <g id="song-7-masks1" serif:id="song 7 masks">
