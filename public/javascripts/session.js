@@ -456,6 +456,11 @@ function setHoldingTimeTo(second) {
 }
 
 function tapOn(nextId) {
+  // Don't allow tap when in NEW_SESSION_MODES.PLAY mode
+  if (window.sessionInstance?.newMode === "PLAY") {
+    return;
+  }
+
   if (!isHolding) {
     if (staffCode.length > 0) {
       highlightInnerRingText(currentIndex + "-" + nextId);
