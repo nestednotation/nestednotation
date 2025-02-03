@@ -370,13 +370,13 @@
                         <path d="M32,-2.6C32,-13 26.2,-13.9 23,-13.9C17.1,-13.9 9.2,-10.6 5.9,-7.4C2.1,-3.7 0,-1.1 0,5.6C0,12.9 4.7,14.9 10.1,14.9C19.4,14.9 32,7.8 32,-2.6" style="fill-rule:nonzero;"/>
                     </g>
                 </g>
-                <g id="S-sounder" serif:id="S sounder" sound="BV-Low-F,BV-High-C,MV-Low-Ab,MV-Mid-F,TV-Mid-Ab,TV-Mid-Bb,TV-Mid-C" autoplay="false" transform="matrix(1.02,0,0,8.76215,-3691.38,-50872.5)">
+                <g id="S-sounder" serif:id="S sounder" sound="BV-Low-F,BV-High-C,MV-Low-A,MV-Mid-F,TV-Mid-A,TV-Mid-Bb,TV-Mid-C" autoplay="false" transform="matrix(1.02,0,0,8.76215,-3691.38,-50872.5)">
                     <path d="M5550,6517L5550,6715C5550,6721.07 5534.99,6726 5516.5,6726L4724.5,6726C4706.01,6726 4691,6721.07 4691,6715L4691,6517C4691,6510.93 4706.01,6506 4724.5,6506L5516.5,6506C5534.99,6506 5550,6510.93 5550,6517Z" style="fill:rgb(0,51,255);fill-opacity:0.1;"/>
                 </g>
                 <g id="BV-Sounder" serif:id="BV Sounder" sound="BV-Low-F,BV-High-C" transform="matrix(1.02,0,0,6.53892,-3691.38,-37990.6)">
                     <path d="M5550,6517L5550,6715C5550,6721.07 5538.8,6726 5525,6726L4716,6726C4702.2,6726 4691,6721.07 4691,6715L4691,6517C4691,6510.93 4702.2,6506 4716,6506L5525,6506C5538.8,6506 5550,6510.93 5550,6517Z" style="fill:rgb(255,191,0);fill-opacity:0.1;"/>
                 </g>
-                <g id="MV-Sounder" sound="MV-Low-Ab,MV-Mid-F" serif:id="MV Sounder" transform="matrix(1.02,0,0,6.53892,-3691.38,-39544.2)">
+                <g id="MV-Sounder" sound="MV-Low-A,MV-Mid-F" serif:id="MV Sounder" transform="matrix(1.02,0,0,6.53892,-3691.38,-39544.2)">
                     <path d="M5550,6517L5550,6715C5550,6721.07 5538.8,6726 5525,6726L4716,6726C4702.2,6726 4691,6721.07 4691,6715L4691,6517C4691,6510.93 4702.2,6506 4716,6506L5525,6506C5538.8,6506 5550,6510.93 5550,6517Z" style="fill:rgb(255,0,253);fill-opacity:0.1;"/>
                 </g>
                 <g id="TV-Sounder" serif:id="TV Sounder" sound="TV-Mid-A,TV-Mid-Bb,TV-Mid-C" transform="matrix(1.02,0,0,6.53892,-3691.38,-41097.9)">
