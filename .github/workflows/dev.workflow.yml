@@ -32,7 +32,8 @@ jobs:
         with:
           token: ${{ secrets.RELEASE_TOKEN }}
           skip-github-pull-request: true
-          release-type: "simple"
+          release-type: "node"
+
   deploy:
     runs-on: ubuntu-latest
     needs: send-noti-on-start
