@@ -7,6 +7,10 @@ env:
   CI: true
   SSH_PORT: 22
 
+permissions:
+  contents: write
+  pull-requests: write
+
 jobs:
   send-noti-on-start:
     runs-on: ubuntu-latest
