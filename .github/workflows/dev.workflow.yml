@@ -37,6 +37,8 @@ jobs:
           token: ${{ secrets.RELEASE_TOKEN }}
           skip-github-pull-request: true
           release-type: "node"
+          target-branch: ${{ github.ref_name }}
+
 
   deploy:
     runs-on: ubuntu-latest
