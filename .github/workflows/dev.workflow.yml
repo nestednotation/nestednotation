@@ -25,6 +25,14 @@ jobs:
             Commit by: <b> ${{ github.event.head_commit.author.name}} </b>
             See changes: https://github.com/${{ github.repository }}/commit/${{github.sha}}
             🚀
+
+  release-please:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: googleapis/release-please-action@v4
+        with:
+          token: ${{ secrets.RELEASE_TOKEN }}
+          release-type: "simple"
   deploy:
     runs-on: ubuntu-latest
     needs: send-noti-on-start
