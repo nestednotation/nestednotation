@@ -234,9 +234,8 @@ body {
   padding-bottom: min(10vh, 60px);
 }
 
-.guide-mode [sound]:not([href]) {
-  filter: grayscale(100%);
-  pointer-events: none;
+.guide-mode .grayscale-on-guide {
+  filter: url("#grayscale");
 }
 
 .change-mode-container {
@@ -440,11 +439,6 @@ body {
 
 .play-mode [sound][data-playing="true"] {
   animation: playingNode 6s infinite;
-}
-
-/* User can't click on links in play mode */
-.play-mode [href]:not([sound]) {
-  pointer-events: none;
 }
 
 /* Hide user vote in play mode */

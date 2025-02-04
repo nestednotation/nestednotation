@@ -323,6 +323,7 @@ class AudioSession {
     for (const frame of frameSvg) {
       const frameInstance = new Frame(this, frame.id, frame);
       this.frameMap[frame.id] = frameInstance;
+      this.markToGrayscaleNonLinkSvg(frame);
     }
   }
 
@@ -489,6 +490,20 @@ class AudioSession {
       "loading-sound",
       this.soundLoadSet.size !== 0
     );
+  }
+
+  markToGrayscaleNonLinkSvg(element) {
+    if (element.children.length === 0) {
+      element.classList.add("grayscale-on-guide");
+    }
+
+    for (const child of element.children) {
+      if (child.tagName === "a" || child.tagName.toLowerCase() === "filter") {
+        continue;
+      }
+
+      this.markToGrayscaleNonLinkSvg(child);
+    }
   }
 }
 
