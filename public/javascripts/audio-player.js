@@ -204,6 +204,14 @@ class Frame {
       );
       const nodeSounds = soundNames.map((name) => {
         const soundInstant = this.sessionInstance.soundMap[name];
+
+        if (!soundInstant) {
+          this.logMismatchSound();
+          alert(
+            "Sound name mismatch, please open Developer Tool - Console (F12) to check"
+          );
+        }
+
         soundInstant.name = name;
         return soundInstant;
       });
@@ -219,6 +227,43 @@ class Frame {
     }
 
     return notes;
+  }
+
+  // Log all mismatch sounds found in the session
+  logMismatchSound() {
+    const mainSvgContainer = document.getElementById("MainSVGContent");
+    if (!mainSvgContainer) {
+      console.error("MainSVGContent not found");
+      return;
+    }
+
+    const frameSvgNodes = mainSvgContainer.querySelectorAll("svg[id]");
+    if (frameSvgNodes.length === 0) {
+      console.error("No frame found");
+      return;
+    }
+
+    for (const frame of frameSvgNodes) {
+      const frameSvgSoundNodes = frame.querySelectorAll("[sound]");
+      for (const svgSoundNode of frameSvgSoundNodes) {
+        const soundNames = svgSoundNode.getAttribute("sound")?.split(",");
+        if (!soundNames) {
+          return;
+        }
+
+        for (const soundName of soundNames) {
+          const isExist = Boolean(this.sessionInstance.soundMap[soundName]);
+
+          if (!isExist) {
+            console.error(
+              `Incorrect sound name: ${soundName} \n Found in file: ${frame.getAttribute(
+                "file"
+              )}`
+            );
+          }
+        }
+      }
+    }
   }
 }
 
