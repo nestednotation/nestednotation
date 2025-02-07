@@ -1,13 +1,10 @@
 const { MESSAGES } = require("./constants");
 const fs = require("fs");
 
-let prefixDir = ".";
-const testPrefixFile = prefixDir + "/account/admin.dat";
-if (!fs.existsSync(testPrefixFile)) {
-  prefixDir = "..";
-}
+const HREF_REGX = /(?<=href=")(.*?)(?=")/;
+const LINK_REGEX = /((xlink:href)|(href))="(.*?)"/;
 
-const dataDir = prefixDir + "/data";
+const DATA_DIR = "./data";
 
 class BMAdmin {
   constructor(id, name, password, isActive) {
@@ -19,6 +16,9 @@ class BMAdmin {
 }
 
 class BMSession {
+  history = [];
+  historyIndex = 0;
+
   constructor(
     id,
     adminId,
@@ -60,11 +60,17 @@ class BMSession {
     this.isHtml5 = isHtml5;
     this.fadeDuration = fadeDuration;
 
-    this.loadScoreAtFolder(folder);
+    this.folder = folder;
+
+    this.hasSounds = this.checkScoreHasSounds(folder);
+    this.soundList = this.hasSounds ? this.getSoundList(folder) : [];
+
+    this.buildSVGContent();
+    this.initState();
   }
 
   checkScoreHasSounds(score) {
-    const dir = `${dataDir}/${score}`;
+    const dir = `${DATA_DIR}/${score}`;
 
     if (!fs.existsSync(dir)) {
       return;
@@ -74,33 +80,20 @@ class BMSession {
     return fileList.includes("Sounds") && fileList.includes("Frames");
   }
 
-  loadScoreAtFolder(folderName) {
-    this.folder = folderName;
-    this.hasSounds = this.checkScoreHasSounds(folderName);
-
-    this.soundList = this.hasSounds ? this.getSoundList(folderName) : [];
-
-    this.buildSVGContent();
-
-    this.initState();
-  }
-
   //this use listFiles generate from buildSVGContent. So run it after that method
   initState() {
-    if (this.listFiles.length > 0) {
-      //history
-      this.history = [];
-      this.historyIndex = 0;
-
-      //random pick first index (files begin with Pre or Start)
-      var listPreFile = this.listFiles.filter((o) => o.startsWith("PRE"));
-      var listStartFile = this.listFiles.filter((o) => o.startsWith("START"));
-      var startedFile =
-        listStartFile.length > 0
-          ? this.randomItem(listStartFile)
-          : this.randomItem(listPreFile);
-      this.setCurrentIndexTo(this.listFiles.indexOf(startedFile));
+    if (this.listFiles.length <= 0) {
+      return;
     }
+
+    //random pick first index (files begin with Pre or Start)
+    const listPreFile = this.listFiles.filter((o) => o.startsWith("PRE"));
+    const listStartFile = this.listFiles.filter((o) => o.startsWith("START"));
+    const startedFile = this.randomItem(
+      listStartFile.length > 0 ? listStartFile : listPreFile
+    );
+
+    this.setCurrentIndexTo(this.listFiles.indexOf(startedFile));
   }
 
   setCurrentIndexTo(index) {
@@ -109,26 +102,26 @@ class BMSession {
     this.isStandby = false;
 
     if (this.history.length > 0) {
-      var countRemove = Math.max(
+      const countRemove = Math.max(
         0,
         this.history.length - (this.historyIndex + 1)
       );
-      var indexRemove = Math.min(
+      const indexRemove = Math.min(
         this.history.length - 1,
         this.historyIndex + 1
       );
+
       if (countRemove > 0) {
         this.history.splice(indexRemove - 1, countRemove + 1);
       }
     }
-    var objectName = this.listFiles[index];
 
-    this.history.push(objectName);
+    this.history.push(this.listFiles[index]);
     this.historyIndex = this.history.length - 1;
   }
 
   getSoundList(folder) {
-    const dir = `${dataDir}/${folder}/Sounds`;
+    const dir = `${DATA_DIR}/${folder}/Sounds`;
     if (!fs.existsSync(dir)) {
       return [];
     }
@@ -138,157 +131,148 @@ class BMSession {
 
   buildSVGContent() {
     const dir = this.hasSounds
-      ? `${dataDir}/${this.folder}/Frames`
-      : `${dataDir}/${this.folder}`;
+      ? `${DATA_DIR}/${this.folder}/Frames`
+      : `${DATA_DIR}/${this.folder}`;
+    if (!fs.existsSync(dir)) {
+      return;
+    }
 
-    if (fs.existsSync(dir)) {
-      this.listFiles = fs.readdirSync(dir);
-      this.listFilesInLowerCase = this.listFiles.map((fileName) =>
-        fileName.toLowerCase()
+    this.listFiles = fs.readdirSync(dir);
+    if (this.listFiles.length <= 0) {
+      return;
+    }
+
+    this.listFilesInLowerCase = this.listFiles.map((fileName) =>
+      fileName.toLowerCase()
+    );
+
+    this.listPreImages = [];
+    this.listMultiChooseImages = [];
+    this.svgContent = "";
+
+    this.listFiles.forEach((filename) => {
+      const filePath = `${dir}/${filename}`;
+      const content = fs.readFileSync(filePath, "utf8");
+      let svg = this.regexWithPattern(content, /<svg.*?<\/svg>/is, 0);
+      const svgIndex = this.listFilesInLowerCase.indexOf(
+        filename.toLowerCase()
+      );
+      svg = svg.replace(
+        "<svg",
+        `<svg id="svg${svgIndex}" class="hidden" file="${filename}" `
       );
 
-      this.listPreImages = [];
-      this.listMultiChooseImages = [];
-      this.svgContent = "";
-
-      if (this.listFiles.length > 0) {
-        this.listFiles.forEach((filename) => {
-          var filePath = `${dir}/${filename}`;
-          var content = fs.readFileSync(filePath, "utf8");
-          var svg = this.regexWithPattern(content, /<svg.*?<\/svg>/is, 0);
-          var svgIndex = this.listFilesInLowerCase.indexOf(
-            filename.toLowerCase()
-          );
-          if (filename.startsWith("PRE") || filename.startsWith("START")) {
-            this.listPreImages.push(svgIndex);
-          }
-          svg = svg.replace(
-            "<svg",
-            `<svg id="svg${svgIndex}" class="hidden" file="${filename}" `
-          );
-          var listA = svg.match(/<a.*?>/g);
-          if (listA != null) {
-            if (listA.length > 1 && !filename.startsWith("PRE")) {
-              this.listMultiChooseImages.push(svgIndex);
-            }
-
-            const HREF_REGX = /(?<=href=")(.*?)(?=")/;
-            const LINK_REGEX = /((xlink:href)|(href))="(.*?)"/;
-            listA.forEach((a) => {
-              const matchedHref = HREF_REGX.exec(a)?.[0];
-              const aIndex = this.listFilesInLowerCase.indexOf(
-                matchedHref?.toLowerCase()
-              );
-
-              let newA = a.replace(
-                LINK_REGEX,
-                `href="javascript:tapOn(${aIndex});"`
-              );
-              svg = svg.replace(a, newA);
-              if (!filename.startsWith("PRE")) {
-                newA = newA.replace(" ", "\\s*");
-                newA = newA.replace("(", "\\(");
-                newA = newA.replace(")", "\\)");
-
-                var pattern = `${newA}.*?serif:id="Ring and Background".*?>.*?<ellipse.*?/>.*?(<ellipse.*?/>)`;
-                var ellipse = this.regexWithPattern(
-                  svg,
-                  new RegExp(pattern, "is"),
-                  1
-                );
-                if (ellipse != null) {
-                  //add elipse
-                  var cx = parseFloat(
-                    this.regexWithPattern(ellipse, /<ellipse.*?cx="(.*?)"/is, 1)
-                  );
-                  var cy = parseFloat(
-                    this.regexWithPattern(ellipse, /<ellipse.*?cy="(.*?)"/is, 1)
-                  );
-                  var rx =
-                    parseFloat(
-                      this.regexWithPattern(
-                        ellipse,
-                        /<ellipse.*?rx="(.*?)"/is,
-                        1
-                      )
-                    ) * 0.9126;
-                  var ry =
-                    parseFloat(
-                      this.regexWithPattern(
-                        ellipse,
-                        /<ellipse.*?rx="(.*?)"/is,
-                        1
-                      )
-                    ) * 0.9126;
-                  var style = this.regexWithPattern(
-                    ellipse,
-                    /<ellipse.*?style="(.*?)"/is,
-                    1
-                  );
-                  var ellipseId = `${svgIndex}-${aIndex}`;
-                  ellipse = this.regexWithPattern(
-                    svg,
-                    new RegExp(pattern, "is"),
-                    0
-                  );
-
-                  const newEllipse = `${ellipse}\r\n<ellipse id="${ellipseId}" class="hidden" cx="${cx}" cy="${cy}" rx="${rx}" ry="${ry}" style="${style}"></ellipse>`;
-                  svg = svg.replace(ellipse, newEllipse);
-
-                  //add text area
-                  pattern = `${newA}(.*?serif:id="Ring and Background".*?)<g id="Notes`;
-                  var midGap = this.regexWithPattern(
-                    svg,
-                    new RegExp(pattern, "is"),
-                    1
-                  );
-                  var textId = `ta-${svgIndex}-${aIndex}`;
-
-                  const newTextArea = `${midGap}\r\n<g xmlns="http://www.w3.org/2000/svg" transform="matrix(-3.99305,0,0,-3.99305,0,0)">\r\n<text id="${textId}" x="-212.19" y="-231.138" style="font-family:\'ArialMT\', \'Arial\', sans-serif; font-size: 72px; fill-opacity: 1.0;"></text>\r\n</g>\r\n`;
-                  svg = svg.replace(midGap, newTextArea);
-                }
-                pattern = `${newA}.*?<g[^>]*?id="Notes.*?>(.*?</g>[^<]*?</g>)`;
-                var notesEllipse = this.regexWithPattern(
-                  svg,
-                  new RegExp(pattern, "is"),
-                  1
-                );
-                if (notesEllipse != null) {
-                  var listEllipse = this.regexFull(
-                    notesEllipse,
-                    "<ellipse[^>]*?>"
-                  );
-                  if (listEllipse != null) {
-                    for (var i = 0; i < listEllipse.length; i++) {
-                      var oldEllipse = listEllipse[i];
-                      var part = oldEllipse.match(
-                        /(<ellipse[^>]*?)(style=".*?fill:rgb\((.*?),(.*?),(.*?)\).*?")([^>]*?>)/is
-                      );
-                      if (part != null) {
-                        const newEllipse = `${part[1]}id="dot${svgIndex}" r="${part[3]}" g="${part[4]}" b="${part[5]}" ${part[2]}${part[6]}`;
-                        svg = svg.replace(oldEllipse, newEllipse);
-                      }
-                    }
-                  }
-                }
-              }
-            });
-          }
-          this.svgContent += svg;
-          this.svgContent += "\n";
-        });
-        //final
+      if (filename.startsWith("PRE") || filename.startsWith("START")) {
+        this.listPreImages.push(svgIndex);
       }
-    }
+
+      const listA = svg.match(/<a.*?>/g);
+      if (listA === null) {
+        return;
+      }
+      if (listA.length > 1 && !filename.startsWith("PRE")) {
+        this.listMultiChooseImages.push(svgIndex);
+      }
+
+      listA.forEach((a) => {
+        const matchedHref = HREF_REGX.exec(a)?.[0];
+        const aIndex = this.listFilesInLowerCase.indexOf(
+          matchedHref?.toLowerCase()
+        );
+        let newA = a.replace(LINK_REGEX, `href="javascript:tapOn(${aIndex});"`);
+        svg = svg.replace(a, newA);
+
+        if (filename.startsWith("PRE")) {
+          return;
+        }
+
+        newA = newA.replace(" ", "\\s*");
+        newA = newA.replace("(", "\\(");
+        newA = newA.replace(")", "\\)");
+
+        let pattern = `${newA}.*?serif:id="Ring and Background".*?>.*?<ellipse.*?/>.*?(<ellipse.*?/>)`;
+        let ellipse = this.regexWithPattern(svg, new RegExp(pattern, "is"), 1);
+        if (ellipse != null) {
+          //add elipse
+          const cx = parseFloat(
+            this.regexWithPattern(ellipse, /<ellipse.*?cx="(.*?)"/is, 1)
+          );
+          const cy = parseFloat(
+            this.regexWithPattern(ellipse, /<ellipse.*?cy="(.*?)"/is, 1)
+          );
+          const rx =
+            parseFloat(
+              this.regexWithPattern(ellipse, /<ellipse.*?rx="(.*?)"/is, 1)
+            ) * 0.9126;
+          const ry =
+            parseFloat(
+              this.regexWithPattern(ellipse, /<ellipse.*?rx="(.*?)"/is, 1)
+            ) * 0.9126;
+          const style = this.regexWithPattern(
+            ellipse,
+            /<ellipse.*?style="(.*?)"/is,
+            1
+          );
+          const ellipseId = `${svgIndex}-${aIndex}`;
+          ellipse = this.regexWithPattern(svg, new RegExp(pattern, "is"), 0);
+
+          const newEllipse = `${ellipse}\r\n<ellipse id="${ellipseId}" class="hidden" cx="${cx}" cy="${cy}" rx="${rx}" ry="${ry}" style="${style}"></ellipse>`;
+          svg = svg.replace(ellipse, newEllipse);
+
+          //add text area
+          pattern = `${newA}(.*?serif:id="Ring and Background".*?)<g id="Notes`;
+          const midGap = this.regexWithPattern(
+            svg,
+            new RegExp(pattern, "is"),
+            1
+          );
+          const textId = `ta-${svgIndex}-${aIndex}`;
+
+          const newTextArea = `${midGap}\r\n<g xmlns="http://www.w3.org/2000/svg" transform="matrix(-3.99305,0,0,-3.99305,0,0)">\r\n<text id="${textId}" x="-212.19" y="-231.138" style="font-family:\'ArialMT\', \'Arial\', sans-serif; font-size: 72px; fill-opacity: 1.0;"></text>\r\n</g>\r\n`;
+          svg = svg.replace(midGap, newTextArea);
+        }
+
+        pattern = `${newA}.*?<g[^>]*?id="Notes.*?>(.*?</g>[^<]*?</g>)`;
+        const notesEllipse = this.regexWithPattern(
+          svg,
+          new RegExp(pattern, "is"),
+          1
+        );
+        if (notesEllipse === null) {
+          return;
+        }
+
+        const listEllipse = this.regexFull(notesEllipse, "<ellipse[^>]*?>");
+        if (listEllipse === null) {
+          return;
+        }
+
+        for (let i = 0; i < listEllipse.length; i++) {
+          const oldEllipse = listEllipse[i];
+          const part = oldEllipse.match(
+            /(<ellipse[^>]*?)(style=".*?fill:rgb\((.*?),(.*?),(.*?)\).*?")([^>]*?>)/is
+          );
+          if (part != null) {
+            const newEllipse = `${part[1]}id="dot${svgIndex}" r="${part[3]}" g="${part[4]}" b="${part[5]}" ${part[2]}${part[6]}`;
+            svg = svg.replace(oldEllipse, newEllipse);
+          }
+        }
+      });
+
+      this.svgContent += `${svg}\n`;
+    });
+    //final
+
     console.log("finish building svg content...");
   }
 
   regexWithPattern(str, pattern, groupId) {
-    var match = str.match(pattern);
-    if (match != null) {
-      return match[groupId];
+    const match = str.match(pattern);
+    if (match === null) {
+      return null;
     }
-    return null;
+
+    return match[groupId];
   }
 
   regexFull(str, patternInStr) {
@@ -363,8 +347,8 @@ class BMAdminTable {
 class BMSessionTable {
   constructor() {
     this.data = [];
-    this.count = 0;
   }
+
   add(
     adminId,
     folder,
@@ -375,11 +359,10 @@ class BMSessionTable {
     fadeDuration
   ) {
     //check folder exist
-    var dir = dataDir + "/" + folder;
+    const dir = DATA_DIR + "/" + folder;
     if (fs.existsSync(dir)) {
-      this.count++;
-      var s = new BMSession(
-        this.count,
+      const s = new BMSession(
+        Date.now(),
         adminId,
         folder,
         sessionName,
@@ -409,6 +392,8 @@ class BMSessionTable {
   getBySessionName(name) {
     return this.data.find((e) => e.sessionName.trim() == name);
   }
+
+  saveDataToJsonFile() {}
 }
 
 class BMDatabase {
@@ -418,6 +403,9 @@ class BMDatabase {
     this.shouldAutoRedirect = false;
     this.autoRedirectSession = "";
     this.autoRedirectPassword = "";
+
+    this.adminUsername = "admin";
+    this.adminPassword = "g3tn3st3d";
 
     this.wsPort = process.env.WS_PORT;
     this.hostAddress = hostaddress;
@@ -446,10 +434,10 @@ class BMDatabase {
   }
 
   getListScore() {
-    var listFiles = fs.readdirSync(dataDir);
+    var listFiles = fs.readdirSync(DATA_DIR);
     var scoreList = [];
     for (var i = 0; i < listFiles.length; i++) {
-      var path = dataDir + "/" + listFiles[i];
+      var path = DATA_DIR + "/" + listFiles[i];
       if (fs.lstatSync(path).isDirectory()) {
         scoreList.push(listFiles[i]);
       }
