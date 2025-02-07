@@ -537,13 +537,22 @@ class AudioSession {
     );
   }
 
+  markToGrayscaleNoneSoundLinkSvg(linkElement) {
+    const soundElements = linkElement.querySelector("[sound]");
+
+    if (soundElements === null) {
+      linkElement.classList.add("grayscale-on-play");
+    }
+  }
+
   markToGrayscaleNonLinkSvg(element) {
     if (element.children.length === 0) {
       element.classList.add("grayscale-on-guide");
     }
 
     for (const child of element.children) {
-      if (child.tagName === "a" || child.tagName.toLowerCase() === "filter") {
+      if (child.tagName === "a") {
+        this.markToGrayscaleNoneSoundLinkSvg(child);
         continue;
       }
 
