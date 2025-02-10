@@ -10,7 +10,7 @@ router.get("/", function (req, res, next) {
     res.status(301).redirect("/?msg=1");
   } else {
     var db = req.app.get("Database");
-    var session = db.session.getBySessionName(sessionName);
+    var session = db.sessionTable.getBySessionName(sessionName);
     if (session == null) {
       res.status(301).redirect("/?msg=1");
     } else {
@@ -42,7 +42,7 @@ router.get("/*", function (req, res, next) {
     var path = req.path.match("/(.*?)/.*$");
     var sessionId = path[1];
     var db = req.app.get("Database");
-    var session = db.session.getById(sessionId);
+    var session = db.sessionTable.getById(sessionId);
     res.send(session.svgContent);
   } else {
     var path = req.path.match("/(.*?)/*$");
@@ -52,7 +52,7 @@ router.get("/*", function (req, res, next) {
       res.status(301).redirect("/?msg=1");
     } else {
       var db = req.app.get("Database");
-      var session = db.session.getById(sessionId);
+      var session = db.sessionTable.getById(sessionId);
       if (session == null) {
         res.status(301).redirect("/?msg=1");
       } else {

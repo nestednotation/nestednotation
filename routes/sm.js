@@ -1,5 +1,6 @@
 var express = require("express");
 var router = express.Router();
+const { MESSAGES } = require("../constants");
 
 /* GET home page. */
 router.get("/", function (req, res, next) {
@@ -47,7 +48,7 @@ router.get("/", function (req, res, next) {
     ) {
       if (command == "u") {
         //hold duration
-        var session = db.session.getById(index);
+        var session = db.sessionTable.getById(index);
         if (session != null) {
           session.isHtml5 = isHtml5;
           session.fadeDuration = fadeDuration;
@@ -63,9 +64,11 @@ router.get("/", function (req, res, next) {
           if (session.folder.trim() != folder) {
             var listScore = db.getListScore();
             if (listScore.indexOf(folder) >= 0) {
-              session.loadScoreAtFolder(folder);
-              var fr = req.app.get("ForceRefresh");
-              fr(session);
+              session.reloadScore(folder);
+              session.forceReset();
+
+              const sendToAllClients = req.app.get("sendToAllClients");
+              sendToAllClients(session, 0, MESSAGES.MSG_NEED_DISPLAY, 0, 0);
             }
           }
         }
@@ -76,7 +79,7 @@ router.get("/", function (req, res, next) {
           var ownerId = admin.id;
           var displayName = "mcknight";
 
-          var session = db.session.add(
+          var session = db.sessionTable.add(
             ownerId,
             folder,
             name,
@@ -95,10 +98,20 @@ router.get("/", function (req, res, next) {
           }
         }
       } else if (command == "s") {
-        var session = db.session.getById(index);
+        const session = db.sessionTable.getById(index);
         if (session != null) {
-          var fs = req.app.get("ForceStop");
-          fs(session);
+          db.sessionTable.forceSessionStop(session);
+
+          const sendToAllClientsWithDelay = req.app.get(
+            "sendToAllClientsWithDelay"
+          );
+          sendToAllClientsWithDelay(
+            session,
+            0,
+            MESSAGES.MSG_NEED_DISPLAY,
+            0,
+            0
+          );
         }
       }
     }
@@ -106,7 +119,9 @@ router.get("/", function (req, res, next) {
     return;
   }
 
-  var listSession = db.session.data.filter((o) => o.ownerId == checkExist.id);
+  var listSession = db.sessionTable.data.filter(
+    (o) => o.ownerId == checkExist.id
+  );
   var listScore = db.getListScore();
   res.render("sm", {
     title: "Nested notation",

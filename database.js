@@ -4,7 +4,19 @@ const fs = require("fs");
 const HREF_REGX = /(?<=href=")(.*?)(?=")/;
 const LINK_REGEX = /((xlink:href)|(href))="(.*?)"/;
 
-const DATA_DIR = "./data";
+let prefixDir = ".";
+const testPrefixFile = prefixDir + "/account/admin.dat";
+if (!fs.existsSync(testPrefixFile)) {
+  prefixDir = "..";
+}
+const DATA_DIR = `${prefixDir}/data`;
+
+const SERVER_STATE_DIR = `${prefixDir}/server_state`;
+const SESSIONS_FILE = `${SERVER_STATE_DIR}/sessions.json`;
+if (!fs.existsSync(SERVER_STATE_DIR)) {
+  fs.mkdirSync(SERVER_STATE_DIR);
+  fs.writeFileSync(SESSIONS_FILE, JSON.stringify([]), { encoding: "utf8" });
+}
 
 class BMAdmin {
   constructor(id, name, password, isActive) {
@@ -15,11 +27,117 @@ class BMAdmin {
   }
 }
 
+class BMAdminTable {
+  constructor() {
+    this.clear();
+  }
+
+  clear() {
+    this.data = [];
+    this.count = 0;
+  }
+
+  add(id, name, password, isActive) {
+    this.count++;
+    var a = new BMAdmin(id, name, password, isActive);
+    this.data.push(a);
+    return a;
+  }
+
+  addWithIdAuto(name, password, isActive) {
+    this.count++;
+    var max = 0;
+    for (var i = 0; i < this.data.length; i++) {
+      var id = parseInt(this.data[i].id);
+      if (id > max) {
+        max = id;
+      }
+    }
+    var checkExist = this.data.filter((o) => o.name.trim() == name.trim());
+    if (checkExist.length == 0) {
+      max++;
+      var a = new BMAdmin(max.toString(), name, password, isActive);
+      this.data.push(a);
+      return a;
+    }
+    return null;
+  }
+
+  getById(id) {
+    return this.data.find((e) => e.id.trim() == id);
+  }
+
+  getByName(name) {
+    return this.data.find((e) => e.name.trim() == name);
+  }
+
+  dumpToFile(path) {
+    var str = "";
+    for (var i = 0; i < this.data.length; i++) {
+      str += this.data[i].id.trim() + "\r\n";
+      str += this.data[i].name.trim() + "\r\n";
+      str += this.data[i].password.trim() + "\r\n";
+      if (i == this.data.length - 1) {
+        str += this.data[i].isActive.trim();
+      } else {
+        str += this.data[i].isActive.trim() + "\r\n";
+      }
+    }
+    fs.writeFileSync(path, str, "utf8");
+  }
+}
+
 class BMSession {
   history = [];
   historyIndex = 0;
 
-  constructor(
+  votingDuration = 0;
+
+  selectedScoreIndex = -1;
+  selectedCooldownTimeIndex = -1;
+  selectedHoldTimeIndex = -1;
+
+  currentEndTimeStamp = 0;
+  currentVotingDuration = 0;
+
+  currentEndHoldTimeStamp = 0;
+  currentHoldingDuration = 0;
+
+  currentIndex = 0;
+
+  isHolding = false;
+  isPause = false;
+
+  holdingTimer = null;
+  standbyTimer = null;
+  votingTimer = null;
+
+  synTimeInterval = 0.5;
+  standbyDuration = 3;
+  holdDuration = 0;
+  votingDuration = 10;
+
+  constructor() {}
+
+  checkScoreHasSounds(score) {
+    const dir = `${DATA_DIR}/${score}`;
+
+    if (!fs.existsSync(dir)) {
+      return;
+    }
+
+    const fileList = fs.readdirSync(dir);
+    return fileList.includes("Sounds") && fileList.includes("Frames");
+  }
+
+  patchState(stateData) {
+    for (const [key, val] of Object.entries(stateData)) {
+      this[key] = val;
+    }
+  }
+
+  // this use listFiles generate from buildSVGContent. So run it after that method
+  initState(
     id,
     adminId,
     folder,
@@ -34,28 +152,6 @@ class BMSession {
     this.sessionName = sessionName;
     this.adminPassword = adminpassword;
     this.playerPassword = playerpassword;
-    this.votingDuration = 0;
-
-    this.selectedScoreIndex = -1;
-    this.selectedCooldownTimeIndex = -1;
-    this.selectedHoldTimeIndex = -1;
-
-    this.currentEndTimeStamp = 0;
-    this.currentVotingDuration = 0;
-
-    this.currentEndHoldTimeStamp = 0;
-    this.currentHoldingDuration = 0;
-
-    this.currentIndex = 0;
-
-    this.isHolding = false;
-    this.isPause = false;
-    this.holdingTimer = null;
-
-    this.synTimeInterval = 0.5;
-    this.standbyDuration = 3;
-    this.holdDuration = 0;
-    this.votingDuration = 10;
 
     this.isHtml5 = isHtml5;
     this.fadeDuration = fadeDuration;
@@ -66,22 +162,29 @@ class BMSession {
     this.soundList = this.hasSounds ? this.getSoundList(folder) : [];
 
     this.buildSVGContent();
-    this.initState();
-  }
 
-  checkScoreHasSounds(score) {
-    const dir = `${DATA_DIR}/${score}`;
-
-    if (!fs.existsSync(dir)) {
+    if (this.listFiles.length <= 0) {
       return;
     }
 
-    const fileList = fs.readdirSync(dir);
-    return fileList.includes("Sounds") && fileList.includes("Frames");
+    // random pick first index (files begin with Pre or Start)
+    const listPreFile = this.listFiles.filter((o) => o.startsWith("PRE"));
+    const listStartFile = this.listFiles.filter((o) => o.startsWith("START"));
+    const startedFile = this.randomItem(
+      listStartFile.length > 0 ? listStartFile : listPreFile
+    );
+
+    this.setCurrentIndexTo(this.listFiles.indexOf(startedFile));
   }
 
-  //this use listFiles generate from buildSVGContent. So run it after that method
-  initState() {
+  reloadScore(folderName) {
+    this.folder = folderName;
+    this.hasSounds = this.checkScoreHasSounds(folderName);
+
+    this.soundList = this.hasSounds ? this.getSoundList(folderName) : [];
+
+    this.buildSVGContent();
+
     if (this.listFiles.length <= 0) {
       return;
     }
@@ -263,7 +366,7 @@ class BMSession {
     });
     //final
 
-    console.log("finish building svg content...");
+    console.log(`finish building svg content... for ${this.folder}`);
   }
 
   regexWithPattern(str, pattern, groupId) {
@@ -282,71 +385,37 @@ class BMSession {
   randomItem(arr) {
     return arr[Math.floor(Math.random() * arr.length)];
   }
-}
 
-class BMAdminTable {
-  constructor() {
-    this.clear();
-  }
-
-  clear() {
-    this.data = [];
-    this.count = 0;
-  }
-
-  add(id, name, password, isActive) {
-    this.count++;
-    var a = new BMAdmin(id, name, password, isActive);
-    this.data.push(a);
-    return a;
-  }
-
-  addWithIdAuto(name, password, isActive) {
-    this.count++;
-    var max = 0;
-    for (var i = 0; i < this.data.length; i++) {
-      var id = parseInt(this.data[i].id);
-      if (id > max) {
-        max = id;
-      }
+  forceReset() {
+    //stop holding timer
+    if (this.holdingTimer != null) {
+      clearTimeout(this.holdingTimer);
+      this.holdingTimer = null;
     }
-    var checkExist = this.data.filter((o) => o.name.trim() == name.trim());
-    if (checkExist.length == 0) {
-      max++;
-      var a = new BMAdmin(max.toString(), name, password, isActive);
-      this.data.push(a);
-      return a;
+    //stop standby timer
+    if (this.standbyTimer != null) {
+      clearTimeout(this.standbyTimer);
+      this.standbyTimer = null;
     }
-    return null;
-  }
-
-  getById(id) {
-    return this.data.find((e) => e.id.trim() == id);
-  }
-
-  getByName(name) {
-    return this.data.find((e) => e.name.trim() == name);
-  }
-
-  dumpToFile(path) {
-    var str = "";
-    for (var i = 0; i < this.data.length; i++) {
-      str += this.data[i].id.trim() + "\r\n";
-      str += this.data[i].name.trim() + "\r\n";
-      str += this.data[i].password.trim() + "\r\n";
-      if (i == this.data.length - 1) {
-        str += this.data[i].isActive.trim();
-      } else {
-        str += this.data[i].isActive.trim() + "\r\n";
-      }
+    //stop voting timer
+    if (this.votingTimer != null) {
+      clearInterval(this.votingTimer);
+      this.votingTimer = null;
     }
-    fs.writeFileSync(path, str, "utf8");
   }
 }
 
 class BMSessionTable {
   constructor() {
-    this.data = [];
+    const savedData = JSON.parse(
+      fs.readFileSync(SESSIONS_FILE, { encoding: "utf8" })
+    );
+    this.data = savedData.map((d) => {
+      const session = new BMSession();
+      session.patchState(d);
+
+      return session;
+    });
   }
 
   add(
@@ -360,46 +429,55 @@ class BMSessionTable {
   ) {
     //check folder exist
     const dir = DATA_DIR + "/" + folder;
-    if (fs.existsSync(dir)) {
-      const s = new BMSession(
-        Date.now(),
-        adminId,
-        folder,
-        sessionName,
-        adminpassword,
-        playerpassword,
-        isHtml5,
-        fadeDuration
-      );
-      this.data.push(s);
-      return s;
+    if (!fs.existsSync(dir)) {
+      return null;
     }
-    return null;
+
+    const s = new BMSession();
+    s.initState(
+      Date.now(),
+      adminId,
+      folder,
+      sessionName,
+      adminpassword,
+      playerpassword,
+      isHtml5,
+      fadeDuration
+    );
+
+    this.data.push(s);
+    return s;
   }
 
   remove(session) {
     this.data.splice(this.data.indexOf(session), 1);
+
+    const sessionCachePath = `${SERVER_STATE_DIR}/${session.id}.json`;
+    if (fs.existsSync(sessionCachePath)) {
+      fs.rmSync(sessionCachePath);
+    }
   }
 
   getById(id) {
     return this.data.find((e) => e.id == id);
   }
 
-  getByAdminId(id) {
-    return this.data.find((e) => e.adminId.trim() == id);
-  }
-
   getBySessionName(name) {
     return this.data.find((e) => e.sessionName.trim() == name);
   }
 
-  saveDataToJsonFile() {}
+  forceSessionStop(session) {
+    session.forceReset();
+
+    this.sessionTable.remove(session);
+    console.log("session stopped...");
+  }
 }
 
 class BMDatabase {
   constructor({ hostaddress }) {
     this.admin = new BMAdminTable();
-    this.session = new BMSessionTable();
+    this.sessionTable = new BMSessionTable();
     this.shouldAutoRedirect = false;
     this.autoRedirectSession = "";
     this.autoRedirectPassword = "";

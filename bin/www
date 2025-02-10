@@ -139,53 +139,12 @@ wsServer.on("request", function (request) {
     messageHandle(connection, message);
   });
   connection.on("close", function (reasonCode, description) {
-    var session = db.session.getById(connection.sessionId);
+    var session = db.sessionTable.getById(connection.sessionId);
     if (session != null) {
       updateNumberOfConnectionForSession(session);
     }
   });
 });
-
-var forceRefresh = function (session) {
-  //stop holding timer
-  if (session.holdingTimer != null) {
-    clearTimeout(session.holdingTimer);
-    session.holdingTimer = null;
-  }
-  //stop standby timer
-  if (session.standbyTimer != null) {
-    clearTimeout(session.standbyTimer);
-    session.standbyTimer = null;
-  }
-  //stop voting timer
-  if (session.votingTimer != null) {
-    clearInterval(session.votingTimer);
-    session.votingTimer = null;
-  }
-  sendToAllClients(session, 0, MESSAGES.MSG_NEED_DISPLAY, 0, 0);
-};
-
-var forceStop = function (session) {
-  //stop holding timer
-  if (session.holdingTimer != null) {
-    clearTimeout(session.holdingTimer);
-    session.holdingTimer = null;
-  }
-  //stop standby timer
-  if (session.standbyTimer != null) {
-    clearTimeout(session.standbyTimer);
-    session.standbyTimer = null;
-  }
-  //stop voting timer
-  if (session.votingTimer != null) {
-    clearInterval(session.votingTimer);
-    session.votingTimer = null;
-  }
-  db.session.remove(session);
-
-  sendToAllClientsWithDelay(session, 100, MESSAGES.MSG_FINISH, 0, 0);
-  console.log("session stopped...");
-};
 
 //time = 0 => immediately
 function sendToClient(conn, time, messageId, value1, value2) {
@@ -427,7 +386,7 @@ function stopSession(session) {
     clearInterval(session.votingTimer);
     session.votingTimer = null;
   }
-  db.session.remove(session);
+  db.sessionTable.remove(session);
 
   sendToAllClientsWithDelay(session, 100, MESSAGES.MSG_FINISH, 0, 0);
   console.log("session stopped...");
@@ -503,7 +462,7 @@ function messageHandle(conn, message) {
   var password = obj.sig;
   var msg = obj.msg;
   var value = obj.val;
-  var session = db.session.getById(sessionId);
+  var session = db.sessionTable.getById(sessionId);
   if (session != null) {
     var isStaff =
       password == session.playerPassword || password == session.adminPassword
@@ -696,7 +655,7 @@ const adminPass = "managerpassword";
 const playerPass = "mcknight";
 db.wsPath = wsPath;
 
-const session = db.session.add(
+const session = db.sessionTable.add(
   ownerId,
   folderName,
   displayName,
@@ -707,5 +666,5 @@ session.votingDuration = 0;
 session.holdDuration = 0;
 
 app.set("Database", db);
-app.set("ForceRefresh", forceRefresh);
-app.set("ForceStop", forceStop);
+app.set("sendToAllClients", sendToAllClients);
+app.set("sendToAllClientsWithDelay", sendToAllClientsWithDelay);
