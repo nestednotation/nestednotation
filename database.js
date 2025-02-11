@@ -12,10 +12,8 @@ if (!fs.existsSync(testPrefixFile)) {
 const DATA_DIR = `${prefixDir}/data`;
 
 const SERVER_STATE_DIR = `${prefixDir}/server_state`;
-const SESSIONS_FILE = `${SERVER_STATE_DIR}/sessions.json`;
 if (!fs.existsSync(SERVER_STATE_DIR)) {
   fs.mkdirSync(SERVER_STATE_DIR);
-  fs.writeFileSync(SESSIONS_FILE, JSON.stringify([]), { encoding: "utf8" });
 }
 
 class BMAdmin {
@@ -107,6 +105,8 @@ class BMSession {
 
   isHolding = false;
   isPause = false;
+  isVoting = false;
+  isStandby = false;
 
   holdingTimer = null;
   standbyTimer = null;
@@ -117,7 +117,7 @@ class BMSession {
   holdDuration = 0;
   votingDuration = 10;
 
-  constructor() {}
+  hasSounds = false;
 
   checkScoreHasSounds(score) {
     const dir = `${DATA_DIR}/${score}`;
@@ -175,6 +175,7 @@ class BMSession {
     );
 
     this.setCurrentIndexTo(this.listFiles.indexOf(startedFile));
+    this.saveSessionStateToFile();
   }
 
   reloadScore(folderName) {
@@ -403,19 +404,33 @@ class BMSession {
       this.votingTimer = null;
     }
   }
+
+  saveSessionStateToFile() {
+    const stateFilePath = `${SERVER_STATE_DIR}/${this.id}.json`;
+    fs.writeFileSync(stateFilePath, JSON.stringify(this));
+
+    console.log(
+      `Created session ${this.sessionName} state file: ${stateFilePath}`
+    );
+  }
+
+  deleteStateFile() {
+    const stateFilePath = `${SERVER_STATE_DIR}/${this.id}.json`;
+    if (fs.existsSync(stateFilePath)) {
+      fs.rmSync(stateFilePath);
+    }
+
+    console.log(
+      `Deleted session ${this.sessionName} state file: ${stateFilePath}`
+    );
+  }
 }
 
 class BMSessionTable {
-  constructor() {
-    const savedData = JSON.parse(
-      fs.readFileSync(SESSIONS_FILE, { encoding: "utf8" })
-    );
-    this.data = savedData.map((d) => {
-      const session = new BMSession();
-      session.patchState(d);
+  data = [];
 
-      return session;
-    });
+  constructor() {
+    this.loadStoredSessionStates();
   }
 
   add(
@@ -452,10 +467,7 @@ class BMSessionTable {
   remove(session) {
     this.data.splice(this.data.indexOf(session), 1);
 
-    const sessionCachePath = `${SERVER_STATE_DIR}/${session.id}.json`;
-    if (fs.existsSync(sessionCachePath)) {
-      fs.rmSync(sessionCachePath);
-    }
+    session.deleteStateFile();
   }
 
   getById(id) {
@@ -463,14 +475,29 @@ class BMSessionTable {
   }
 
   getBySessionName(name) {
-    return this.data.find((e) => e.sessionName.trim() == name);
+    return this.data.find((e) => e.sessionName.trim() === name);
   }
 
   forceSessionStop(session) {
     session.forceReset();
 
-    this.sessionTable.remove(session);
-    console.log("session stopped...");
+    this.remove(session);
+    console.log(`Session ${session.sessionName} stopped...`);
+  }
+
+  loadStoredSessionStates() {
+    const sessionStateFiles = fs.readdirSync(SERVER_STATE_DIR, {
+      withFileTypes: true,
+    });
+
+    for (const file of sessionStateFiles) {
+      const newSession = new BMSession();
+      newSession.patchState(
+        JSON.parse(fs.readFileSync(`${SERVER_STATE_DIR}/${file.name}`))
+      );
+
+      this.data.push(newSession);
+    }
   }
 }
 

@@ -371,25 +371,9 @@ function startHoldingForSessionWithDelay(session, delay) {
 }
 
 function stopSession(session) {
-  //stop holding timer
-  if (session.holdingTimer != null) {
-    clearTimeout(session.holdingTimer);
-    session.holdingTimer = null;
-  }
-  //stop standby timer
-  if (session.standbyTimer != null) {
-    clearTimeout(session.standbyTimer);
-    session.standbyTimer = null;
-  }
-  //stop voting timer
-  if (session.votingTimer != null) {
-    clearInterval(session.votingTimer);
-    session.votingTimer = null;
-  }
-  db.sessionTable.remove(session);
+  db.sessionTable.forceSessionStop(session);
 
   sendToAllClientsWithDelay(session, 100, MESSAGES.MSG_FINISH, 0, 0);
-  console.log("session stopped...");
 }
 
 function jumpScoreForSession(session, value) {
@@ -585,6 +569,8 @@ function messageHandle(conn, message) {
         jumpScoreForSession(session, value);
       }
     }
+
+    session.saveSessionStateToFile();
   }
 }
 
