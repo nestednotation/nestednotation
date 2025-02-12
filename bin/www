@@ -314,6 +314,7 @@ function stopVotingForSession(session) {
         startHoldingForSessionWithDelay(session, 0);
       }
       session.standbyTimer = null;
+      session.saveSessionStateToFile();
     },
     1000,
     session
@@ -353,6 +354,7 @@ function startHoldingForSessionWithDelay(session, delay) {
         0
       );
       session.holdingTimer = null;
+      session.saveSessionStateToFile();
     },
     session.holdDuration * 1000,
     session

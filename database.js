@@ -419,6 +419,7 @@ class BMSession {
     clonedData.votingTimer = null;
     clonedData.standbyTimer = null;
     clonedData.holdingTimer = null;
+    clonedData.isVoting = false;
 
     const stateFilePath = `${SERVER_STATE_DIR}/${this.id}.json`;
     fs.writeFileSync(stateFilePath, JSON.stringify(clonedData));
