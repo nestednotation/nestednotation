@@ -292,7 +292,8 @@ function stopVotingForSession(session) {
   const listId = Object.keys(votingData);
   let mostVoteCount = 0;
   let mostVoteRingId = 0;
-  for (const id in listId) {
+
+  for (const id of listId) {
     if (id == -1) {
       continue;
     }
