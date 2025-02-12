@@ -119,8 +119,8 @@ function onError(error) {
  */
 
 function onListening() {
-  var addr = server.address();
-  var bind = typeof addr === "string" ? "pipe " + addr : "port " + addr.port;
+  const addr = server.address();
+  const bind = typeof addr === "string" ? "pipe " + addr : "port " + addr.port;
   debug("Listening on " + bind);
 }
 
@@ -135,11 +135,13 @@ var wsServer = new WebSocketServer({
 
 wsServer.on("request", function (request) {
   const connection = request.accept(null, request.origin);
+
   connection.on("message", function (message) {
     messageHandle(connection, message);
   });
-  connection.on("close", function (reasonCode, description) {
-    var session = db.sessionTable.getById(connection.sessionId);
+
+  connection.on("close", function () {
+    const session = db.sessionTable.getById(connection.sessionId);
     if (session != null) {
       updateNumberOfConnectionForSession(session);
     }
@@ -196,17 +198,6 @@ function sendToAllAdmins(session, time, messageId, value1, value2) {
   });
 }
 
-function sendToAllAdminsWithDelay(
-  session,
-  timeDelay,
-  messageId,
-  value1,
-  value2
-) {
-  var time = new Date().getTime() + timeDelay;
-  sendToAllAdmins(session, time, messageId, value1, value2);
-}
-
 function sendUpdateVotingToClient(conn, session) {
   var countDic = countVoteForSession(session);
   var timestamp = new Date().getTime();
@@ -214,14 +205,14 @@ function sendUpdateVotingToClient(conn, session) {
 }
 
 function countVoteForSession(session) {
-  var listConn = wsServer.connections.filter(
-    (conn) => conn.sessionId == session.id
+  const listConn = wsServer.connections.filter(
+    (conn) => conn.sessionId === session.id
   );
-  var voteData = listConn.map((o) => o.currentVoteTo);
-  var counts = {};
+  const voteData = listConn.map((o) => o.currentVoteTo);
+  const counts = {};
 
-  for (var i = 0; i < voteData.length; i++) {
-    var num = voteData[i];
+  for (let i = 0; i < voteData.length; i++) {
+    const num = voteData[i];
     if (typeof num != "undefined" && num != -1) {
       counts[num] = counts[num] ? counts[num] + 1 : 1;
     }
@@ -230,26 +221,13 @@ function countVoteForSession(session) {
 }
 
 function startVotingForSessionWithDelay(session, timeDelay) {
-  var sessionId = session.id;
+  const sessionId = session.id;
   session.currentVotingDuration = session.votingDuration;
-  session.currentBeginTimeStamp = new Date().getTime() + timeDelay;
+  session.currentBeginTimeStamp = Date.now() + timeDelay;
   session.currentEndTimeStamp =
     session.currentBeginTimeStamp + session.currentVotingDuration * 1000;
   session.isVoting = true;
   session.isStandby = false;
-  wsServer.connections.forEach(function each(conn) {
-    if (conn.sessionId == sessionId) {
-      conn.currentVoteTo = -1;
-    }
-  });
-
-  sendToAllClients(
-    session,
-    0,
-    MESSAGES.MSG_BEGIN_VOTING,
-    session.currentEndTimeStamp,
-    session.currentVotingDuration
-  );
 
   //start voting data timer
   session.votingTimeStamp = 0;
@@ -258,8 +236,8 @@ function startVotingForSessionWithDelay(session, timeDelay) {
     (session) => {
       session.votingTimeStamp += session.synTimeInterval * 1000;
 
-      var countDic = countVoteForSession(session);
-      var timestamp = new Date().getTime();
+      const countDic = countVoteForSession(session);
+      const timestamp = new Date().getTime();
       sendToAllClients(
         session,
         0,
@@ -284,6 +262,22 @@ function startVotingForSessionWithDelay(session, timeDelay) {
     session.synTimeInterval * 1000,
     session
   );
+
+  session.saveSessionStateToFile();
+
+  wsServer.connections.forEach((conn) => {
+    if (conn.sessionId === sessionId) {
+      conn.currentVoteTo = -1;
+    }
+  });
+
+  sendToAllClients(
+    session,
+    0,
+    MESSAGES.MSG_BEGIN_VOTING,
+    session.currentEndTimeStamp,
+    session.currentVotingDuration
+  );
 }
 
 function stopVotingForSession(session) {
@@ -294,18 +288,19 @@ function stopVotingForSession(session) {
   }
 
   //stand by signal
-  var votingData = countVoteForSession(session);
-  var listId = Object.keys(votingData);
-  var mostVoteCount = 0;
-  var mostVoteRingId = 0;
-  for (var i = 0; i < listId.length; i++) {
-    var id = listId[i];
-    if (id != -1) {
-      var count = votingData[id];
-      if (count > mostVoteCount) {
-        mostVoteCount = count;
-        mostVoteRingId = id;
-      }
+  const votingData = countVoteForSession(session);
+  const listId = Object.keys(votingData);
+  let mostVoteCount = 0;
+  let mostVoteRingId = 0;
+  for (const id in listId) {
+    if (id == -1) {
+      continue;
+    }
+
+    const count = votingData[id];
+    if (count > mostVoteCount) {
+      mostVoteCount = count;
+      mostVoteRingId = id;
     }
   }
 
@@ -324,7 +319,7 @@ function stopVotingForSession(session) {
 
   //unlock
   session.standbyTimer = setTimeout(
-    function (session) {
+    (session) => {
       session.isStandby = false;
       if (session.holdDuration > 0) {
         startHoldingForSessionWithDelay(session, 0);
@@ -338,23 +333,15 @@ function stopVotingForSession(session) {
 
 function startHoldingForSessionWithDelay(session, delay) {
   session.isHolding = true;
-  sendToAllAdmins(session, 0, MESSAGES.MSG_CHECK_HOLD, session.isHolding, 0);
   //holding cooldown
   session.currentHoldingDuration = session.holdDuration;
   session.currentBeginHoldTimeStamp = new Date().getTime() + delay;
   session.currentEndHoldTimeStamp =
     session.currentBeginHoldTimeStamp + session.currentHoldingDuration * 1000;
-  sendToAllClients(
-    session,
-    0,
-    MESSAGES.MSG_BEGIN_HOLDING,
-    session.currentEndHoldTimeStamp,
-    session.currentHoldingDuration
-  );
 
   //unlock
   session.holdingTimer = setTimeout(
-    function (session) {
+    (session) => {
       session.isHolding = false;
       sendToAllAdmins(
         session,
@@ -368,12 +355,16 @@ function startHoldingForSessionWithDelay(session, delay) {
     session.holdDuration * 1000,
     session
   );
-}
+  session.saveSessionStateToFile();
 
-function stopSession(session) {
-  db.sessionTable.forceSessionStop(session);
-
-  sendToAllClientsWithDelay(session, 100, MESSAGES.MSG_FINISH, 0, 0);
+  sendToAllAdmins(session, 0, MESSAGES.MSG_CHECK_HOLD, session.isHolding, 0);
+  sendToAllClients(
+    session,
+    0,
+    MESSAGES.MSG_BEGIN_HOLDING,
+    session.currentEndHoldTimeStamp,
+    session.currentHoldingDuration
+  );
 }
 
 function jumpScoreForSession(session, value) {
@@ -382,17 +373,17 @@ function jumpScoreForSession(session, value) {
   }
   if (session.standbyTimer) {
     clearTimeout(session.standbyTimer);
-    session.standbyTimer = null;
+    session.patchState({ standbyTimer: null }, true);
   }
   if (session.isVoting && session.votingTimer != null) {
     cancelVotingTimer(session);
   }
   //---------
-  var filename = session.history[value];
-  var index = session.listFilesInLowerCase.indexOf(filename.toLowerCase());
+  const filename = session.history[value];
+  const index = session.listFilesInLowerCase.indexOf(filename.toLowerCase());
   session.historyIndex = value;
-
   session.setCurrentIndexTo(index);
+
   sendToAllAdmins(
     session,
     0,
@@ -400,34 +391,29 @@ function jumpScoreForSession(session, value) {
     session.history,
     session.historyIndex
   );
-  if (!session.isPause) {
-    var timestamp = new Date().getTime() + 100;
-    sendToAllClients(session, timestamp, MESSAGES.MSG_SHOW, index, 0);
-  }
-}
 
-function pauseSession(session, value) {
-  session.isPause = value;
-  sendToAllClients(session, 0, MESSAGES.MSG_PAUSE, value, session.currentIndex);
+  if (!session.isPause) {
+    sendToAllClients(session, Date.now() + 100, MESSAGES.MSG_SHOW, index, 0);
+  }
 }
 
 function cancelHoldingTimer(session, onOff) {
   clearTimeout(session.holdingTimer);
-  session.holdingTimer = null;
+  session.patchState({ holdingTimer: null }, true);
   sendToAllClients(session, 0, MESSAGES.MSG_BEGIN_HOLDING, 0, onOff);
 }
 
 function cancelVotingTimer(session) {
   clearInterval(session.votingTimer);
-  session.votingTimer = null;
+  session.patchState({ votingTimer: null }, true);
   sendToAllClients(session, 0, MESSAGES.MSG_BEGIN_VOTING, 0, 0);
 }
 
 function updateNumberOfConnectionForSession(session) {
-  var countPlayer = wsServer.connections.filter(
+  const countPlayer = wsServer.connections.filter(
     (conn) => conn.sessionId == session.id && !conn.isAdmin && conn.isStaff
   ).length;
-  var countRider = wsServer.connections.filter(
+  const countRider = wsServer.connections.filter(
     (conn) => conn.sessionId == session.id && !conn.isAdmin && !conn.isStaff
   ).length;
   sendToAllAdmins(
@@ -440,137 +426,151 @@ function updateNumberOfConnectionForSession(session) {
 }
 
 function messageHandle(conn, message) {
-  var obj = JSON.parse(message.utf8Data);
-  var sessionId = obj.sid;
-  var clientIndex = obj.cid;
-  var password = obj.sig;
-  var msg = obj.msg;
-  var value = obj.val;
-  var session = db.sessionTable.getById(sessionId);
-  if (session != null) {
-    var isStaff =
-      password == session.playerPassword || password == session.adminPassword
-        ? true
-        : false;
-    var isAdmin = password == session.adminPassword ? true : false;
+  const obj = JSON.parse(message.utf8Data);
+  const sessionId = obj.sid;
+  const clientIndex = obj.cid;
+  const password = obj.sig;
+  const msg = obj.msg;
+  const value = obj.val;
+  const session = db.sessionTable.getById(sessionId);
+  if (!session) {
+    console.log(
+      `Session with id ${sessionId} not found while processing message`
+    );
+    return;
+  }
 
-    if (msg == MESSAGES.MSG_PING) {
-      var timeStamp = new Date().getTime();
-      conn.sessionId = sessionId;
-      conn.isAdmin = isAdmin;
-      conn.isStaff = isStaff;
-      sendToClient(conn, 0, msg, timeStamp, value);
-    } else if (msg == MESSAGES.MSG_TAP) {
+  const isAdmin = password == session.adminPassword;
+  if (msg === MESSAGES.MSG_PING) {
+    conn.sessionId = sessionId;
+    conn.isAdmin = isAdmin;
+    conn.isStaff =
+      password == session.playerPassword || password == session.adminPassword;
+    sendToClient(conn, 0, msg, Date.now(), value);
+    return;
+  }
+
+  if (msg === MESSAGES.MSG_TAP) {
+    if (
+      !session.isHolding &&
+      clientIndex == session.currentIndex &&
+      !session.isPause &&
+      value != -1
+    ) {
       if (
-        !session.isHolding &&
-        clientIndex == session.currentIndex &&
-        !session.isPause &&
-        value != -1
+        session.votingDuration == 0 ||
+        session.listPreImages.includes(session.currentIndex)
       ) {
-        if (
-          session.votingDuration == 0 ||
-          session.listPreImages.includes(session.currentIndex)
-        ) {
-          session.setCurrentIndexTo(value);
-          sendToAllAdmins(
-            session,
-            0,
-            MESSAGES.MSG_SELECT_HISTORY,
-            session.history,
-            session.historyIndex
-          );
-          sendToAllClientsWithDelay(
-            session,
-            100,
-            MESSAGES.MSG_SHOW,
-            session.currentIndex
-          );
-          if (session.holdDuration > 0) {
-            startHoldingForSessionWithDelay(session, 0);
-          }
-        } else {
-          //change vote of client to new value
-          if (!session.isStandby) {
-            if (!session.isVoting) {
-              startVotingForSessionWithDelay(session, 100);
-            }
-            conn.currentVoteTo = value;
-            sendUpdateVotingToClient(conn, session);
-          }
-        }
-      }
-    } else if (msg == MESSAGES.MSG_SHOW) {
-    } else if (msg == MESSAGES.MSG_NEED_DISPLAY) {
-      if (!session.isPause) {
-        sendToClient(conn, 0, MESSAGES.MSG_SHOW, session.currentIndex, 0);
-      }
-      if (session.isVoting) {
-        conn.currentVoteTo = -1;
-        sendToClient(
-          conn,
-          0,
-          MESSAGES.MSG_BEGIN_VOTING,
-          session.currentEndTimeStamp,
-          session.currentVotingDuration
-        );
-      }
-      if (session.isHolding) {
-        sendToClient(
-          conn,
-          0,
-          MESSAGES.MSG_BEGIN_HOLDING,
-          session.currentEndHoldTimeStamp,
-          session.currentHoldingDuration
-        );
-      }
-      if (isAdmin) {
-        sendToClient(
-          conn,
+        session.setCurrentIndexTo(value);
+        sendToAllAdmins(
+          session,
           0,
           MESSAGES.MSG_SELECT_HISTORY,
           session.history,
           session.historyIndex
         );
-      }
-      updateNumberOfConnectionForSession(session);
-      sendToAllClients(
-        session,
-        0,
-        MESSAGES.MSG_CHECK_HOLD,
-        session.isHolding,
-        0
-      );
-      sendToAllClients(
-        session,
-        0,
-        MESSAGES.MSG_PAUSE,
-        session.isPause,
-        session.currentIndex
-      );
-    } else if (msg == MESSAGES.MSG_UPDATE_VOTING) {
-    } else if (msg == MESSAGES.MSG_CHECK_HOLD) {
-      if (isAdmin) {
-        if (session.isHolding && session.holdingTimer != null) {
-          cancelHoldingTimer(session, 0);
+        sendToAllClientsWithDelay(
+          session,
+          100,
+          MESSAGES.MSG_SHOW,
+          session.currentIndex
+        );
+        if (session.holdDuration > 0) {
+          startHoldingForSessionWithDelay(session, 0);
         }
-        session.isHolding = value;
-        sendToAllClients(session, 0, MESSAGES.MSG_CHECK_HOLD, value, 0);
-      }
-    } else if (msg == MESSAGES.MSG_FINISH) {
-      if (isAdmin) {
-        stopSession(session);
-      }
-    } else if (msg == MESSAGES.MSG_PAUSE) {
-      if (isAdmin) {
-        pauseSession(session, value);
-      }
-    } else if (msg == MESSAGES.MSG_SELECT_HISTORY) {
-      if (isAdmin) {
-        jumpScoreForSession(session, value);
+      } else {
+        //change vote of client to new value
+        if (!session.isStandby) {
+          if (!session.isVoting) {
+            startVotingForSessionWithDelay(session, 100);
+          }
+          conn.currentVoteTo = value;
+          sendUpdateVotingToClient(conn, session);
+        }
       }
     }
+    return;
+  }
 
-    session.saveSessionStateToFile();
+  if (msg === MESSAGES.MSG_NEED_DISPLAY) {
+    if (!session.isPause) {
+      sendToClient(conn, 0, MESSAGES.MSG_SHOW, session.currentIndex, 0);
+    }
+
+    if (session.isVoting) {
+      conn.currentVoteTo = -1;
+      sendToClient(
+        conn,
+        0,
+        MESSAGES.MSG_BEGIN_VOTING,
+        session.currentEndTimeStamp,
+        session.currentVotingDuration
+      );
+    }
+
+    if (session.isHolding) {
+      sendToClient(
+        conn,
+        0,
+        MESSAGES.MSG_BEGIN_HOLDING,
+        session.currentEndHoldTimeStamp,
+        session.currentHoldingDuration
+      );
+    }
+
+    if (isAdmin) {
+      sendToClient(
+        conn,
+        0,
+        MESSAGES.MSG_SELECT_HISTORY,
+        session.history,
+        session.historyIndex
+      );
+    }
+
+    updateNumberOfConnectionForSession(session);
+    sendToAllClients(session, 0, MESSAGES.MSG_CHECK_HOLD, session.isHolding, 0);
+    sendToAllClients(
+      session,
+      0,
+      MESSAGES.MSG_PAUSE,
+      session.isPause,
+      session.currentIndex
+    );
+    return;
+  }
+
+  if (isAdmin && msg === MESSAGES.MSG_CHECK_HOLD) {
+    if (session.isHolding && session.holdingTimer != null) {
+      cancelHoldingTimer(session, 0);
+    }
+
+    session.patchState({ isHolding: value }, true);
+    sendToAllClients(session, 0, MESSAGES.MSG_CHECK_HOLD, value, 0);
+    return;
+  }
+
+  if (isAdmin && msg === MESSAGES.MSG_FINISH) {
+    db.sessionTable.forceSessionStop(session);
+    sendToAllClientsWithDelay(session, 100, MESSAGES.MSG_FINISH, 0, 0);
+    return;
+  }
+
+  if (isAdmin && msg === MESSAGES.MSG_PAUSE) {
+    session.patchState({ isPause: value }, true);
+    sendToAllClients(
+      session,
+      0,
+      MESSAGES.MSG_PAUSE,
+      value,
+      session.currentIndex
+    );
+    return;
+  }
+
+  if (isAdmin && msg === MESSAGES.MSG_SELECT_HISTORY) {
+    jumpScoreForSession(session, value);
+    return;
   }
 }
 
@@ -586,7 +586,7 @@ const wsPort = process.env.WS_PORT || 8080;
 const serverIp = process.env.SERVER_IP;
 const wsPath = `wss://${serverIp}`;
 
-console.log(`App is running on port ${wsPort}`);
+console.log(`Websocket is running on port ${wsPort}`);
 console.log(`Websocket path is ${wsPath}`);
 
 /**
@@ -639,17 +639,20 @@ const folderName = "Serotonin-v2";
 const displayName = "mcknight";
 const adminPass = "managerpassword";
 const playerPass = "mcknight";
+const sessionId = `${ownerId}-serotonin-v2`;
 db.wsPath = wsPath;
 
-const session = db.sessionTable.add(
-  ownerId,
-  folderName,
-  displayName,
-  adminPass,
-  playerPass
-);
-session.votingDuration = 0;
-session.holdDuration = 0;
+if (!db.sessionTable.getById(sessionId)) {
+  const session = db.sessionTable.add(
+    sessionId,
+    ownerId,
+    folderName,
+    displayName,
+    adminPass,
+    playerPass
+  );
+  session.patchState({ votingDuration: 0, holdDuration: 0 }, true);
+}
 
 app.set("Database", db);
 app.set("sendToAllClients", sendToAllClients);

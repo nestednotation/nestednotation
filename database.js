@@ -107,6 +107,7 @@ class BMSession {
   isPause = false;
   isVoting = false;
   isStandby = false;
+  isSessionDeleted = false;
 
   holdingTimer = null;
   standbyTimer = null;
@@ -130,9 +131,13 @@ class BMSession {
     return fileList.includes("Sounds") && fileList.includes("Frames");
   }
 
-  patchState(stateData) {
+  patchState(stateData, saveToFile = false) {
     for (const [key, val] of Object.entries(stateData)) {
       this[key] = val;
+    }
+
+    if (saveToFile) {
+      this.saveSessionStateToFile();
     }
   }
 
@@ -175,7 +180,6 @@ class BMSession {
     );
 
     this.setCurrentIndexTo(this.listFiles.indexOf(startedFile));
-    this.saveSessionStateToFile();
   }
 
   reloadScore(folderName) {
@@ -222,6 +226,7 @@ class BMSession {
 
     this.history.push(this.listFiles[index]);
     this.historyIndex = this.history.length - 1;
+    this.saveSessionStateToFile();
   }
 
   getSoundList(folder) {
@@ -365,9 +370,10 @@ class BMSession {
 
       this.svgContent += `${svg}\n`;
     });
-    //final
 
-    console.log(`finish building svg content... for ${this.folder}`);
+    console.log(
+      `Finish building svg content... for ${this.folder} with ID ${this.id}`
+    );
   }
 
   regexWithPattern(str, pattern, groupId) {
@@ -406,11 +412,20 @@ class BMSession {
   }
 
   saveSessionStateToFile() {
+    if (this.isSessionDeleted) {
+      return;
+    }
+
+    const clonedData = { ...this };
+    clonedData.votingTimer = null;
+    clonedData.standbyTimer = null;
+    clonedData.holdingTimer = null;
+
     const stateFilePath = `${SERVER_STATE_DIR}/${this.id}.json`;
-    fs.writeFileSync(stateFilePath, JSON.stringify(this));
+    fs.writeFileSync(stateFilePath, JSON.stringify(clonedData));
 
     console.log(
-      `Created session ${this.sessionName} state file: ${stateFilePath}`
+      `Write session ${this.sessionName} state to file: ${stateFilePath}`
     );
   }
 
@@ -420,6 +435,7 @@ class BMSession {
       fs.rmSync(stateFilePath);
     }
 
+    this.isSessionDeleted = true;
     console.log(
       `Deleted session ${this.sessionName} state file: ${stateFilePath}`
     );
@@ -434,6 +450,7 @@ class BMSessionTable {
   }
 
   add(
+    sessionId,
     adminId,
     folder,
     sessionName,
@@ -445,12 +462,13 @@ class BMSessionTable {
     //check folder exist
     const dir = DATA_DIR + "/" + folder;
     if (!fs.existsSync(dir)) {
+      console.log(`Unable to get score data at ${dir}`);
       return null;
     }
 
     const s = new BMSession();
     s.initState(
-      Date.now(),
+      sessionId,
       adminId,
       folder,
       sessionName,
