@@ -478,8 +478,8 @@ class BMSessionTable {
     );
     session.saveSessionStateToFile();
 
-    this.data.push(s);
-    return s;
+    this.data.push(session);
+    return session;
   }
 
   remove(session) {
