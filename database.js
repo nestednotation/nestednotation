@@ -226,7 +226,6 @@ class BMSession {
 
     this.history.push(this.listFiles[index]);
     this.historyIndex = this.history.length - 1;
-    this.saveSessionStateToFile();
   }
 
   getSoundList(folder) {
@@ -393,7 +392,7 @@ class BMSession {
     return arr[Math.floor(Math.random() * arr.length)];
   }
 
-  forceReset() {
+  clearAllTimer() {
     //stop holding timer
     if (this.holdingTimer != null) {
       clearTimeout(this.holdingTimer);
@@ -466,8 +465,8 @@ class BMSessionTable {
       return null;
     }
 
-    const s = new BMSession();
-    s.initState(
+    const session = new BMSession();
+    session.initState(
       sessionId,
       adminId,
       folder,
@@ -477,6 +476,7 @@ class BMSessionTable {
       isHtml5,
       fadeDuration
     );
+    session.saveSessionStateToFile();
 
     this.data.push(s);
     return s;
@@ -497,7 +497,7 @@ class BMSessionTable {
   }
 
   forceSessionStop(session) {
-    session.forceReset();
+    session.clearAllTimer();
 
     this.remove(session);
     console.log(`Session ${session.sessionName} stopped...`);

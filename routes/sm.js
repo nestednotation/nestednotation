@@ -71,7 +71,8 @@ router.get("/", function (req, res, next) {
           const listScore = db.getListScore();
           if (listScore.indexOf(folder) >= 0) {
             session.reloadScore(folder);
-            session.forceReset();
+            session.clearAllTimer();
+            session.saveSessionStateToFile();
 
             const sendToAllClients = req.app.get("sendToAllClients");
             sendToAllClients(session, 0, MESSAGES.MSG_NEED_DISPLAY, 0, 0);

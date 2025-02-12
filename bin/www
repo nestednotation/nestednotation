@@ -75,7 +75,7 @@ server.on("listening", onListening);
  */
 
 function normalizePort(val) {
-  var port = parseInt(val, 10);
+  const port = parseInt(val, 10);
 
   if (isNaN(port)) {
     // named pipe
@@ -99,15 +99,15 @@ function onError(error) {
     throw error;
   }
 
-  var bind = typeof port === "string" ? "Pipe " + port : "Port " + port;
+  const bind = typeof port === "string" ? `Pipe ${port}` : `Port ${port}`;
 
   // handle specific listen errors with friendly messages
   switch (error.code) {
     case "EACCES":
-      console.error(bind + " requires elevated privileges");
+      console.error(`${bind} requires elevated privileges`);
       process.exit(1);
     case "EADDRINUSE":
-      console.error(bind + " is already in use");
+      console.error(`${bind} is already in use`);
       process.exit(1);
     default:
       throw error;
@@ -120,16 +120,16 @@ function onError(error) {
 
 function onListening() {
   const addr = server.address();
-  const bind = typeof addr === "string" ? "pipe " + addr : "port " + addr.port;
-  debug("Listening on " + bind);
+  const bind = typeof addr === "string" ? `pipe ${addr}` : `port ${addr.port}`;
+  debug(`Listening on ${bind}`);
 }
 
 /**
  * Websocket
  */
-var httpServerForSocket = http.createServer();
+const httpServerForSocket = http.createServer();
 httpServerForSocket.listen(process.env.WS_PORT);
-var wsServer = new WebSocketServer({
+const wsServer = new WebSocketServer({
   httpServer: httpServerForSocket,
 });
 
@@ -150,7 +150,7 @@ wsServer.on("request", function (request) {
 
 //time = 0 => immediately
 function sendToClient(conn, time, messageId, value1, value2) {
-  var obj = {
+  const obj = {
     t: time,
     m: messageId,
     v1: value1,
@@ -160,7 +160,7 @@ function sendToClient(conn, time, messageId, value1, value2) {
 }
 
 function sendToAllClients(session, time, messageId, value1, value2) {
-  var obj = {
+  const obj = {
     t: time,
     m: messageId,
     v1: value1,
@@ -305,18 +305,6 @@ function stopVotingForSession(session) {
   }
 
   session.setCurrentIndexTo(mostVoteRingId);
-  sendToAllAdmins(
-    session,
-    0,
-    MESSAGES.MSG_SELECT_HISTORY,
-    session.history,
-    session.historyIndex
-  );
-  if (!session.isPause) {
-    var timestamp = new Date().getTime() + 1000 + 100;
-    sendToAllClients(session, timestamp, MESSAGES.MSG_SHOW, mostVoteRingId, 0);
-  }
-
   //unlock
   session.standbyTimer = setTimeout(
     (session) => {
@@ -329,6 +317,19 @@ function stopVotingForSession(session) {
     1000,
     session
   );
+  session.saveSessionStateToFile();
+
+  sendToAllAdmins(
+    session,
+    0,
+    MESSAGES.MSG_SELECT_HISTORY,
+    session.history,
+    session.historyIndex
+  );
+  if (!session.isPause) {
+    var timestamp = new Date().getTime() + 1000 + 100;
+    sendToAllClients(session, timestamp, MESSAGES.MSG_SHOW, mostVoteRingId, 0);
+  }
 }
 
 function startHoldingForSessionWithDelay(session, delay) {
@@ -383,6 +384,7 @@ function jumpScoreForSession(session, value) {
   const index = session.listFilesInLowerCase.indexOf(filename.toLowerCase());
   session.historyIndex = value;
   session.setCurrentIndexTo(index);
+  session.saveSessionStateToFile();
 
   sendToAllAdmins(
     session,
@@ -462,6 +464,8 @@ function messageHandle(conn, message) {
         session.listPreImages.includes(session.currentIndex)
       ) {
         session.setCurrentIndexTo(value);
+        session.saveSessionStateToFile();
+
         sendToAllAdmins(
           session,
           0,
