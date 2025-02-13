@@ -204,6 +204,14 @@ class Frame {
       );
       const nodeSounds = soundNames.map((name) => {
         const soundInstant = this.sessionInstance.soundMap[name];
+
+        if (!soundInstant) {
+          this.logMismatchSound();
+          alert(
+            "Sound name mismatch, please open Developer Tool - Console (F12) to check"
+          );
+        }
+
         soundInstant.name = name;
         return soundInstant;
       });
@@ -219,6 +227,43 @@ class Frame {
     }
 
     return notes;
+  }
+
+  // Log all mismatch sounds found in the session
+  logMismatchSound() {
+    const mainSvgContainer = document.getElementById("MainSVGContent");
+    if (!mainSvgContainer) {
+      console.error("MainSVGContent not found");
+      return;
+    }
+
+    const frameSvgNodes = mainSvgContainer.querySelectorAll("svg[id]");
+    if (frameSvgNodes.length === 0) {
+      console.error("No frame found");
+      return;
+    }
+
+    for (const frame of frameSvgNodes) {
+      const frameSvgSoundNodes = frame.querySelectorAll("[sound]");
+      for (const svgSoundNode of frameSvgSoundNodes) {
+        const soundNames = svgSoundNode.getAttribute("sound")?.split(",");
+        if (!soundNames) {
+          return;
+        }
+
+        for (const soundName of soundNames) {
+          const isExist = Boolean(this.sessionInstance.soundMap[soundName]);
+
+          if (!isExist) {
+            console.error(
+              `Incorrect sound name: ${soundName} \n Found in file: ${frame.getAttribute(
+                "file"
+              )}`
+            );
+          }
+        }
+      }
+    }
   }
 }
 
@@ -492,17 +537,28 @@ class AudioSession {
     );
   }
 
+  markToGrayscaleNoneSoundLinkSvg(linkElement) {
+    const soundElements = linkElement.querySelector("[sound]");
+
+    if (soundElements === null) {
+      linkElement.classList.add("grayscale-on-play");
+    }
+  }
+
   markToGrayscaleNonLinkSvg(element) {
-    if (element.children.length === 0) {
+    const isContainLink = !!element.querySelector("a");
+    if (!isContainLink || element.children.length === 0) {
       element.classList.add("grayscale-on-guide");
+      return;
     }
 
     for (const child of element.children) {
-      if (child.tagName === "a" || child.tagName.toLowerCase() === "filter") {
+      if (child.tagName === "a") {
+        this.markToGrayscaleNoneSoundLinkSvg(child);
         continue;
+      } else {
+        this.markToGrayscaleNonLinkSvg(child);
       }
-
-      this.markToGrayscaleNonLinkSvg(child);
     }
   }
 }
@@ -555,8 +611,6 @@ function toggleSessionMode(mode) {
 
   window.sessionInstance.newMode = mode;
 }
-
-function refreshSession() {}
 
 function toggleAutoplay(element) {
   if (!window.sessionInstance) {

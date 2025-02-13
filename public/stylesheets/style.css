@@ -234,7 +234,8 @@ body {
   padding-bottom: min(10vh, 60px);
 }
 
-.guide-mode .grayscale-on-guide {
+.guide-mode .grayscale-on-guide,
+.play-mode .grayscale-on-play {
   filter: url("#grayscale");
 }
 
