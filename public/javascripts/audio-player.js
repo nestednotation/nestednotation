@@ -546,17 +546,19 @@ class AudioSession {
   }
 
   markToGrayscaleNonLinkSvg(element) {
-    if (element.children.length === 0) {
+    const isContainLink = !!element.querySelector("a");
+    if (!isContainLink || element.children.length === 0) {
       element.classList.add("grayscale-on-guide");
+      return;
     }
 
     for (const child of element.children) {
       if (child.tagName === "a") {
         this.markToGrayscaleNoneSoundLinkSvg(child);
         continue;
+      } else {
+        this.markToGrayscaleNonLinkSvg(child);
       }
-
-      this.markToGrayscaleNonLinkSvg(child);
     }
   }
 }
