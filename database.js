@@ -89,8 +89,6 @@ class BMSession {
   history = [];
   historyIndex = 0;
 
-  votingDuration = 0;
-
   selectedScoreIndex = -1;
   selectedCooldownTimeIndex = -1;
   selectedHoldTimeIndex = -1;
@@ -336,7 +334,7 @@ class BMSession {
           );
           const textId = `ta-${svgIndex}-${aIndex}`;
 
-          const newTextArea = `${midGap}\r\n<g xmlns="http://www.w3.org/2000/svg" transform="matrix(-3.99305,0,0,-3.99305,0,0)">\r\n<text id="${textId}" x="-212.19" y="-231.138" style="font-family:\'ArialMT\', \'Arial\', sans-serif; font-size: 72px; fill-opacity: 1.0;"></text>\r\n</g>\r\n`;
+          const newTextArea = `${midGap}\r\n<g xmlns="http://www.w3.org/2000/svg" transform="matrix(-3.99305,0,0,-3.99305,0,0)">\r\n<text id="${textId}" x="-212.19" y="-231.138" style="font-family:'ArialMT', 'Arial', sans-serif; font-size: 72px; fill-opacity: 1.0;"></text>\r\n</g>\r\n`;
           svg = svg.replace(midGap, newTextArea);
         }
 

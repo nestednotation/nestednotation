@@ -612,8 +612,6 @@ function toggleSessionMode(mode) {
   window.sessionInstance.newMode = mode;
 }
 
-function refreshSession() {}
-
 function toggleAutoplay(element) {
   if (!window.sessionInstance) {
     return;
