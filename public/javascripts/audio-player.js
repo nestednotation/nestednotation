@@ -76,6 +76,7 @@ class Note {
   get isPlaying() {
     return this._isPlaying;
   }
+
   set isPlaying(value) {
     this._isPlaying = value;
 
@@ -412,12 +413,11 @@ class AudioSession {
       Object.entries(nextSoundData).map(([key, val]) => {
         const { soundInstance, volume, autoplay } = val;
 
-        if (!autoplay) {
-          return;
+        if (autoplay) {
+          soundInstance.play();
         }
 
         if (continueSound[key]) {
-          soundInstance.play();
           soundInstance.fade(
             continueSound[key],
             volumeToGain(volume),
@@ -427,7 +427,6 @@ class AudioSession {
           this.markSoundAsLoading(key);
           soundInstance.load();
           soundInstance.fade(0, volumeToGain(volume), fadeDuration);
-          soundInstance.play();
         }
       });
 
