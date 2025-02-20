@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
+<svg width="100%" height="100%" viewBox="0 0 408 596" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" xml:space="preserve" xmlns:serif="http://www.serif.com/" style="fill-rule:evenodd;clip-rule:evenodd;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:1.5;">
+    <rect id="about1" x="0" y="0.03" width="408" height="595.2" style="fill:none;"/>
+    <clipPath id="_clip1">
+        <rect x="0" y="0.03" width="408" height="595.2"/>
+    </clipPath>
+    <g clip-path="url(#_clip1)">
+        <rect id="Document-Border" serif:id="Document Border" x="0" y="0.87" width="408" height="594.36" style="fill:none;stroke:#000;stroke-width:4px;"/>
+        <g transform="matrix(0.24,0,0,0.24,-39.1351,82.1845)">
+            <text x="389.563px" y="777.627px" style="font-family:'MetallophileSp8-Light', 'Metallophile Sp8';font-weight:300;font-size:62.5px;">About Nested notation</text>
+            <text x="389.563px" y="902.627px" style="font-family:'MetallophileSp8-Light', 'Metallophile Sp8';font-weight:300;font-size:62.5px;">this is the general about page for the site,</text>
+            <text x="389.563px" y="965.127px" style="font-family:'MetallophileSp8-Light', 'Metallophile Sp8';font-weight:300;font-size:62.5px;">linked to in every session.</text>
+            <text x="389.563px" y="1090.13px" style="font-family:'MetallophileSp8-Light', 'Metallophile Sp8';font-weight:300;font-size:62.5px;">it contains links</text>
+            <g transform="matrix(62.5,0,0,62.5,1025.25,1152.63)">
+            </g>
+            <text x="389.563px" y="1152.63px" style="font-family:'MetallophileSp8-Light', 'Metallophile Sp8';font-weight:300;font-size:62.5px;">it does not contain sounds</text>
+        </g>
+		<a href="about3.svg">
+        <g id="LINK">
+            <rect x="129.6" y="403.23" width="148.8" height="28.8" style="fill:#ec9959;stroke:#ab7d8d;stroke-width:4px;"/>
+            <g transform="matrix(13,0,0,13,240.212,422.76)">
+            </g>
+            <text x="168.569px" y="422.76px" style="font-family:'MetallophileSp8-Light', 'Metallophile Sp8';font-weight:300;font-size:13px;">see next page</text>
+        </g>
+		</a>
+    </g>
+</svg>

@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
+<svg width="100%" height="100%" viewBox="0 0 408 596" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" xml:space="preserve" xmlns:serif="http://www.serif.com/" style="fill-rule:evenodd;clip-rule:evenodd;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:1.5;">
+    <rect id="about3" x="0" y="0" width="408" height="595.2" style="fill:none;"/>
+    <clipPath id="_clip1">
+        <rect x="0" y="0" width="408" height="595.2"/>
+    </clipPath>
+    <g clip-path="url(#_clip1)">
+        <rect id="Document-Border" serif:id="Document Border" x="-0" y="0.84" width="408" height="594.36" style="fill:none;stroke:#000;stroke-width:4px;"/>
+        <g transform="matrix(0.24,0,0,0.24,31.8974,70.7695)">
+            <text x="389.563px" y="652.627px" style="font-family:'MetallophileSp8-Light', 'Metallophile Sp8';font-weight:300;font-size:62.5px;">to close the viewer<tspan x="843.563px " y="652.627px ">,</tspan></text>
+            <g transform="matrix(62.5,0,0,62.5,931.063,715.127)">
+            </g>
+            <text x="389.563px" y="715.127px" style="font-family:'MetallophileSp8-Light', 'Metallophile Sp8';font-weight:300;font-size:62.5px;">please close the menu</text>
+        </g>
+    </g>
+</svg>
