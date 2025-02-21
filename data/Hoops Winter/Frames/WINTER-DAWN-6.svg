@@ -2,9 +2,9 @@
 <!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
 <svg width="100%" height="100%" viewBox="0 0 1688 2200" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" xml:space="preserve" xmlns:serif="http://www.serif.com/" style="fill-rule:evenodd;clip-rule:evenodd;stroke-linejoin:bevel;">
     <g transform="matrix(1,0,0,1,-12067,-3198)">
-        <g id="WINTER-DAWN-6" sound="Low-Bb,Mid-G,High-Eb" autoplay="false" transform="matrix(0.937778,0,0,1.22222,12067,3198)">
+        <g id="WINTER-DAWN-6" transform="matrix(0.937778,0,0,1.22222,12067,3198)">
             <rect x="0" y="0" width="1800" height="1800" style="fill:none;"/>
-            <g id="Western-Notation" serif:id="Western Notation">
+            <g id="Western-Notation" sound="Low-Bb,Mid-G,High-Eb" autoplay="false" serif:id="Western Notation">
                 <g id="staff" transform="matrix(1.06635,0,0,0.818182,1369.18,1443.82)">
                     <g transform="matrix(0.424942,0,0,1.00627,71.3164,-1.7105)">
                         <path d="M124.016,173.622L425.196,173.622" style="fill:none;fill-rule:nonzero;stroke:#000;stroke-width:2.73px;"/>
