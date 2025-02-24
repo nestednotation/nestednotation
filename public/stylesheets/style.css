@@ -297,6 +297,7 @@ body {
   aspect-ratio: 1;
   opacity: 0;
   transition: opacity 0.2s;
+  transform: scale(0.75);
 }
 
 .change-mode-container[data-guide-lock="true"] .mode-indicator img {
@@ -472,7 +473,7 @@ body {
 }
 
 #loading-sound-indicator {
-  font-size: 24px;
+  font-size: 18px;
   color: #9a9a9a;
   overflow: hidden;
   animation: loadingText 2s infinite linear;

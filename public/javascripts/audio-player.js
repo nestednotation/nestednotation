@@ -347,7 +347,7 @@ class AudioSession {
     }
 
     window.addEventListener("sound-loaded", (e) => {
-      this.handleCheckSoundLoad(e.detail);
+      this.handleSoundLoaded(e.detail);
     });
 
     this.generateSoundMap();
@@ -527,7 +527,7 @@ class AudioSession {
     document.body.classList.toggle("loading-sound", true);
   }
 
-  handleCheckSoundLoad(loadedSound) {
+  handleSoundLoaded(loadedSound) {
     this.soundLoadSet.delete(loadedSound.key);
 
     document.body.classList.toggle(
