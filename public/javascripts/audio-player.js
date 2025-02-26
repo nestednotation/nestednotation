@@ -287,11 +287,6 @@ class AudioSession {
     return this._newMode;
   }
   set newMode(value) {
-    // Prevent enable play mode when guide lock
-    if (this.guideLock && value === NEW_SESSION_MODES.PLAY) {
-      return;
-    }
-
     // Toggle guide lock after switching to guide mode
     if (
       this._newMode === NEW_SESSION_MODES.GUIDE &&
@@ -301,7 +296,7 @@ class AudioSession {
     }
 
     // Unlock guide mode when switching to play mode
-    if (this._newMode === NEW_SESSION_MODES.PLAY) {
+    if (value === NEW_SESSION_MODES.PLAY) {
       this.guideLock = false;
     }
 
@@ -642,3 +637,21 @@ function toggleSideMenu(e) {
 function refreshSession() {
   window.location.reload();
 }
+
+// Detect iPad device and add class to body
+UAParser()
+  .withFeatureCheck()
+  .withClientHints()
+  .then((uaRes) => {
+    const { device } = uaRes;
+
+    if (
+      device.model === "iPad" ||
+      (device.vendor === "Apple" && device.type === "tablet")
+    ) {
+      // have to setTimeout due to if it, docment.body will not exists
+      setTimeout(() => {
+        document.body.classList.add("ipad");
+      });
+    }
+  });

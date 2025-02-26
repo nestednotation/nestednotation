@@ -2,6 +2,8 @@ html
   head
     title= title
     link(rel='stylesheet', href='/stylesheets/style.css')
+    script(src='/javascripts/unmute-audio.js')
+    script(src='https://cdn.jsdelivr.net/npm/ua-parser-js/dist/ua-parser.min.js')
     script(src='https://cdn.jsdelivr.net/npm/howler@2.2.4/dist/howler.min.js')
     script(src='/javascripts/audio-player.js')
     script(src='/javascripts/nosleep.js')
@@ -18,31 +20,31 @@ html
     
   body(class="play-mode")
     script.
-      var soundList= JSON.parse('!{soundList}');
-      var scoreSlug = '#{scoreSlug}';
-      var staffCode = '#{staffCode}';
-      var sessionId = '#{sessionId}';
-      var hostAddress = '#{hostAddress}';
-      var wsPort = '#{webSocketPort}';
-      var wsPath = '#{wsPath}'
+      window.soundList= JSON.parse('!{soundList}');
+      window.scoreSlug = '#{scoreSlug}';
+      window.staffCode = '#{staffCode}';
+      window.sessionId = '#{sessionId}';
+      window.hostAddress = '#{hostAddress}';
+      window.wsPort = '#{webSocketPort}';
+      window.wsPath = '#{wsPath}'
 
-      var isHtml5 = JSON.parse('!{isHtml5}');
-      var fadeDuration = JSON.parse('!{fadeDuration}')
+      window.isHtml5 = JSON.parse('!{isHtml5}');
+      window.fadeDuration = JSON.parse('!{fadeDuration}')
 
-      var CONST_NO_SLEEP_DURATION = #{noSleepDuration};
-      var MSG_PING = #{msgPing};
-      var MSG_TAP = #{msgTap};
-      var MSG_SHOW = #{msgShow};
-      var MSG_NEED_DISPLAY = #{msgNeedDisplay};
-      var MSG_UPDATE_VOTING = #{msgUpdateVoting};
-      var MSG_BEGIN_VOTING = #{msgBeginVoting};
-      var MSG_BEGIN_STANDBY = #{msgBeginStandby};
-      var MSG_CHECK_HOLD = #{msgCheckHold};
-      var MSG_BEGIN_HOLDING = #{msgBeginHolding};
-      var MSG_FINISH = #{msgFinish};
-      var MSG_PAUSE = #{msgPause};
-      var MSG_SELECT_HISTORY = #{msgSelectHistory};
-      var MSG_SHOW_NUMBER_CONNECTION = #{msgShowNumberConnection};
+      window.CONST_NO_SLEEP_DURATION = #{noSleepDuration};
+      window.MSG_PING = #{msgPing};
+      window.MSG_TAP = #{msgTap};
+      window.MSG_SHOW = #{msgShow};
+      window.MSG_NEED_DISPLAY = #{msgNeedDisplay};
+      window.MSG_UPDATE_VOTING = #{msgUpdateVoting};
+      window.MSG_BEGIN_VOTING = #{msgBeginVoting};
+      window.MSG_BEGIN_STANDBY = #{msgBeginStandby};
+      window.MSG_CHECK_HOLD = #{msgCheckHold};
+      window.MSG_BEGIN_HOLDING = #{msgBeginHolding};
+      window.MSG_FINISH = #{msgFinish};
+      window.MSG_PAUSE = #{msgPause};
+      window.MSG_SELECT_HISTORY = #{msgSelectHistory};
+      window.MSG_SHOW_NUMBER_CONNECTION = #{msgShowNumberConnection};
 
     script(src='/javascripts/session.js')
 
