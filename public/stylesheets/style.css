@@ -234,9 +234,21 @@ body {
   padding-bottom: min(10vh, 60px);
 }
 
+/* For iPad specifically */
+body.ipad {
+  padding-bottom: min(10vh + 12px, 72px);
+}
+body.ipad .session-status-container {
+  bottom: min(10vh + 12px, 72px);
+}
+
 .guide-mode .grayscale-on-guide,
 .play-mode .grayscale-on-play {
   filter: url("#grayscale");
+}
+
+.ipad .change-mode-container {
+  bottom: 12px;
 }
 
 .change-mode-container {
@@ -475,11 +487,9 @@ body {
 #loading-sound-indicator {
   font-size: 18px;
   color: #9a9a9a;
-  overflow: hidden;
-  animation: loadingText 2s infinite linear;
+
   width: fit-content;
   margin: auto;
-  background: linear-gradient(currentColor 0 0) 0 100%/0% 2px no-repeat;
   position: fixed;
   bottom: calc(min(10vh, 60px) + 30px);
   left: 50%;
@@ -487,8 +497,19 @@ body {
   display: none;
 }
 
-@keyframes loadingText {
+#loading-sound-indicator::before {
+  content: "";
+  display: block;
+  position: absolute;
+  top: calc(100% + 4px);
+  width: 0%;
+  height: 2px;
+  background-color: #9a9a9a;
+  animation: infiniteExpand 1.5s infinite linear;
+}
+
+@keyframes infiniteExpand {
   to {
-    background-size: 100% 2px;
+    width: 100%;
   }
 }
