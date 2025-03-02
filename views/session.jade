@@ -5,6 +5,7 @@ html
     script(src='/javascripts/unmute-audio.js')
     script(src='https://cdn.jsdelivr.net/npm/ua-parser-js/dist/ua-parser.min.js')
     script(src='https://cdn.jsdelivr.net/npm/howler@2.2.4/dist/howler.min.js')
+    script(src='/javascripts/ui.js', defer)
     script(src='/javascripts/audio-player.js')
     script(src='/javascripts/nosleep.js')
 
@@ -30,6 +31,7 @@ html
 
       window.isHtml5 = JSON.parse('!{isHtml5}');
       window.fadeDuration = JSON.parse('!{fadeDuration}')
+      window.scoreHasAbout = JSON.parse('!{scoreHasAbout}');
 
       window.CONST_NO_SLEEP_DURATION = #{noSleepDuration};
       window.MSG_PING = #{msgPing};
@@ -85,7 +87,7 @@ html
     div(id="MainContent", style="width:100%; height:90%; position: relative;")
       div(id="divOverlay" style="width: 100%; height: 100%; position: absolute; background-color: white; opacity: 0.50; display: none;")
       div(id="MainSVGContent")
-        | !{svg}
+        | !{sessionSvg}
         | !{audio}
       svg(id="svg-1", width="100%", height="100%", viewBox="0 0 1801 1801", version="1.1", xmlns="http://www.w3.org/2000/svg", xmlns:xlink="http://www.w3.org/1999/xlink", xml:space="preserve", xmlns:serif="http://www.serif.com/", style="fill-rule:evenodd;clip-rule:evenodd;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:1.5;")
         g
@@ -125,9 +127,9 @@ html
       button(class="change-mode-btn", type="button", onclick="toggleSessionMode('GUIDE')") guide
     div(id="side-menu-container", data-show="false", onclick="toggleSideMenu(event)", class="side-menu-container", style="display: none;")
       div(class="side-menu-title") 
-        img(src="/svg/score-title-icon.svg")
-        span #{scoreTitle}
-        button(class="close-side-menu-btn", onclick="toggleSideMenu(event)", type="button", title="close side menu")
+        img(src="/svg/score-title-icon.svg", onclick="showAboutChordPage()")
+        span(onclick="showAboutChordPage()") #{scoreTitle}
+        button(class="close-btn", onclick="toggleSideMenu(event)", type="button", title="close side menu")
           img(src="/svg/close-icon.svg")
       div(class="side-menu-list")
         ul
@@ -136,8 +138,23 @@ html
           li(onclick="toggleAutoplay(this)") autoplay
             div(class="autoplay-toggler")
               div(class="autoplay-toggler-knob")
-          li about
+          li(onclick="showAboutNestedNotationPage()") about
             img(src="/svg/about-icon.svg")
+    div(id="about-nested-notation", class="about-containter")
+      div(class="side-menu-title")
+        button(class="return-btn", onclick="closeSideMenu()") return to session
+        button(class="close-btn", onclick="closeSideMenu()", type="button", title="close side menu")
+          img(src="/svg/close-icon.svg")
+      div(class="about-content")
+        | !{aboutNestedNotationSvg}
+
+    div(id="about-score", class="about-containter")
+      div(class="side-menu-title")
+        button(class="return-btn", onclick="closeSideMenu()") return to session
+        button(class="close-btn", onclick="closeSideMenu()", type="button", title="close side menu")
+          img(src="/svg/close-icon.svg")
+      div(class="about-content")
+        | !{aboutScoreSvg}
 
 
 

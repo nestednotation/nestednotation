@@ -14,6 +14,9 @@ const MESSAGES = {
   MSG_SHOW_NUMBER_CONNECTION: 12,
 };
 
+const ABOUT_DATA_DIR = "about Nested notation";
+
 module.exports = {
   MESSAGES,
+  ABOUT_DATA_DIR,
 };

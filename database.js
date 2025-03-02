@@ -1,4 +1,4 @@
-const { MESSAGES } = require("./constants");
+const { MESSAGES, ABOUT_DATA_DIR } = require("./constants");
 const fs = require("fs");
 
 const HREF_REGX = /(?<=href=")(.*?)(?=")/;
@@ -15,6 +15,48 @@ const SERVER_STATE_DIR = `${prefixDir}/server_state`;
 if (!fs.existsSync(SERVER_STATE_DIR)) {
   fs.mkdirSync(SERVER_STATE_DIR);
 }
+
+const regexWithPattern = (str, pattern, groupId) => {
+  const match = str.match(pattern);
+  if (match === null) {
+    return null;
+  }
+
+  return match[groupId];
+};
+
+const buildAboutSvg = (contentDir, svgIdSuffix) => {
+  const dir = `${DATA_DIR}/${contentDir}`;
+  if (!fs.existsSync(dir)) {
+    console.log(`${dir} not found`);
+    return null;
+  }
+
+  let fileList = fs.readdirSync(dir);
+  if (fileList.length <= 0) {
+    console.log(`No data in ${dir} folder`);
+    return null;
+  }
+
+  let svgContent = "";
+
+  fileList.forEach((filename) => {
+    const filePath = `${dir}/${filename}`;
+    const content = fs.readFileSync(filePath, "utf8");
+    let svg = regexWithPattern(content, /<svg.*?<\/svg>/is, 0);
+    svg = svg.replace(
+      "<svg",
+      `<svg id="${filename}${svgIdSuffix}" class="hidden" file="${filename}" `
+    );
+
+    svgContent += `${svg}\n`;
+  });
+
+  console.log(
+    `Finish building about/document svg content... for ${contentDir}`
+  );
+  return svgContent;
+};
 
 class BMAdmin {
   constructor(id, name, password, isActive) {
@@ -137,6 +179,11 @@ class BMSession {
     if (saveToFile) {
       this.saveSessionStateToFile();
     }
+
+    this.aboutSvg = buildAboutSvg(
+      `${this.folder}/Documentation`,
+      "-about-score"
+    );
   }
 
   // this use listFiles generate from buildSVGContent. So run it after that method
@@ -178,6 +225,8 @@ class BMSession {
     );
 
     this.setCurrentIndexTo(this.listFiles.indexOf(startedFile));
+
+    this.aboutSvg = buildAboutSvg(`${folder}/Documentation`, "-about-score");
   }
 
   reloadScore(folderName) {
@@ -259,7 +308,7 @@ class BMSession {
     this.listFiles.forEach((filename) => {
       const filePath = `${dir}/${filename}`;
       const content = fs.readFileSync(filePath, "utf8");
-      let svg = this.regexWithPattern(content, /<svg.*?<\/svg>/is, 0);
+      let svg = regexWithPattern(content, /<svg.*?<\/svg>/is, 0);
       const svgIndex = this.listFilesInLowerCase.indexOf(
         filename.toLowerCase()
       );
@@ -297,41 +346,37 @@ class BMSession {
         newA = newA.replace(")", "\\)");
 
         let pattern = `${newA}.*?serif:id="Ring and Background".*?>.*?<ellipse.*?/>.*?(<ellipse.*?/>)`;
-        let ellipse = this.regexWithPattern(svg, new RegExp(pattern, "is"), 1);
+        let ellipse = regexWithPattern(svg, new RegExp(pattern, "is"), 1);
         if (ellipse != null) {
           //add elipse
           const cx = parseFloat(
-            this.regexWithPattern(ellipse, /<ellipse.*?cx="(.*?)"/is, 1)
+            regexWithPattern(ellipse, /<ellipse.*?cx="(.*?)"/is, 1)
           );
           const cy = parseFloat(
-            this.regexWithPattern(ellipse, /<ellipse.*?cy="(.*?)"/is, 1)
+            regexWithPattern(ellipse, /<ellipse.*?cy="(.*?)"/is, 1)
           );
           const rx =
             parseFloat(
-              this.regexWithPattern(ellipse, /<ellipse.*?rx="(.*?)"/is, 1)
+              regexWithPattern(ellipse, /<ellipse.*?rx="(.*?)"/is, 1)
             ) * 0.9126;
           const ry =
             parseFloat(
-              this.regexWithPattern(ellipse, /<ellipse.*?rx="(.*?)"/is, 1)
+              regexWithPattern(ellipse, /<ellipse.*?rx="(.*?)"/is, 1)
             ) * 0.9126;
-          const style = this.regexWithPattern(
+          const style = regexWithPattern(
             ellipse,
             /<ellipse.*?style="(.*?)"/is,
             1
           );
           const ellipseId = `${svgIndex}-${aIndex}`;
-          ellipse = this.regexWithPattern(svg, new RegExp(pattern, "is"), 0);
+          ellipse = regexWithPattern(svg, new RegExp(pattern, "is"), 0);
 
           const newEllipse = `${ellipse}\r\n<ellipse id="${ellipseId}" class="hidden" cx="${cx}" cy="${cy}" rx="${rx}" ry="${ry}" style="${style}"></ellipse>`;
           svg = svg.replace(ellipse, newEllipse);
 
           //add text area
           pattern = `${newA}(.*?serif:id="Ring and Background".*?)<g id="Notes`;
-          const midGap = this.regexWithPattern(
-            svg,
-            new RegExp(pattern, "is"),
-            1
-          );
+          const midGap = regexWithPattern(svg, new RegExp(pattern, "is"), 1);
           const textId = `ta-${svgIndex}-${aIndex}`;
 
           const newTextArea = `${midGap}\r\n<g xmlns="http://www.w3.org/2000/svg" transform="matrix(-3.99305,0,0,-3.99305,0,0)">\r\n<text id="${textId}" x="-212.19" y="-231.138" style="font-family:'ArialMT', 'Arial', sans-serif; font-size: 72px; fill-opacity: 1.0;"></text>\r\n</g>\r\n`;
@@ -339,7 +384,7 @@ class BMSession {
         }
 
         pattern = `${newA}.*?<g[^>]*?id="Notes.*?>(.*?</g>[^<]*?</g>)`;
-        const notesEllipse = this.regexWithPattern(
+        const notesEllipse = regexWithPattern(
           svg,
           new RegExp(pattern, "is"),
           1
@@ -519,6 +564,8 @@ class BMSessionTable {
 }
 
 class BMDatabase {
+  aboutSvg = "";
+
   constructor({ hostaddress }) {
     this.admin = new BMAdminTable();
     this.sessionTable = new BMSessionTable();
@@ -544,6 +591,8 @@ class BMDatabase {
     this.MSG_PAUSE = MESSAGES.MSG_PAUSE;
     this.MSG_SELECT_HISTORY = MESSAGES.MSG_SELECT_HISTORY;
     this.MSG_SHOW_NUMBER_CONNECTION = MESSAGES.MSG_SHOW_NUMBER_CONNECTION;
+
+    this.aboutSvg = buildAboutSvg(ABOUT_DATA_DIR, "-about-nn");
   }
 
   dumpToFile(path) {
