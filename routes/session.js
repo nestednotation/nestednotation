@@ -88,10 +88,13 @@ router.get("/*", function (req, res) {
 
     fadeDuration: JSON.stringify(session.fadeDuration),
     isHtml5: JSON.stringify(session.isHtml5),
-    svg: session.svgContent,
+    sessionSvg: session.svgContent,
     scoreSlug: utils.slugify(session.folder),
     soundList: session.soundList && JSON.stringify(session.soundList),
     wsPath: db.wsPath,
+    aboutNestedNotationSvg: db.aboutSvg,
+    aboutScoreSvg: session.aboutSvg,
+    scoreHasAbout: session.aboutSvg !== null,
   });
 });
 

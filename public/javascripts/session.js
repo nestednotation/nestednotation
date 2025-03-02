@@ -470,7 +470,7 @@ function tapOn(nextId) {
 }
 
 function getListSvg() {
-  return document.querySelectorAll("svg[id]");
+  return document.querySelectorAll("#MainContent svg[id]");
 }
 
 function getListCooldownCircle() {
