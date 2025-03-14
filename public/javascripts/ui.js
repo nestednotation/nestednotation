@@ -38,17 +38,9 @@ function toggleSideMenu(e) {
   }
 }
 
-document.querySelectorAll('[id$="-about-nn"] a').forEach((aEl) => {
-  aEl.addEventListener("click", (e) => {
-    e.preventDefault();
-    onChangeAboutNNPage(e.currentTarget.getAttribute("href"));
-  });
-});
-
-const DEFAULT_START_NN_PAGE_FILE = "START.svg";
-document
-  .querySelector(`[id$="-about-nn"][file="${DEFAULT_START_NN_PAGE_FILE}"]`)
-  .classList.remove("hidden");
+function getDefaultNNTitle() {
+  return "START.svg";
+}
 
 function onChangeAboutNNPage(selectedPage) {
   const svgList = document.querySelectorAll('[id$="-about-nn"]');
@@ -68,7 +60,7 @@ function showAboutNestedNotationPage() {
     "about-nested-notation"
   );
 
-  onChangeAboutNNPage(DEFAULT_START_NN_PAGE_FILE);
+  onChangeAboutNNPage(getDefaultNNTitle());
   aboutNestedNotationPage.classList.add("showing");
 }
 
@@ -86,22 +78,12 @@ function closeSideMenu() {
   setTimeout(() => (sideMenu.style.display = "none"), 200);
 }
 
-document.querySelectorAll('[id$="-about-score"] a').forEach((aEl) => {
-  aEl.addEventListener("click", (e) => {
-    e.preventDefault();
-    onChangeAboutChordPage(e.currentTarget.getAttribute("href"));
-  });
-});
-
-// Just to be safe, make it that it will pick the first svg in case START.svg is not found
-const DEFAULT_START_SCORE_FILE = document.querySelector(
-  '[id$="-about-score"][file="START.svg"]'
-)
-  ? "START.svg"
-  : document.querySelector('[id$="-about-score"]').getAttribute("file");
-document
-  .querySelector(`[id$="-about-score"][file="${DEFAULT_START_SCORE_FILE}"]`)
-  .classList.remove("hidden");
+function getDefaultScoreTitle() {
+  // Just to be safe, make it that it will pick the first svg in case START.svg is not found
+  return document.querySelector('[id$="-about-score"][file="START.svg"]')
+    ? "START.svg"
+    : document.querySelector('[id$="-about-score"]').getAttribute("file");
+}
 
 function showAboutChordPage() {
   if (!window.showAboutChordPage) {
@@ -110,7 +92,7 @@ function showAboutChordPage() {
 
   const aboutChordPage = document.getElementById("about-score");
 
-  onChangeAboutChordPage(DEFAULT_START_SCORE_FILE);
+  onChangeAboutChordPage(getDefaultScoreTitle());
   aboutChordPage.classList.add("showing");
 }
 

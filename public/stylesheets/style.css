@@ -241,10 +241,7 @@ body {
 
 /* For iPad specifically */
 body.ipad {
-  padding-bottom: min(10vh + 12px, 72px);
-}
-body.ipad .session-status-container {
-  bottom: min(10vh + 12px, 72px);
+  padding-block-end: 8px;
 }
 
 #MainContent {
@@ -255,10 +252,6 @@ body.ipad .session-status-container {
 .guide-mode .grayscale-on-guide,
 .play-mode .grayscale-on-play {
   filter: url("#grayscale");
-}
-
-.ipad .change-mode-container {
-  bottom: 12px;
 }
 
 .change-mode-container {
@@ -562,5 +555,7 @@ body.ipad .session-status-container {
   border: none;
   padding: 8px;
   font-size: 20px;
+  font-family: Comfortaa;
+  color: #000;
   cursor: pointer;
 }
