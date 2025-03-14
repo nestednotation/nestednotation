@@ -64,7 +64,7 @@ router.get("/*", function (req, res) {
   }
 
   res.render("session", {
-    title: "Session",
+    title: `Session: ${session.folder}`,
     staffCode: password,
     sessionId: sessionId,
     hostAddress: db.hostAddress,

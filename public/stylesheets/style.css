@@ -2,6 +2,10 @@ body {
   background-color: white;
 }
 
+* {
+  box-sizing: border-box;
+}
+
 svg {
   display: block;
   margin-left: auto;
@@ -164,10 +168,7 @@ input[type="button"] {
   justify-content: end;
   align-items: center;
   height: 4vh;
-}
-
-.user-control-container * {
-  box-sizing: border-box;
+  margin-inline-start: auto;
 }
 
 .count-down-container {
@@ -231,15 +232,21 @@ input[type="button"] {
 
 /* Styles related to play/guide mode */
 body {
-  padding-bottom: min(10vh, 60px);
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+  margin: 0;
 }
 
 /* For iPad specifically */
 body.ipad {
-  padding-bottom: min(10vh + 12px, 72px);
+  padding-block-end: 8px;
 }
-body.ipad .session-status-container {
-  bottom: min(10vh + 12px, 72px);
+
+#MainContent {
+  flex: 1;
+  min-height: 0;
 }
 
 .guide-mode .grayscale-on-guide,
@@ -247,14 +254,10 @@ body.ipad .session-status-container {
   filter: url("#grayscale");
 }
 
-.ipad .change-mode-container {
-  bottom: 12px;
-}
-
 .change-mode-container {
-  position: fixed;
+  position: relative;
   width: 100%;
-  height: min(10vh, 60px);
+  height: 60px;
   display: flex;
   bottom: 0px;
   left: 0px;
@@ -290,7 +293,7 @@ body.ipad .session-status-container {
   width: min(80%, 200px);
   display: flex;
   pointer-events: none;
-  z-index: -1;
+  z-index: 0;
 }
 
 .mode-indicator {
@@ -325,8 +328,6 @@ body.ipad .session-status-container {
 }
 
 .session-status-container {
-  position: fixed;
-  bottom: min(10vh, 60px);
   left: 0;
   padding-inline: 4px;
   display: flex;
@@ -494,7 +495,9 @@ body.ipad .session-status-container {
 #loading-sound-indicator {
   font-size: 18px;
   color: #9a9a9a;
-
+  background: rgba(255, 255, 255, 0.9);
+  border-radius: 8px;
+  padding: 4px 8px 8px 8px;
   width: fit-content;
   margin: auto;
   position: fixed;
@@ -508,7 +511,8 @@ body.ipad .session-status-container {
   content: "";
   display: block;
   position: absolute;
-  top: calc(100% + 4px);
+  top: calc(100% + -6px);
+  left: 8px;
   width: 0%;
   height: 2px;
   background-color: #9a9a9a;
@@ -517,7 +521,7 @@ body.ipad .session-status-container {
 
 @keyframes infiniteExpand {
   to {
-    width: 100%;
+    width: calc(100% - 16px);
   }
 }
 
@@ -551,5 +555,7 @@ body.ipad .session-status-container {
   border: none;
   padding: 8px;
   font-size: 20px;
+  font-family: Comfortaa;
+  color: #000;
   cursor: pointer;
 }

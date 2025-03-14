@@ -586,6 +586,22 @@ document.addEventListener(
   "DOMContentLoaded",
   () => {
     sessionInstance.init();
+
+    // For some reason in iOS if I register these event in ui.js file, it will not work
+    // so I have to register here, it will work fine
+    document.querySelectorAll('[id$="-about-nn"] a').forEach((aEl) => {
+      aEl.addEventListener("click", (e) => {
+        e.preventDefault();
+        onChangeAboutNNPage(e.currentTarget.getAttribute("href"));
+      });
+    });
+
+    document.querySelectorAll('[id$="-about-score"] a').forEach((aEl) => {
+      aEl.addEventListener("click", (e) => {
+        e.preventDefault();
+        onChangeAboutChordPage(e.currentTarget.getAttribute("href"));
+      });
+    });
   },
   false
 );
