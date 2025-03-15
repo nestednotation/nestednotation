@@ -232,11 +232,14 @@ input[type="button"] {
 
 /* Styles related to play/guide mode */
 body {
+  margin: 0;
+}
+
+.session-page {
   display: flex;
   flex-direction: column;
   height: 100%;
   overflow: hidden;
-  margin: 0;
 }
 
 /* For iPad specifically */
