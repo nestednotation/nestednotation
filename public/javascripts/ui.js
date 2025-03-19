@@ -82,7 +82,7 @@ function getDefaultScoreTitle() {
   // Just to be safe, make it that it will pick the first svg in case START.svg is not found
   return document.querySelector('[id$="-about-score"][file="START.svg"]')
     ? "START.svg"
-    : document.querySelector('[id$="-about-score"]').getAttribute("file");
+    : document.querySelector('[id$="-about-score"]')?.getAttribute("file");
 }
 
 function showAboutChordPage() {
@@ -92,7 +92,12 @@ function showAboutChordPage() {
 
   const aboutChordPage = document.getElementById("about-score");
 
-  onChangeAboutChordPage(getDefaultScoreTitle());
+  const selectedPage = getDefaultScoreTitle();
+  if (!selectedPage) {
+    return;
+  }
+
+  onChangeAboutChordPage(selectedPage);
   aboutChordPage.classList.add("showing");
 }
 

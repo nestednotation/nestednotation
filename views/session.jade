@@ -131,8 +131,9 @@ html
 
     div(id="side-menu-container", data-show="false", onclick="toggleSideMenu(event)", class="side-menu-container", style="display: none;")
       div(class="side-menu-title") 
-        img(src="/svg/score-title-icon.svg", onclick="showAboutChordPage()")
-        span(onclick="showAboutChordPage()") #{scoreTitle}
+        button(onclick="showAboutChordPage()", class="score-title") 
+          img(src="/svg/score-title-icon.svg", )
+          span #{scoreTitle}
         button(class="close-btn", onclick="toggleSideMenu(event)", type="button", title="close side menu")
           img(src="/svg/close-icon.svg")
       div(class="side-menu-list")
