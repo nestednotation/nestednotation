@@ -74,7 +74,7 @@ function fn() {
     divhistory.style.display = "block";
 
     var tablefooter = document.getElementById("tablefooter");
-    tablefooter.style.display = "block";
+    tablefooter.style.display = "flex";
   }
 
   ws = new WebSocket(wsPath);
@@ -456,6 +456,11 @@ function setHoldingTimeTo(second) {
 }
 
 function tapOn(nextId) {
+  // Don't allow tap when in NEW_SESSION_MODES.PLAY mode
+  if (window.sessionInstance?.newMode === "PLAY") {
+    return;
+  }
+
   if (!isHolding) {
     if (staffCode.length > 0) {
       highlightInnerRingText(currentIndex + "-" + nextId);
@@ -465,7 +470,7 @@ function tapOn(nextId) {
 }
 
 function getListSvg() {
-  return document.querySelectorAll("svg[id]");
+  return document.querySelectorAll("#MainContent svg[id]");
 }
 
 function getListCooldownCircle() {
@@ -554,6 +559,7 @@ function setIndicatorHold(value) {
     holdIconClass.remove("active");
   }
 
+  document.body.classList.toggle("holding", value);
   setOverlay(value);
 }
 

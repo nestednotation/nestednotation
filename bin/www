@@ -4,24 +4,24 @@
  * Module dependencies.
  */
 
-var app = require("../app");
-var debug = require("debug")("first-app:server");
-var http = require("http");
-var WebSocketServer = require("websocket").server;
-var fs = require("fs");
-var os = require("os");
-var utils = require("../utils");
+const app = require("../app");
+const debug = require("debug")("first-app:server");
+const http = require("http");
+const WebSocketServer = require("websocket").server;
+const fs = require("fs");
+const os = require("os");
+const BMDatabase = require("../database.js");
+const { MESSAGES } = require("../constants.js");
 
-var prefixDir = ".";
-var testPrefixFile = prefixDir + "/account/admin.dat";
+let prefixDir = ".";
+const testPrefixFile = prefixDir + "/account/admin.dat";
 if (!fs.existsSync(testPrefixFile)) {
   prefixDir = "..";
 }
 
-var accountDir = prefixDir + "/account";
-var dataDir = prefixDir + "/data";
+const accountDir = prefixDir + "/account";
 const env = process.env.NODE_ENV || "development";
-var hostaddress = "nestednotation.com";
+let hostaddress = "nestednotation.com";
 if (env == "development") {
   require("dotenv").config({
     path: ".env.development",
@@ -38,7 +38,6 @@ if (env == "development") {
 //sudo iptables -t nat -A PREROUTING -p tcp --dport 80 -j REDIRECT --to-ports 3000
 
 var port = normalizePort(process.env.PORT || "3000");
-var websocketport = process.env.WS_PORT;
 var networkInterfaces = os.networkInterfaces();
 
 if (typeof networkInterfaces["en0"] !== "undefined") {
@@ -52,20 +51,6 @@ if (typeof networkInterfaces["en0"] !== "undefined") {
     }
   }
 }
-
-const MSG_PING = 0;
-const MSG_TAP = 1;
-const MSG_SHOW = 2;
-const MSG_NEED_DISPLAY = 3;
-const MSG_UPDATE_VOTING = 4;
-const MSG_BEGIN_VOTING = 5;
-const MSG_BEGIN_STANDBY = 6;
-const MSG_CHECK_HOLD = 7;
-const MSG_BEGIN_HOLDING = 8;
-const MSG_FINISH = 9;
-const MSG_PAUSE = 10;
-const MSG_SELECT_HISTORY = 11;
-const MSG_SHOW_NUMBER_CONNECTION = 12;
 
 app.set("port", port);
 
@@ -90,7 +75,7 @@ server.on("listening", onListening);
  */
 
 function normalizePort(val) {
-  var port = parseInt(val, 10);
+  const port = parseInt(val, 10);
 
   if (isNaN(port)) {
     // named pipe
@@ -114,15 +99,15 @@ function onError(error) {
     throw error;
   }
 
-  var bind = typeof port === "string" ? "Pipe " + port : "Port " + port;
+  const bind = typeof port === "string" ? `Pipe ${port}` : `Port ${port}`;
 
   // handle specific listen errors with friendly messages
   switch (error.code) {
     case "EACCES":
-      console.error(bind + " requires elevated privileges");
+      console.error(`${bind} requires elevated privileges`);
       process.exit(1);
     case "EADDRINUSE":
-      console.error(bind + " is already in use");
+      console.error(`${bind} is already in use`);
       process.exit(1);
     default:
       throw error;
@@ -134,77 +119,38 @@ function onError(error) {
  */
 
 function onListening() {
-  var addr = server.address();
-  var bind = typeof addr === "string" ? "pipe " + addr : "port " + addr.port;
-  debug("Listening on " + bind);
+  const addr = server.address();
+  const bind = typeof addr === "string" ? `pipe ${addr}` : `port ${addr.port}`;
+  debug(`Listening on ${bind}`);
 }
 
 /**
  * Websocket
  */
-var httpServerForSocket = http.createServer();
-httpServerForSocket.listen(websocketport);
-var wsServer = new WebSocketServer({
+const httpServerForSocket = http.createServer();
+httpServerForSocket.listen(process.env.WS_PORT);
+const wsServer = new WebSocketServer({
   httpServer: httpServerForSocket,
 });
 
 wsServer.on("request", function (request) {
   const connection = request.accept(null, request.origin);
+
   connection.on("message", function (message) {
     messageHandle(connection, message);
   });
-  connection.on("close", function (reasonCode, description) {
-    var session = db.session.getById(connection.sessionId);
+
+  connection.on("close", function () {
+    const session = db.sessionTable.getById(connection.sessionId);
     if (session != null) {
       updateNumberOfConnectionForSession(session);
     }
   });
 });
 
-var forceRefresh = function (session) {
-  //stop holding timer
-  if (session.holdingTimer != null) {
-    clearTimeout(session.holdingTimer);
-    session.holdingTimer = null;
-  }
-  //stop standby timer
-  if (session.standbyTimer != null) {
-    clearTimeout(session.standbyTimer);
-    session.standbyTimer = null;
-  }
-  //stop voting timer
-  if (session.votingTimer != null) {
-    clearInterval(session.votingTimer);
-    session.votingTimer = null;
-  }
-  sendToAllClients(session, 0, MSG_NEED_DISPLAY, 0, 0);
-};
-
-var forceStop = function (session) {
-  //stop holding timer
-  if (session.holdingTimer != null) {
-    clearTimeout(session.holdingTimer);
-    session.holdingTimer = null;
-  }
-  //stop standby timer
-  if (session.standbyTimer != null) {
-    clearTimeout(session.standbyTimer);
-    session.standbyTimer = null;
-  }
-  //stop voting timer
-  if (session.votingTimer != null) {
-    clearInterval(session.votingTimer);
-    session.votingTimer = null;
-  }
-  db.session.remove(session);
-
-  sendToAllClientsWithDelay(session, 100, MSG_FINISH, 0, 0);
-  console.log("session stopped...");
-};
-
 //time = 0 => immediately
 function sendToClient(conn, time, messageId, value1, value2) {
-  var obj = {
+  const obj = {
     t: time,
     m: messageId,
     v1: value1,
@@ -214,7 +160,7 @@ function sendToClient(conn, time, messageId, value1, value2) {
 }
 
 function sendToAllClients(session, time, messageId, value1, value2) {
-  var obj = {
+  const obj = {
     t: time,
     m: messageId,
     v1: value1,
@@ -252,32 +198,21 @@ function sendToAllAdmins(session, time, messageId, value1, value2) {
   });
 }
 
-function sendToAllAdminsWithDelay(
-  session,
-  timeDelay,
-  messageId,
-  value1,
-  value2
-) {
-  var time = new Date().getTime() + timeDelay;
-  sendToAllAdmins(session, time, messageId, value1, value2);
-}
-
 function sendUpdateVotingToClient(conn, session) {
   var countDic = countVoteForSession(session);
   var timestamp = new Date().getTime();
-  sendToClient(conn, 0, MSG_UPDATE_VOTING, countDic, timestamp);
+  sendToClient(conn, 0, MESSAGES.MSG_UPDATE_VOTING, countDic, timestamp);
 }
 
 function countVoteForSession(session) {
-  var listConn = wsServer.connections.filter(
-    (conn) => conn.sessionId == session.id
+  const listConn = wsServer.connections.filter(
+    (conn) => conn.sessionId === session.id
   );
-  var voteData = listConn.map((o) => o.currentVoteTo);
-  var counts = {};
+  const voteData = listConn.map((o) => o.currentVoteTo);
+  const counts = {};
 
-  for (var i = 0; i < voteData.length; i++) {
-    var num = voteData[i];
+  for (let i = 0; i < voteData.length; i++) {
+    const num = voteData[i];
     if (typeof num != "undefined" && num != -1) {
       counts[num] = counts[num] ? counts[num] + 1 : 1;
     }
@@ -286,26 +221,13 @@ function countVoteForSession(session) {
 }
 
 function startVotingForSessionWithDelay(session, timeDelay) {
-  var sessionId = session.id;
+  const sessionId = session.id;
   session.currentVotingDuration = session.votingDuration;
-  session.currentBeginTimeStamp = new Date().getTime() + timeDelay;
+  session.currentBeginTimeStamp = Date.now() + timeDelay;
   session.currentEndTimeStamp =
     session.currentBeginTimeStamp + session.currentVotingDuration * 1000;
   session.isVoting = true;
   session.isStandby = false;
-  wsServer.connections.forEach(function each(conn) {
-    if (conn.sessionId == sessionId) {
-      conn.currentVoteTo = -1;
-    }
-  });
-
-  sendToAllClients(
-    session,
-    0,
-    MSG_BEGIN_VOTING,
-    session.currentEndTimeStamp,
-    session.currentVotingDuration
-  );
 
   //start voting data timer
   session.votingTimeStamp = 0;
@@ -314,9 +236,15 @@ function startVotingForSessionWithDelay(session, timeDelay) {
     (session) => {
       session.votingTimeStamp += session.synTimeInterval * 1000;
 
-      var countDic = countVoteForSession(session);
-      var timestamp = new Date().getTime();
-      sendToAllClients(session, 0, MSG_UPDATE_VOTING, countDic, timestamp);
+      const countDic = countVoteForSession(session);
+      const timestamp = new Date().getTime();
+      sendToAllClients(
+        session,
+        0,
+        MESSAGES.MSG_UPDATE_VOTING,
+        countDic,
+        timestamp
+      );
 
       if (
         !session.didSendStopVoting &&
@@ -334,6 +262,22 @@ function startVotingForSessionWithDelay(session, timeDelay) {
     session.synTimeInterval * 1000,
     session
   );
+
+  session.saveSessionStateToFile();
+
+  wsServer.connections.forEach((conn) => {
+    if (conn.sessionId === sessionId) {
+      conn.currentVoteTo = -1;
+    }
+  });
+
+  sendToAllClients(
+    session,
+    0,
+    MESSAGES.MSG_BEGIN_VOTING,
+    session.currentEndTimeStamp,
+    session.currentVotingDuration
+  );
 }
 
 function stopVotingForSession(session) {
@@ -344,96 +288,87 @@ function stopVotingForSession(session) {
   }
 
   //stand by signal
-  var votingData = countVoteForSession(session);
-  var listId = Object.keys(votingData);
-  var mostVoteCount = 0;
-  var mostVoteRingId = 0;
-  for (var i = 0; i < listId.length; i++) {
-    var id = listId[i];
-    if (id != -1) {
-      var count = votingData[id];
-      if (count > mostVoteCount) {
-        mostVoteCount = count;
-        mostVoteRingId = id;
-      }
+  const votingData = countVoteForSession(session);
+  const listId = Object.keys(votingData);
+  let mostVoteCount = 0;
+  let mostVoteRingId = 0;
+
+  for (const id of listId) {
+    if (id == -1) {
+      continue;
+    }
+
+    const count = votingData[id];
+    if (count > mostVoteCount) {
+      mostVoteCount = count;
+      mostVoteRingId = id;
     }
   }
 
   session.setCurrentIndexTo(mostVoteRingId);
-  sendToAllAdmins(
-    session,
-    0,
-    MSG_SELECT_HISTORY,
-    session.history,
-    session.historyIndex
-  );
-  if (!session.isPause) {
-    var timestamp = new Date().getTime() + 1000 + 100;
-    sendToAllClients(session, timestamp, MSG_SHOW, mostVoteRingId, 0);
-  }
-
   //unlock
   session.standbyTimer = setTimeout(
-    function (session) {
+    (session) => {
       session.isStandby = false;
       if (session.holdDuration > 0) {
         startHoldingForSessionWithDelay(session, 0);
       }
       session.standbyTimer = null;
+      session.saveSessionStateToFile();
     },
     1000,
     session
   );
+  session.saveSessionStateToFile();
+
+  sendToAllAdmins(
+    session,
+    0,
+    MESSAGES.MSG_SELECT_HISTORY,
+    session.history,
+    session.historyIndex
+  );
+  if (!session.isPause) {
+    var timestamp = new Date().getTime() + 1000 + 100;
+    sendToAllClients(session, timestamp, MESSAGES.MSG_SHOW, mostVoteRingId, 0);
+  }
 }
 
 function startHoldingForSessionWithDelay(session, delay) {
   session.isHolding = true;
-  sendToAllAdmins(session, 0, MSG_CHECK_HOLD, session.isHolding, 0);
   //holding cooldown
   session.currentHoldingDuration = session.holdDuration;
   session.currentBeginHoldTimeStamp = new Date().getTime() + delay;
   session.currentEndHoldTimeStamp =
     session.currentBeginHoldTimeStamp + session.currentHoldingDuration * 1000;
-  sendToAllClients(
-    session,
-    0,
-    MSG_BEGIN_HOLDING,
-    session.currentEndHoldTimeStamp,
-    session.currentHoldingDuration
-  );
 
   //unlock
   session.holdingTimer = setTimeout(
-    function (session) {
+    (session) => {
       session.isHolding = false;
-      sendToAllAdmins(session, 0, MSG_CHECK_HOLD, session.isHolding, 0);
+      sendToAllAdmins(
+        session,
+        0,
+        MESSAGES.MSG_CHECK_HOLD,
+        session.isHolding,
+        0
+      );
       session.holdingTimer = null;
+      session.saveSessionStateToFile();
     },
     session.holdDuration * 1000,
     session
   );
-}
+  session.saveSessionStateToFile();
 
-function stopSession(session) {
-  //stop holding timer
-  if (session.holdingTimer != null) {
-    clearTimeout(session.holdingTimer);
-    session.holdingTimer = null;
-  }
-  //stop standby timer
-  if (session.standbyTimer != null) {
-    clearTimeout(session.standbyTimer);
-    session.standbyTimer = null;
-  }
-  //stop voting timer
-  if (session.votingTimer != null) {
-    clearInterval(session.votingTimer);
-    session.votingTimer = null;
-  }
-  db.session.remove(session);
-
-  sendToAllClientsWithDelay(session, 100, MSG_FINISH, 0, 0);
-  console.log("session stopped...");
+  sendToAllAdmins(session, 0, MESSAGES.MSG_CHECK_HOLD, session.isHolding, 0);
+  sendToAllClients(
+    session,
+    0,
+    MESSAGES.MSG_BEGIN_HOLDING,
+    session.currentEndHoldTimeStamp,
+    session.currentHoldingDuration
+  );
 }
 
 function jumpScoreForSession(session, value) {
@@ -442,636 +377,215 @@ function jumpScoreForSession(session, value) {
   }
   if (session.standbyTimer) {
     clearTimeout(session.standbyTimer);
-    session.standbyTimer = null;
+    session.patchState({ standbyTimer: null }, true);
   }
   if (session.isVoting && session.votingTimer != null) {
     cancelVotingTimer(session);
   }
   //---------
-  var filename = session.history[value];
-  var index = session.listFilesInLowerCase.indexOf(filename.toLowerCase());
+  const filename = session.history[value];
+  const index = session.listFilesInLowerCase.indexOf(filename.toLowerCase());
   session.historyIndex = value;
-
   session.setCurrentIndexTo(index);
+  session.saveSessionStateToFile();
+
   sendToAllAdmins(
     session,
     0,
-    MSG_SELECT_HISTORY,
+    MESSAGES.MSG_SELECT_HISTORY,
     session.history,
     session.historyIndex
   );
-  if (!session.isPause) {
-    var timestamp = new Date().getTime() + 100;
-    sendToAllClients(session, timestamp, MSG_SHOW, index, 0);
-  }
-}
 
-function pauseSession(session, value) {
-  session.isPause = value;
-  sendToAllClients(session, 0, MSG_PAUSE, value, session.currentIndex);
+  if (!session.isPause) {
+    sendToAllClients(session, Date.now() + 100, MESSAGES.MSG_SHOW, index, 0);
+  }
 }
 
 function cancelHoldingTimer(session, onOff) {
   clearTimeout(session.holdingTimer);
-  session.holdingTimer = null;
-  sendToAllClients(session, 0, MSG_BEGIN_HOLDING, 0, onOff);
+  session.patchState({ holdingTimer: null }, true);
+  sendToAllClients(session, 0, MESSAGES.MSG_BEGIN_HOLDING, 0, onOff);
 }
 
 function cancelVotingTimer(session) {
   clearInterval(session.votingTimer);
-  session.votingTimer = null;
-  sendToAllClients(session, 0, MSG_BEGIN_VOTING, 0, 0);
+  session.patchState({ votingTimer: null }, true);
+  sendToAllClients(session, 0, MESSAGES.MSG_BEGIN_VOTING, 0, 0);
 }
 
 function updateNumberOfConnectionForSession(session) {
-  var countPlayer = wsServer.connections.filter(
+  const countPlayer = wsServer.connections.filter(
     (conn) => conn.sessionId == session.id && !conn.isAdmin && conn.isStaff
   ).length;
-  var countRider = wsServer.connections.filter(
+  const countRider = wsServer.connections.filter(
     (conn) => conn.sessionId == session.id && !conn.isAdmin && !conn.isStaff
   ).length;
   sendToAllAdmins(
     session,
     0,
-    MSG_SHOW_NUMBER_CONNECTION,
+    MESSAGES.MSG_SHOW_NUMBER_CONNECTION,
     countPlayer,
     countRider
   );
 }
 
 function messageHandle(conn, message) {
-  var obj = JSON.parse(message.utf8Data);
-  var sessionId = obj.sid;
-  var clientIndex = obj.cid;
-  var password = obj.sig;
-  var msg = obj.msg;
-  var value = obj.val;
-  var session = db.session.getById(sessionId);
-  if (session != null) {
-    var isStaff =
-      password == session.playerPassword || password == session.adminPassword
-        ? true
-        : false;
-    var isAdmin = password == session.adminPassword ? true : false;
+  const obj = JSON.parse(message.utf8Data);
+  const sessionId = obj.sid;
+  const clientIndex = obj.cid;
+  const password = obj.sig;
+  const msg = obj.msg;
+  const value = obj.val;
+  const session = db.sessionTable.getById(sessionId);
+  if (!session) {
+    console.log(
+      `Session with id ${sessionId} not found while processing message`
+    );
+    return;
+  }
 
-    if (msg == MSG_PING) {
-      var timeStamp = new Date().getTime();
-      conn.sessionId = sessionId;
-      conn.isAdmin = isAdmin;
-      conn.isStaff = isStaff;
-      sendToClient(conn, 0, msg, timeStamp, value);
-    } else if (msg == MSG_TAP) {
+  const isAdmin = password == session.adminPassword;
+  if (msg === MESSAGES.MSG_PING) {
+    conn.sessionId = sessionId;
+    conn.isAdmin = isAdmin;
+    conn.isStaff =
+      password == session.playerPassword || password == session.adminPassword;
+    sendToClient(conn, 0, msg, Date.now(), value);
+    return;
+  }
+
+  if (msg === MESSAGES.MSG_TAP) {
+    if (
+      !session.isHolding &&
+      clientIndex == session.currentIndex &&
+      !session.isPause &&
+      value != -1
+    ) {
       if (
-        !session.isHolding &&
-        clientIndex == session.currentIndex &&
-        !session.isPause &&
-        value != -1
+        session.votingDuration == 0 ||
+        session.listPreImages.includes(session.currentIndex)
       ) {
-        if (
-          session.votingDuration == 0 ||
-          session.listPreImages.includes(session.currentIndex)
-        ) {
-          session.setCurrentIndexTo(value);
-          sendToAllAdmins(
-            session,
-            0,
-            MSG_SELECT_HISTORY,
-            session.history,
-            session.historyIndex
-          );
-          sendToAllClientsWithDelay(
-            session,
-            100,
-            MSG_SHOW,
-            session.currentIndex
-          );
-          if (session.holdDuration > 0) {
-            startHoldingForSessionWithDelay(session, 0);
-          }
-        } else {
-          //change vote of client to new value
-          if (!session.isStandby) {
-            if (!session.isVoting) {
-              startVotingForSessionWithDelay(session, 100);
-            }
-            conn.currentVoteTo = value;
-            sendUpdateVotingToClient(conn, session);
-          }
-        }
-      }
-    } else if (msg == MSG_SHOW) {
-    } else if (msg == MSG_NEED_DISPLAY) {
-      if (!session.isPause) {
-        sendToClient(conn, 0, MSG_SHOW, session.currentIndex, 0);
-      }
-      if (session.isVoting) {
-        conn.currentVoteTo = -1;
-        sendToClient(
-          conn,
+        session.setCurrentIndexTo(value);
+        session.saveSessionStateToFile();
+
+        sendToAllAdmins(
+          session,
           0,
-          MSG_BEGIN_VOTING,
-          session.currentEndTimeStamp,
-          session.currentVotingDuration
-        );
-      }
-      if (session.isHolding) {
-        sendToClient(
-          conn,
-          0,
-          MSG_BEGIN_HOLDING,
-          session.currentEndHoldTimeStamp,
-          session.currentHoldingDuration
-        );
-      }
-      if (isAdmin) {
-        sendToClient(
-          conn,
-          0,
-          MSG_SELECT_HISTORY,
+          MESSAGES.MSG_SELECT_HISTORY,
           session.history,
           session.historyIndex
         );
-      }
-      updateNumberOfConnectionForSession(session);
-      sendToAllClients(session, 0, MSG_CHECK_HOLD, session.isHolding, 0);
-      sendToAllClients(
-        session,
-        0,
-        MSG_PAUSE,
-        session.isPause,
-        session.currentIndex
-      );
-    } else if (msg == MSG_UPDATE_VOTING) {
-    } else if (msg == MSG_CHECK_HOLD) {
-      if (isAdmin) {
-        if (session.isHolding && session.holdingTimer != null) {
-          cancelHoldingTimer(session, 0);
+        sendToAllClientsWithDelay(
+          session,
+          100,
+          MESSAGES.MSG_SHOW,
+          session.currentIndex
+        );
+        if (session.holdDuration > 0) {
+          startHoldingForSessionWithDelay(session, 0);
         }
-        session.isHolding = value;
-        sendToAllClients(session, 0, MSG_CHECK_HOLD, value, 0);
-      }
-    } else if (msg == MSG_FINISH) {
-      if (isAdmin) {
-        stopSession(session);
-      }
-    } else if (msg == MSG_PAUSE) {
-      if (isAdmin) {
-        pauseSession(session, value);
-      }
-    } else if (msg == MSG_SELECT_HISTORY) {
-      if (isAdmin) {
-        jumpScoreForSession(session, value);
+      } else {
+        //change vote of client to new value
+        if (!session.isStandby) {
+          if (!session.isVoting) {
+            startVotingForSessionWithDelay(session, 100);
+          }
+          conn.currentVoteTo = value;
+          sendUpdateVotingToClient(conn, session);
+        }
       }
     }
+    return;
+  }
+
+  if (msg === MESSAGES.MSG_NEED_DISPLAY) {
+    if (!session.isPause) {
+      sendToClient(conn, 0, MESSAGES.MSG_SHOW, session.currentIndex, 0);
+    }
+
+    if (session.isVoting) {
+      conn.currentVoteTo = -1;
+      sendToClient(
+        conn,
+        0,
+        MESSAGES.MSG_BEGIN_VOTING,
+        session.currentEndTimeStamp,
+        session.currentVotingDuration
+      );
+    }
+
+    if (session.isHolding) {
+      sendToClient(
+        conn,
+        0,
+        MESSAGES.MSG_BEGIN_HOLDING,
+        session.currentEndHoldTimeStamp,
+        session.currentHoldingDuration
+      );
+    }
+
+    if (isAdmin) {
+      sendToClient(
+        conn,
+        0,
+        MESSAGES.MSG_SELECT_HISTORY,
+        session.history,
+        session.historyIndex
+      );
+    }
+
+    updateNumberOfConnectionForSession(session);
+    sendToAllClients(session, 0, MESSAGES.MSG_CHECK_HOLD, session.isHolding, 0);
+    sendToAllClients(
+      session,
+      0,
+      MESSAGES.MSG_PAUSE,
+      session.isPause,
+      session.currentIndex
+    );
+    return;
+  }
+
+  if (isAdmin && msg === MESSAGES.MSG_CHECK_HOLD) {
+    if (session.isHolding && session.holdingTimer != null) {
+      cancelHoldingTimer(session, 0);
+    }
+
+    session.patchState({ isHolding: value }, true);
+    sendToAllClients(session, 0, MESSAGES.MSG_CHECK_HOLD, value, 0);
+    return;
+  }
+
+  if (isAdmin && msg === MESSAGES.MSG_FINISH) {
+    db.sessionTable.forceSessionStop(session);
+    sendToAllClientsWithDelay(session, 100, MESSAGES.MSG_FINISH, 0, 0);
+    return;
+  }
+
+  if (isAdmin && msg === MESSAGES.MSG_PAUSE) {
+    session.patchState({ isPause: value }, true);
+    sendToAllClients(
+      session,
+      0,
+      MESSAGES.MSG_PAUSE,
+      value,
+      session.currentIndex
+    );
+    return;
+  }
+
+  if (isAdmin && msg === MESSAGES.MSG_SELECT_HISTORY) {
+    jumpScoreForSession(session, value);
+    return;
   }
 }
 
 /**
  * Tempo Database
  */
-class BMAdmin {
-  constructor(id, name, password, isActive) {
-    this.id = id;
-    this.name = name;
-    this.password = password;
-    this.isActive = isActive;
-  }
-}
 
-class BMSession {
-  constructor(
-    id,
-    adminId,
-    folder,
-    sessionName,
-    adminpassword,
-    playerpassword,
-    isHtml5 = false,
-    fadeDuration = 1000
-  ) {
-    this.id = id;
-    this.ownerId = adminId;
-    this.sessionName = sessionName;
-    this.adminPassword = adminpassword;
-    this.playerPassword = playerpassword;
-    this.votingDuration = 0;
-
-    this.selectedScoreIndex = -1;
-    this.selectedCooldownTimeIndex = -1;
-    this.selectedHoldTimeIndex = -1;
-
-    this.currentEndTimeStamp = 0;
-    this.currentVotingDuration = 0;
-
-    this.currentEndHoldTimeStamp = 0;
-    this.currentHoldingDuration = 0;
-
-    this.currentIndex = 0;
-
-    this.isHolding = true;
-    this.isPause = false;
-    this.holdingTimer = null;
-
-    this.synTimeInterval = 0.5;
-    this.standbyDuration = 3;
-    this.holdDuration = 0;
-    this.votingDuration = 10;
-
-    this.isHtml5 = isHtml5;
-    this.fadeDuration = fadeDuration;
-
-    this.loadScoreAtFolder(folder);
-  }
-
-  checkScoreHasSounds(score) {
-    const dir = `${dataDir}/${score}`;
-
-    if (!fs.existsSync(dir)) {
-      return;
-    }
-
-    const fileList = fs.readdirSync(dir);
-    return fileList.includes("Sounds") && fileList.includes("Frames");
-  }
-
-  loadScoreAtFolder(folderName) {
-    this.folder = folderName;
-    this.hasSounds = this.checkScoreHasSounds(folderName);
-
-    this.soundList = this.hasSounds ? this.getSoundList(folderName) : [];
-
-    this.buildSVGContent();
-
-    this.initState();
-  }
-
-  //this use listFiles generate from buildSVGContent. So run it after that method
-  initState() {
-    if (this.listFiles.length > 0) {
-      //history
-      this.history = [];
-      this.historyIndex = 0;
-
-      //random pick first index (files begin with Pre or Start)
-      var listPreFile = this.listFiles.filter((o) => o.startsWith("PRE"));
-      var listStartFile = this.listFiles.filter((o) => o.startsWith("START"));
-      var startedFile =
-        listStartFile.length > 0
-          ? this.randomItem(listStartFile)
-          : this.randomItem(listPreFile);
-      this.setCurrentIndexTo(this.listFiles.indexOf(startedFile));
-    }
-  }
-
-  setCurrentIndexTo(index) {
-    this.currentIndex = parseInt(index);
-    this.isVoting = false;
-    this.isStandby = false;
-
-    if (this.history.length > 0) {
-      var countRemove = Math.max(
-        0,
-        this.history.length - (this.historyIndex + 1)
-      );
-      var indexRemove = Math.min(
-        this.history.length - 1,
-        this.historyIndex + 1
-      );
-      if (countRemove > 0) {
-        this.history.splice(indexRemove - 1, countRemove + 1);
-      }
-    }
-    var objectName = this.listFiles[index];
-
-    this.history.push(objectName);
-    this.historyIndex = this.history.length - 1;
-  }
-
-  getSoundList(folder) {
-    const dir = `${dataDir}/${folder}/Sounds`;
-    if (!fs.existsSync(dir)) {
-      return [];
-    }
-
-    return fs.readdirSync(dir);
-  }
-
-  buildSVGContent() {
-    const dir = this.hasSounds
-      ? `${dataDir}/${this.folder}/Frames`
-      : `${dataDir}/${this.folder}`;
-
-    if (fs.existsSync(dir)) {
-      this.listFiles = fs.readdirSync(dir);
-      this.listFilesInLowerCase = this.listFiles.map((fileName) =>
-        fileName.toLowerCase()
-      );
-
-      this.listPreImages = [];
-      this.listMultiChooseImages = [];
-      this.svgContent = "";
-
-      if (this.listFiles.length > 0) {
-        this.listFiles.forEach((filename) => {
-          var filePath = `${dir}/${filename}`;
-          var content = fs.readFileSync(filePath, "utf8");
-          var svg = this.regexWithPattern(content, /<svg.*?<\/svg>/is, 0);
-          var svgIndex = this.listFilesInLowerCase.indexOf(
-            filename.toLowerCase()
-          );
-          if (filename.startsWith("PRE") || filename.startsWith("START")) {
-            this.listPreImages.push(svgIndex);
-          }
-          svg = svg.replace(
-            "<svg",
-            `<svg id="svg${svgIndex}" class="hidden" file="${filename}" `
-          );
-          var listA = svg.match(/<a.*?>/g);
-          if (listA != null) {
-            if (listA.length > 1 && !filename.startsWith("PRE")) {
-              this.listMultiChooseImages.push(svgIndex);
-            }
-            listA.forEach((a) => {
-              var link = this.regexWithPattern(a, /.*?="(.*?)"/is, 1);
-              var aIndex = this.listFilesInLowerCase.indexOf(
-                link.toLowerCase()
-              );
-              var newA = `<a href="javascript:tapOn(${aIndex});">`;
-              svg = svg.replace(a, newA);
-              if (!filename.startsWith("PRE")) {
-                newA = newA.replace(" ", "\\s*");
-                newA = newA.replace("(", "\\(");
-                newA = newA.replace(")", "\\)");
-
-                var pattern = `${newA}.*?serif:id="Ring and Background".*?>.*?<ellipse.*?/>.*?(<ellipse.*?/>)`;
-                var ellipse = this.regexWithPattern(
-                  svg,
-                  new RegExp(pattern, "is"),
-                  1
-                );
-                if (ellipse != null) {
-                  //add elipse
-                  var cx = parseFloat(
-                    this.regexWithPattern(ellipse, /<ellipse.*?cx="(.*?)"/is, 1)
-                  );
-                  var cy = parseFloat(
-                    this.regexWithPattern(ellipse, /<ellipse.*?cy="(.*?)"/is, 1)
-                  );
-                  var rx =
-                    parseFloat(
-                      this.regexWithPattern(
-                        ellipse,
-                        /<ellipse.*?rx="(.*?)"/is,
-                        1
-                      )
-                    ) * 0.9126;
-                  var ry =
-                    parseFloat(
-                      this.regexWithPattern(
-                        ellipse,
-                        /<ellipse.*?rx="(.*?)"/is,
-                        1
-                      )
-                    ) * 0.9126;
-                  var style = this.regexWithPattern(
-                    ellipse,
-                    /<ellipse.*?style="(.*?)"/is,
-                    1
-                  );
-                  var ellipseId = `${svgIndex}-${aIndex}`;
-                  ellipse = this.regexWithPattern(
-                    svg,
-                    new RegExp(pattern, "is"),
-                    0
-                  );
-
-                  const newEllipse = `${ellipse}\r\n<ellipse id="${ellipseId}" class="hidden" cx="${cx}" cy="${cy}" rx="${rx}" ry="${ry}" style="${style}"></ellipse>`;
-                  svg = svg.replace(ellipse, newEllipse);
-
-                  //add text area
-                  pattern = `${newA}(.*?serif:id="Ring and Background".*?)<g id="Notes`;
-                  var midGap = this.regexWithPattern(
-                    svg,
-                    new RegExp(pattern, "is"),
-                    1
-                  );
-                  var textId = `ta-${svgIndex}-${aIndex}`;
-
-                  const newTextArea = `${midGap}\r\n<g xmlns="http://www.w3.org/2000/svg" transform="matrix(-3.99305,0,0,-3.99305,0,0)">\r\n<text id="${textId}" x="-212.19" y="-231.138" style="font-family:\'ArialMT\', \'Arial\', sans-serif; font-size: 72px; fill-opacity: 1.0;"></text>\r\n</g>\r\n`;
-                  svg = svg.replace(midGap, newTextArea);
-                }
-                pattern = `${newA}.*?<g[^>]*?id="Notes.*?>(.*?</g>[^<]*?</g>)`;
-                var notesEllipse = this.regexWithPattern(
-                  svg,
-                  new RegExp(pattern, "is"),
-                  1
-                );
-                if (notesEllipse != null) {
-                  var listEllipse = this.regexFull(
-                    notesEllipse,
-                    "<ellipse[^>]*?>"
-                  );
-                  if (listEllipse != null) {
-                    for (var i = 0; i < listEllipse.length; i++) {
-                      var oldEllipse = listEllipse[i];
-                      var part = oldEllipse.match(
-                        /(<ellipse[^>]*?)(style=".*?fill:rgb\((.*?),(.*?),(.*?)\).*?")([^>]*?>)/is
-                      );
-                      if (part != null) {
-                        const newEllipse = `${part[1]}id="dot${svgIndex}" r="${part[3]}" g="${part[4]}" b="${part[5]}" ${part[2]}${part[6]}`;
-                        svg = svg.replace(oldEllipse, newEllipse);
-                      }
-                    }
-                  }
-                }
-              }
-            });
-          }
-          this.svgContent += svg;
-          this.svgContent += "\n";
-        });
-        //final
-      }
-    }
-    console.log("finish building svg content...");
-  }
-
-  regexWithPattern(str, pattern, groupId) {
-    var match = str.match(pattern);
-    if (match != null) {
-      return match[groupId];
-    }
-    return null;
-  }
-
-  regexFull(str, patternInStr) {
-    return str.match(new RegExp(patternInStr, "gis"));
-  }
-
-  randomItem(arr) {
-    return arr[Math.floor(Math.random() * arr.length)];
-  }
-}
-
-class BMAdminTable {
-  constructor() {
-    this.clear();
-  }
-
-  clear() {
-    this.data = [];
-    this.count = 0;
-  }
-
-  add(id, name, password, isActive) {
-    this.count++;
-    var a = new BMAdmin(id, name, password, isActive);
-    this.data.push(a);
-    return a;
-  }
-
-  addWithIdAuto(name, password, isActive) {
-    this.count++;
-    var max = 0;
-    for (var i = 0; i < this.data.length; i++) {
-      var id = parseInt(this.data[i].id);
-      if (id > max) {
-        max = id;
-      }
-    }
-    var checkExist = this.data.filter((o) => o.name.trim() == name.trim());
-    if (checkExist.length == 0) {
-      max++;
-      var a = new BMAdmin(max.toString(), name, password, isActive);
-      this.data.push(a);
-      return a;
-    }
-    return null;
-  }
-
-  getById(id) {
-    return this.data.find((e) => e.id.trim() == id);
-  }
-
-  getByName(name) {
-    return this.data.find((e) => e.name.trim() == name);
-  }
-
-  dumpToFile(path) {
-    var str = "";
-    for (var i = 0; i < this.data.length; i++) {
-      str += this.data[i].id.trim() + "\r\n";
-      str += this.data[i].name.trim() + "\r\n";
-      str += this.data[i].password.trim() + "\r\n";
-      if (i == this.data.length - 1) {
-        str += this.data[i].isActive.trim();
-      } else {
-        str += this.data[i].isActive.trim() + "\r\n";
-      }
-    }
-    fs.writeFileSync(path, str, "utf8");
-  }
-}
-
-class BMSessionTable {
-  constructor() {
-    this.data = [];
-    this.count = 0;
-  }
-  add(
-    adminId,
-    folder,
-    sessionName,
-    adminpassword,
-    playerpassword,
-    isHtml5,
-    fadeDuration
-  ) {
-    //check folder exist
-    var dir = dataDir + "/" + folder;
-    if (fs.existsSync(dir)) {
-      this.count++;
-      var s = new BMSession(
-        this.count,
-        adminId,
-        folder,
-        sessionName,
-        adminpassword,
-        playerpassword,
-        isHtml5,
-        fadeDuration
-      );
-      this.data.push(s);
-      return s;
-    }
-    return null;
-  }
-
-  remove(session) {
-    this.data.splice(this.data.indexOf(session), 1);
-  }
-
-  getById(id) {
-    return this.data.find((e) => e.id == id);
-  }
-
-  getByAdminId(id) {
-    return this.data.find((e) => e.adminId.trim() == id);
-  }
-
-  getBySessionName(name) {
-    return this.data.find((e) => e.sessionName.trim() == name);
-  }
-}
-
-class BMDatabase {
-  constructor() {
-    this.admin = new BMAdminTable();
-    this.session = new BMSessionTable();
-    this.shouldAutoRedirect = false;
-    this.autoRedirectSession = "";
-    this.autoRedirectPassword = "";
-
-    this.wsPort = websocketport;
-    this.hostAddress = hostaddress;
-    this.MSG_PING = MSG_PING;
-    this.MSG_TAP = MSG_TAP;
-    this.MSG_SHOW = MSG_SHOW;
-    this.MSG_NEED_DISPLAY = MSG_NEED_DISPLAY;
-    this.MSG_UPDATE_VOTING = MSG_UPDATE_VOTING;
-    this.MSG_BEGIN_VOTING = MSG_BEGIN_VOTING;
-    this.MSG_BEGIN_STANDBY = MSG_BEGIN_STANDBY;
-    this.MSG_CHECK_HOLD = MSG_CHECK_HOLD;
-    this.MSG_BEGIN_HOLDING = MSG_BEGIN_HOLDING;
-    this.MSG_FINISH = MSG_FINISH;
-    this.MSG_PAUSE = MSG_PAUSE;
-    this.MSG_SELECT_HISTORY = MSG_SELECT_HISTORY;
-    this.MSG_SHOW_NUMBER_CONNECTION = MSG_SHOW_NUMBER_CONNECTION;
-  }
-
-  dumpToFile(path) {
-    var str = "";
-    str += (this.shouldAutoRedirect ? "1" : "0") + "\r\n";
-    str += this.autoRedirectSession.trim() + "\r\n";
-    str += this.autoRedirectPassword.trim() + "\r\n";
-
-    fs.writeFileSync(path, str, "utf8");
-  }
-
-  getListScore() {
-    var listFiles = fs.readdirSync(dataDir);
-    var scoreList = [];
-    for (var i = 0; i < listFiles.length; i++) {
-      var path = dataDir + "/" + listFiles[i];
-      if (fs.lstatSync(path).isDirectory()) {
-        scoreList.push(listFiles[i]);
-      }
-    }
-    return scoreList;
-  }
-}
-
-var db = new BMDatabase();
+const db = new BMDatabase({ hostaddress });
 db.adminUsername = "admin";
 db.adminPassword = "g3tn3st3d";
 
@@ -1079,24 +593,25 @@ const wsPort = process.env.WS_PORT || 8080;
 const serverIp = process.env.SERVER_IP;
 const wsPath = `wss://${serverIp}`;
 
-console.log(`App is running on port ${wsPort}`);
+console.log(`Websocket is running on port ${wsPort}`);
 console.log(`Websocket path is ${wsPath}`);
 
 /**
  * Admin data
  */
 
-var adminDataFile = accountDir + "/admin.dat";
+const adminDataFile = accountDir + "/admin.dat";
 if (fs.existsSync(adminDataFile)) {
   var contents = fs.readFileSync(adminDataFile, "utf8");
   var lines = contents.split("\n");
+
   for (var i = 0; i < lines.length; i++) {
     var id = lines[i].trim();
     var user = lines[i + 1].trim();
     var pass = lines[i + 2].trim();
     var isActive = lines[i + 3].trim();
     i += 3;
-    var ad = db.admin.add(id, user, pass, isActive);
+    db.admin.add(id, user, pass, isActive);
   }
 } else {
   console.log("Cound not find admin.dat. Creating a new one");
@@ -1108,10 +623,10 @@ if (fs.existsSync(adminDataFile)) {
  * Config
  */
 
-var configDataFile = accountDir + "/db.dat";
+const configDataFile = accountDir + "/db.dat";
 if (fs.existsSync(configDataFile)) {
-  var contents = fs.readFileSync(configDataFile, "utf8");
-  var lines = contents.split("\n");
+  const contents = fs.readFileSync(configDataFile, "utf8");
+  const lines = contents.split("\n");
 
   db.shouldAutoRedirect = lines[0].trim() == "1" ? true : false;
   db.autoRedirectSession = lines[1].trim();
@@ -1125,24 +640,27 @@ if (fs.existsSync(configDataFile)) {
 }
 
 //new session
-var kip = db.admin.getByName("kip");
-var ownerId = kip.id;
-var folderName = "Serotonin-v2";
-var displayName = "mcknight";
-var adminPass = "managerpassword";
-var playerPass = "mcknight";
+const kip = db.admin.getByName("kip");
+const ownerId = kip.id;
+const folderName = "Serotonin-v2";
+const displayName = "mcknight";
+const adminPass = "managerpassword";
+const playerPass = "mcknight";
+const sessionId = `${ownerId}-serotonin-v2`;
 db.wsPath = wsPath;
 
-var session = db.session.add(
-  ownerId,
-  folderName,
-  displayName,
-  adminPass,
-  playerPass
-);
-session.votingDuration = 0;
-session.holdDuration = 0;
+if (!db.sessionTable.getById(sessionId)) {
+  const session = db.sessionTable.add(
+    sessionId,
+    ownerId,
+    folderName,
+    displayName,
+    adminPass,
+    playerPass
+  );
+  session.patchState({ votingDuration: 0, holdDuration: 0 }, true);
+}
 
 app.set("Database", db);
-app.set("ForceRefresh", forceRefresh);
-app.set("ForceStop", forceStop);
+app.set("sendToAllClients", sendToAllClients);
+app.set("sendToAllClientsWithDelay", sendToAllClientsWithDelay);

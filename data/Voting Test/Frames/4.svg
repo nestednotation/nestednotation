@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
+<svg width="100%" height="100%" viewBox="0 0 408 596" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" xml:space="preserve" xmlns:serif="http://www.serif.com/" style="fill-rule:evenodd;clip-rule:evenodd;stroke-linecap:square;stroke-linejoin:round;stroke-miterlimit:1.5;">
+  <rect id="PRE-4" x="0" y="0" width="408" height="595.2" style="fill:none;"/>
+  <clipPath id="_clip1">
+    <rect x="0" y="0" width="408" height="595.2"/>
+  </clipPath>
+  <g clip-path="url(#_clip1)">
+    <g id="SG">
+      <g id="Meta-Ring">
+        <path d="M276.495,355.174c-31.515,54.585 -101.415,73.318 -155.997,41.805c-54.581,-31.513 -73.308,-101.414 -41.793,-156c31.515,-54.586 101.415,-73.318 155.997,-41.805c54.581,31.512 73.308,101.414 41.793,156Z" style="fill:none;stroke:#000;stroke-width:0.11px;"/>
+        <path d="M276.495,355.174l-6.322,-3.651" style="fill:none;stroke:#000;stroke-width:0.11px;"/>
+        <path d="M85.027,244.629l-6.322,-3.65" style="fill:none;stroke:#000;stroke-width:0.11px;"/>
+        <path d="M124.149,390.657l-3.651,6.322" style="fill:none;stroke:#000;stroke-width:0.11px;"/>
+        <path d="M234.702,199.174l-3.651,6.322" style="fill:none;stroke:#000;stroke-width:0.11px;"/>
+        <path d="M234.699,396.975l-3.65,-6.322" style="fill:none;stroke:#000;stroke-width:0.11px;"/>
+        <path d="M124.151,205.5l-3.65,-6.322" style="fill:none;stroke:#000;stroke-width:0.11px;"/>
+        <path d="M85.02,351.528l-6.322,3.65" style="fill:none;stroke:#000;stroke-width:0.11px;"/>
+        <path d="M276.502,240.975l-6.322,3.65" style="fill:none;stroke:#000;stroke-width:0.11px;"/>
+        <path d="M177.6,412.279l-0,-7.3" style="fill:none;stroke:#000;stroke-width:0.11px;"/>
+        <path d="M177.6,191.174l-0,-7.3" style="fill:none;stroke:#000;stroke-width:0.11px;"/>
+        <path d="M70.702,298.076l-7.3,0" style="fill:none;stroke:#000;stroke-width:0.11px;"/>
+        <path d="M291.798,298.076l-7.3,0" style="fill:none;stroke:#000;stroke-width:0.11px;"/>
+      </g>
+      <g id="Ring-Backers" serif:id="Ring Backers"></g>
+      <g id="Child-Rings" serif:id="Child Rings">
+		  <a href="HUB.svg">
+        <g id="_4" sound="4" serif:id="4">
+          <g id="Ring-and-Background" serif:id="Ring and Background">
+            <circle id="Sounder" cx="316.954" cy="381.534" r="22.08" style="fill:#fff;"/>
+            <path d="M333.504,400.006c9.729,-9.949 9.728,-25.728 -0.003,-35.244c-9.268,-9.062 -24.292,-8.727 -33.557,0.748c-8.778,8.977 -8.777,23.214 0.003,31.799c8.292,8.109 21.734,7.809 30.025,-0.669c7.802,-7.979 7.801,-20.634 -0.003,-28.266c-7.317,-7.154 -19.178,-6.89 -26.493,0.591c-6.827,6.982 -6.826,18.055 0.003,24.732c6.341,6.201 16.62,5.972 22.96,-0.511c5.852,-5.985 5.851,-15.476 -0.002,-21.2c-5.366,-5.246 -14.064,-5.052 -19.428,0.433c-4.877,4.987 -4.876,12.897 0.002,17.667c4.39,4.292 11.506,4.134 15.895,-0.355c3.902,-3.989 3.901,-10.317 -0.001,-14.133c-3.415,-3.338 -8.95,-3.215 -12.363,0.276c-2.926,2.992 -2.926,7.738 0.001,10.6c2.439,2.384 6.392,2.296 8.831,-0.197c1.95,-1.995 1.95,-5.159 -0.001,-7.067c-1.463,-1.431 -3.836,-1.378 -5.299,0.118c-0.975,0.998 -0.975,2.58 0.001,3.534c0.487,0.477 1.278,0.459 1.766,-0.04" style="fill:none;stroke:#000;stroke-width:1.81px;stroke-linecap:round;"/>
+          </g>
+        </g>
+		  </a>
+      </g>
+    </g>
+    <rect id="Document-Border" serif:id="Document Border" x="-0" y="0.84" width="408" height="594.36" style="fill:none;stroke:#000;stroke-width:4px;stroke-linecap:round;"/>
+  </g>
+</svg>

@@ -2,6 +2,10 @@ body {
   background-color: white;
 }
 
+* {
+  box-sizing: border-box;
+}
+
 svg {
   display: block;
   margin-left: auto;
@@ -151,32 +155,31 @@ input[type="button"] {
 }
 
 .control-container {
-  float: right;
   display: flex;
-  row-gap: 2.5%;
-  column-gap: 3.5%;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.user-control-container {
+  display: flex;
+  column-gap: max(1%, 16px);
   flex-wrap: wrap;
   justify-content: end;
-  height: 8vh;
-}
-
-.control-container * {
-  box-sizing: border-box;
-}
-
-.control-container button {
-  padding: 0;
-  border: none;
-  background: none;
-  cursor: pointer;
+  align-items: center;
+  height: 4vh;
+  margin-inline-start: auto;
 }
 
 .count-down-container {
-  display: flex;
+  display: none;
   gap: 3.5%;
-  width: 100%;
-  height: 20%;
+  height: 35%;
   justify-content: end;
+}
+
+.count-down-container:has(.circle.active) {
+  display: flex;
 }
 
 .count-down-container .circle {
@@ -196,17 +199,15 @@ input[type="button"] {
 }
 
 #cooldown-icon,
-#hold-icon,
-#mode-btn {
-  height: 60%;
+#hold-icon {
+  height: 100%;
   aspect-ratio: 1;
+  display: none;
 }
 
-#sound-btn img,
-#note-mode-btn img,
-#chord-mode-btn img {
-  width: 100%;
-  height: 100%;
+#cooldown-icon.active,
+#hold-icon.active {
+  display: block;
 }
 
 #cooldown-icon,
@@ -219,20 +220,357 @@ input[type="button"] {
   opacity: 1;
 }
 
-#note-mode-icon,
-#chord-mode-icon,
-#sound-off-icon {
+.guide-mode.holding svg {
+  filter: grayscale(100%);
+}
+
+.session-control-container {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+/* Styles related to play/guide mode */
+body {
+  margin: 0;
+}
+
+.session-page {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* For iPad specifically */
+body.ipad {
+  padding-block-end: 8px;
+}
+
+#MainContent {
+  flex: 1;
+  min-height: 0;
+}
+
+.guide-mode .grayscale-on-guide,
+.play-mode .grayscale-on-play {
+  filter: url("#grayscale");
+}
+
+.change-mode-container {
+  position: relative;
+  width: 100%;
+  height: 60px;
+  display: flex;
+  bottom: 0px;
+  left: 0px;
+  background: #fff;
+  justify-content: center;
+  align-items: center;
+}
+
+.change-mode-btn {
+  width: min(40%, 100px);
+  height: 100%;
+  background: none;
+  border: none;
+  padding: 4px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  color: #000;
+}
+
+.change-mode-btn:hover {
+  cursor: pointer;
+}
+
+.mode-indicator-container {
+  position: absolute;
+  left: 50%;
+  top: 4px;
+  transform: translateX(-50%);
+  background: #dadada;
+  border-radius: 8px;
+  height: 50%;
+  width: min(80%, 200px);
+  display: flex;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.mode-indicator {
+  background: #ff7700;
+  border-radius: 8px;
+  height: 100%;
+  width: 50%;
+  transition: transform 0.2s ease-in-out;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.mode-indicator img {
+  height: calc(100% - 4px);
+  aspect-ratio: 1;
+  opacity: 0;
+  transition: opacity 0.2s;
+  transform: scale(0.75);
+}
+
+.change-mode-container[data-guide-lock="true"] .mode-indicator img {
+  opacity: 1;
+}
+
+.change-mode-container[data-mode="PLAY"] .mode-indicator {
+  transform: translateX(0%);
+}
+
+.change-mode-container[data-mode="GUIDE"] .mode-indicator {
+  transform: translateX(100%);
+}
+
+.session-status-container {
+  left: 0;
+  padding-inline: 4px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.session-status-container button {
+  font-size: 16px;
+}
+
+/* Side menu styles */
+
+.side-menu-trigger {
+  background: none;
+  border: none;
+  height: 100%;
+  aspect-ratio: 1;
+  padding: 4px;
+  cursor: pointer;
+}
+
+.side-menu-trigger img {
   height: 100%;
   width: 100%;
+}
+
+.side-menu-container {
+  position: fixed;
+  width: 100%;
+  height: 100%;
+  background: #00000048;
+  top: 0;
+  left: 0;
+  transition: background 0.2s;
+}
+
+.side-menu-container img {
+  width: 24px;
+  height: 24px;
+  pointer-events: none;
+  user-select: none;
+}
+
+.side-menu-title {
+  background: #fff;
+  padding: 8px 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transition: transform 0.2s;
+}
+
+.score-title {
+  background: none;
+  border: none;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 16px;
+  cursor: pointer;
+}
+
+.close-btn {
+  background: none;
+  border: none;
+  padding: 8px;
+  cursor: pointer;
+  margin-left: auto;
+}
+
+.close-btn img {
+  width: 24px;
+  height: 24px;
+}
+
+.side-menu-list {
+  background: #fff;
+  width: min(90%, 270px);
+  height: 100%;
+  margin-left: auto;
+  transition: transform 0.2s;
+}
+
+.side-menu-list ul {
+  list-style: none;
+  margin: 0;
+  padding: 8px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.side-menu-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  user-select: none;
+  cursor: pointer;
+}
+
+.autoplay-toggler {
+  height: 24px;
+  border-radius: 9999px;
+  width: 42px;
+  background: #000;
+  position: relative;
+  transition: background 0.2s;
+}
+
+.autoplay-toggler-knob {
+  position: absolute;
+  border-radius: 9999px;
+  height: 20px;
+  width: 20px;
+  background: #fff;
+  left: 2px;
+  top: 2px;
+  transition: left 0.2s;
+}
+
+.autoplay-toggler[data-active="true"] {
+  background: #009d00;
+}
+
+.autoplay-toggler[data-active="true"] .autoplay-toggler-knob {
+  left: 20px;
+}
+
+.side-menu-container[data-show="false"] {
+  background: #00000000;
+}
+
+.side-menu-container[data-show="false"] .side-menu-list {
+  transform: translateX(105%);
+}
+
+.side-menu-container[data-show="false"] .side-menu-title {
+  transform: translateY(-105%);
+}
+
+.play-mode [sound][data-playing="true"] {
+  animation: playingNode 6s infinite;
+}
+
+/* Hide user vote in play mode */
+.play-mode text[id^="ta-"] {
   display: none;
 }
 
-#mode-btn[data-mode="note"] #note-mode-icon,
-#mode-btn[data-mode="chord"] #chord-mode-icon,
-#mode-btn[data-mode="mute"] #sound-off-icon {
+.loading-sound.play-mode svg {
+  pointer-events: none;
+  filter: grayscale(100%);
+}
+
+@keyframes playingNode {
+  0% {
+    opacity: 0.1;
+  }
+  33% {
+    opacity: 1;
+  }
+  66% {
+    opacity: 0.1;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+.loading-sound #loading-sound-indicator {
   display: block;
 }
 
-#sound-off-icon {
-  opacity: 0.2;
+#loading-sound-indicator {
+  font-size: 18px;
+  color: #9a9a9a;
+  background: rgba(255, 255, 255, 0.9);
+  border-radius: 8px;
+  padding: 4px 8px 8px 8px;
+  width: fit-content;
+  margin: auto;
+  position: fixed;
+  bottom: calc(min(10vh, 60px) + 30px);
+  left: 50%;
+  transform: translateX(-50%);
+  display: none;
+}
+
+#loading-sound-indicator::before {
+  content: "";
+  display: block;
+  position: absolute;
+  top: calc(100% + -6px);
+  left: 8px;
+  width: 0%;
+  height: 2px;
+  background-color: #9a9a9a;
+  animation: infiniteExpand 1.5s infinite linear;
+}
+
+@keyframes infiniteExpand {
+  to {
+    width: calc(100% - 16px);
+  }
+}
+
+.about-containter {
+  width: 100%;
+  height: 100%;
+  position: fixed;
+  top: 0;
+  left: 0;
+  background: #fff;
+  transform: translateX(100%);
+  transition: transform 0.3s;
+  display: flex;
+  flex-direction: column;
+}
+
+.about-containter.showing {
+  transform: translateX(0);
+}
+
+.about-content {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  overflow: hidden;
+}
+
+.return-btn {
+  background: none;
+  border: none;
+  padding: 8px;
+  font-size: 16px;
+  font-family: Comfortaa;
+  color: #000;
+  cursor: pointer;
 }

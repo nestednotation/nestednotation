@@ -7,6 +7,10 @@ env:
   CI: true
   SSH_PORT: 22
 
+permissions:
+  contents: write
+  pull-requests: write
+
 jobs:
   send-noti-on-start:
     runs-on: ubuntu-latest
@@ -24,6 +28,15 @@ jobs:
             Commit by: <b> ${{ github.event.head_commit.author.name}} </b>
             See changes: https://github.com/${{ github.repository }}/commit/${{github.sha}}
             🚀
+
+  release-please:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: googleapis/release-please-action@v4
+        with:
+          token: ${{ secrets.RELEASE_TOKEN }}
+
+
   deploy:
     runs-on: ubuntu-latest
     needs: send-noti-on-start
@@ -40,9 +53,10 @@ jobs:
             whoami
             pwd
             cd nestednotation
+            git reset --hard
             git pull origin develop
             npm install
-            pm2 start ecosystem.config.js -f
+            pm2 start ecosystem.config.js -f  --env development
   send-noti-on-complete:
     runs-on: ubuntu-latest
     needs: deploy

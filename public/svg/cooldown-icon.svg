@@ -1,5 +1,15 @@
-<svg width="55" height="55" viewBox="0 0 55 55" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <path d="M53.5 27.5C53.5 41.8594 41.8594 53.5 27.5 53.5C13.1406 53.5 1.5 41.8594 1.5 27.5C1.5 13.1406 13.1406 1.5 27.5 1.5C41.8594 1.5 53.5 13.1406 53.5 27.5Z" stroke="black" stroke-width="3" stroke-miterlimit="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-  <path d="M13.6819 29.9974C19.1092 32.1185 22.1455 39.3073 22.1455 39.3073C22.1455 39.3073 25.2664 23.5894 41.3261 15.6886" stroke="black" stroke-width="3" stroke-miterlimit="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-  </svg>
-  
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
+<svg width="100%" height="100%" viewBox="0 0 55 55" version="1.1" xmlns="http://www.w3.org/2000/svg"
+  xmlns:xlink="http://www.w3.org/1999/xlink" xml:space="preserve" xmlns:serif="http://www.serif.com/"
+  style="fill-rule:evenodd;clip-rule:evenodd;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:1.5;">
+  <g transform="matrix(0.865385,0,0,0.865385,3.70192,3.70192)">
+    <path
+      d="M53.5,27.5C53.5,41.859 41.859,53.5 27.5,53.5C13.141,53.5 1.5,41.859 1.5,27.5C1.5,13.141 13.141,1.5 27.5,1.5C41.859,1.5 53.5,13.141 53.5,27.5Z"
+      style="fill:none;fill-rule:nonzero;stroke:black;stroke-width:3px;" />
+  </g>
+  <g transform="matrix(0.865385,0,0,0.865385,3.70192,3.70192)">
+    <path d="M13.682,29.997C19.109,32.118 22.145,39.307 22.145,39.307C22.145,39.307 25.266,23.589 41.326,15.689"
+      style="fill:none;fill-rule:nonzero;stroke:black;stroke-width:3px;" />
+  </g>
+</svg>

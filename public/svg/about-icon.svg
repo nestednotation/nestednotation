@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
+<svg width="100%" height="100%" viewBox="0 0 118 117" version="1.1" xmlns="http://www.w3.org/2000/svg"
+  xmlns:xlink="http://www.w3.org/1999/xlink" xml:space="preserve" xmlns:serif="http://www.serif.com/"
+  style="fill-rule:evenodd;clip-rule:evenodd;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:1.5;">
+  <g id="About-Nested-Notation-Icon-v1" serif:id="About Nested Notation Icon v1"
+    transform="matrix(0.265847,0,0,0.26359,0,0)">
+    <rect x="0" y="0" width="443.864" height="443.871" style="fill:none;" />
+    <g id="About-Icon-v1" serif:id="About Icon v1"
+      transform="matrix(0.300924,2.57396e-17,1.95816e-17,0.303502,1.56044,-82.3078)">
+      <g transform="matrix(-0.599416,1.0382,-1.04729,-0.604638,2242.57,960.213)">
+        <g id="Ring">
+          <ellipse cx="692" cy="1046" rx="458" ry="454" style="fill:none;stroke:black;stroke-width:48.45px;" />
+        </g>
+      </g>
+      <g id="Notes" transform="matrix(1,0,-1.2326e-32,1,-41.3149,0)">
+        <g id="_4" serif:id="4" transform="matrix(-2.36746,4.10048,-4.16365,-2.40383,5204.26,-510.406)">
+          <ellipse cx="766" cy="526.5" rx="33" ry="32.5" />
+        </g>
+        <g id="_41" serif:id="4" transform="matrix(-2.36746,4.10048,-4.16365,-2.40383,4354.26,-510.406)">
+          <ellipse cx="766" cy="526.5" rx="33" ry="32.5" />
+        </g>
+      </g>
+      <g id="_8" serif:id="8" transform="matrix(-1.63212,-2.34212,2.09121,-1.45728,337.504,3890.63)">
+        <g id="Root-Markers" serif:id="Root Markers">
+          <path id="_81" serif:id="8"
+            d="M731.999,618L768,730L695.999,730L731.999,618ZM731.999,673.55L719.903,711.184L744.096,711.184L731.999,673.55Z" />
+        </g>
+      </g>
+      <g id="_0a" serif:id="0a" transform="matrix(2.23908,9.33618e-32,-8.74765e-32,2.1951,-1311.76,-606.443)">
+        <g id="Treble-Marker" serif:id="Treble Marker">
+          <g id="_0" serif:id="0">
+            <ellipse id="_0a1" serif:id="0a" cx="910.352" cy="514.037" rx="65.648" ry="66.963"
+              style="fill:white;stroke:black;stroke-width:30.07px;" />
+          </g>
+        </g>
+      </g>
+      <g id="Also-Treble" serif:id="Also Treble">
+      </g>
+    </g>
+  </g>
+</svg>
