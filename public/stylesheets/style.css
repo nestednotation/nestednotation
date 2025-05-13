@@ -540,7 +540,7 @@ body.ipad {
   }
 }
 
-.about-containter {
+.overlay-content-container {
   width: 100%;
   height: 100%;
   position: fixed;
@@ -553,16 +553,23 @@ body.ipad {
   flex-direction: column;
 }
 
-.about-containter.showing {
+.overlay-content-container.showing {
   transform: translateX(0);
 }
 
-.about-content {
+.overlay-content {
   flex: 1;
   display: flex;
   justify-content: center;
   align-items: center;
   overflow: hidden;
+}
+
+#qr-container img {
+  width: 100%;
+  padding-inline: 20px;
+  margin-inline: auto;
+  max-width: 500px;
 }
 
 .return-btn {

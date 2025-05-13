@@ -1,11 +1,17 @@
 const express = require("express");
 const router = express.Router();
+
 const utils = require("../utils");
+const { FORM_MESSAGES } = require("../constants");
 
 router.get("/", function (req, res) {
   const sessionName = req.query.s;
   if (sessionName == null || sessionName.length == 0) {
-    res.status(301).redirect("/?msg=1");
+    res
+      .status(301)
+      .redirect(
+        `/?msg=${encodeURIComponent(FORM_MESSAGES.INVALID_SESSION_DATA)}`
+      );
     return;
   }
 
@@ -18,7 +24,11 @@ router.get("/", function (req, res) {
       session.playerPassword != password &&
       password.length != 0)
   ) {
-    res.status(301).redirect("/?msg=1");
+    res
+      .status(301)
+      .redirect(
+        `/?msg=${encodeURIComponent(FORM_MESSAGES.INVALID_SESSION_DATA)}`
+      );
     return;
   }
 
@@ -52,14 +62,22 @@ router.get("/*", function (req, res) {
   const sessionId = path[1];
   const password = req.query.p;
   if (sessionId == null || password == null) {
-    res.status(301).redirect("/?msg=1");
+    res
+      .status(301)
+      .redirect(
+        `/?msg=${encodeURIComponent(FORM_MESSAGES.INVALID_SESSION_DATA)}`
+      );
     return;
   }
 
   const db = req.app.get("Database");
   const session = db.sessionTable.getById(sessionId);
   if (session == null) {
-    res.status(301).redirect("/?msg=1");
+    res
+      .status(301)
+      .redirect(
+        `/?msg=${encodeURIComponent(FORM_MESSAGES.INVALID_SESSION_DATA)}`
+      );
     return;
   }
 
@@ -95,6 +113,7 @@ router.get("/*", function (req, res) {
     aboutNestedNotationSvg: db.aboutSvg,
     aboutScoreSvg: session.aboutSvg,
     scoreHasAbout: session.aboutSvg !== null,
+    votingSize: session.votingSize,
   });
 });
 
