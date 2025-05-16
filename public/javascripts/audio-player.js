@@ -83,13 +83,14 @@ class Note {
     this.domElement.dataset.playing = value;
   }
 
-  constructor(frameInstance, svgElement, sounds, isAutoplay = true) {
+  constructor(frameInstance, svgElement, sounds) {
     this.frameInstance = frameInstance;
-    this.isAutoplay = isAutoplay;
     this.sounds = sounds;
     this.soundId = this.generateSoundId();
 
-    sounds.forEach((sound) => sound.soundInstance.notes.push(this));
+    sounds.forEach((sound) => {
+      sound.soundInstance.notes.push(this);
+    });
 
     this.domElement = svgElement;
     this.domElement.dataset.playing = "false";
@@ -158,13 +159,13 @@ class Frame {
     this.soundMap = this.getSoundMap();
   }
 
-  playAll() {
+  playAllAutoplayNotes() {
     this.notes.forEach((e) => {
       e.isAutoplay && e.play();
     });
   }
 
-  stopAll() {
+  stopAllAutoplayNotes() {
     this.notes.forEach((e) => {
       e.stop();
     });
@@ -220,9 +221,10 @@ class Frame {
       const note = new Note(
         this,
         svgSoundNode,
-        mergeSoundsAndVolumes(nodeSounds, nodeVolums, autoplay),
-        autoplay
+        mergeSoundsAndVolumes(nodeSounds, nodeVolums, autoplay)
       );
+
+      note.isAutoplay = autoplay;
 
       notes.push(note);
     }
@@ -510,9 +512,9 @@ class AudioSession {
     this.autoPlay = !this.autoPlay;
 
     if (this.autoPlay) {
-      this.frameMap[this.currFrameId]?.playAll();
+      this.frameMap[this.currFrameId]?.playAllAutoplayNotes();
     } else {
-      this.frameMap[this.currFrameId]?.stopAll();
+      this.frameMap[this.currFrameId]?.stopAllAutoplayNotes();
     }
   }
 
