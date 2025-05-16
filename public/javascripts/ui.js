@@ -119,7 +119,7 @@ function showQRShare() {
   // Render QR Code if not rendered yet
   if (!qrContainer.innerHTML) {
     new QRCode(qrContainer, {
-      text: window.location.href,
+      text: `${window.location.origin}${window.qrSharePath}`,
       width: 500,
       height: 500,
       colorDark: "#000",

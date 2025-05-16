@@ -20,8 +20,8 @@ router.get("/", function (req, res) {
   const session = db.sessionTable.getBySessionName(sessionName);
   if (
     !session ||
-    (session.adminPassword != password &&
-      session.playerPassword != password &&
+    (session.adminPassword !== password &&
+      session.playerPassword !== password &&
       password.length != 0)
   ) {
     res
@@ -33,9 +33,9 @@ router.get("/", function (req, res) {
   }
 
   const type =
-    session.adminPassword == password
+    session.adminPassword === password
       ? 1
-      : session.playerPassword == password
+      : session.playerPassword === password
       ? 2
       : 0;
 
@@ -114,6 +114,9 @@ router.get("/*", function (req, res) {
     aboutScoreSvg: session.aboutSvg,
     scoreHasAbout: session.aboutSvg !== null,
     votingSize: session.votingSize,
+    qrSharePath: `/session/${session.id}/?p=${encodeURIComponent(
+      session.playerPassword
+    )}&t=2`,
   });
 });
 
