@@ -30,8 +30,9 @@ let isHolding = false;
 let votingData = null;
 let votingDataTimeStamp = 0;
 
-document.addEventListener("DOMContentLoaded", fn, false);
-function fn() {
+document.addEventListener("DOMContentLoaded", onDOMContentLoaded, false);
+
+function onDOMContentLoaded() {
   lblVotingTime = document.getElementById("VotingTime");
   divMainContent = document.getElementById("MainContent");
   btnSleep = document.getElementById("SleepActivate");
@@ -46,70 +47,52 @@ function fn() {
     },
     false
   );
-
-  var qs = (function (a) {
-    if (a == "") return {};
-    var b = {};
-    for (var i = 0; i < a.length; ++i) {
-      var p = a[i].split("=", 2);
-      if (p.length == 1) b[p[0]] = "";
-      else b[p[0]] = decodeURIComponent(p[1].replace(/\+/g, " "));
-    }
-    return b;
-  })(window.location.search.substr(1).split("&"));
-
-  var isAdmin = qs["t"];
-  if (isAdmin != null && isAdmin == "1") {
+  const searchParams = new URLSearchParams(window.location.search);
+  const isAdmin = searchParams.get("t");
+  if (isAdmin === "1") {
     console.log("This is Admin");
-    var divhold = document.getElementById("divhold");
+    const divhold = document.getElementById("divhold");
     divhold.style.display = "block";
 
-    var divpause = document.getElementById("divpause");
+    const divpause = document.getElementById("divpause");
     divpause.style.display = "block";
 
-    var divfinish = document.getElementById("divfinish");
+    const divfinish = document.getElementById("divfinish");
     divfinish.style.display = "block";
 
-    var divhistory = document.getElementById("divhistory");
+    const divhistory = document.getElementById("divhistory");
     divhistory.style.display = "block";
 
-    var tablefooter = document.getElementById("tablefooter");
+    const tablefooter = document.getElementById("tablefooter");
     tablefooter.style.display = "flex";
   }
 
   ws = new WebSocket(wsPath);
-  ws.onopen = function (event) {
-    var currentTime = getClientTime();
+  ws.onopen = function () {
+    const currentTime = Date.now();
     sendToServer(MSG_PING, currentTime);
   };
   ws.onmessage = function (event) {
-    var data = JSON.parse(event.data);
-    var timeOfJob = data.t;
+    const data = JSON.parse(event.data);
+    const timeOfJob = data.t;
     if (timeOfJob == 0) {
       parseMessage(data);
     } else {
-      var serverTime = getServerTime();
+      const serverTime = getServerTime();
       if (serverTime >= timeOfJob) {
         parseMessage(data);
       } else {
-        var delay = timeOfJob - serverTime;
+        const delay = timeOfJob - serverTime;
         setTimeout(parseMessage, delay, data);
       }
     }
   };
-  ws.onerror = function (event) {
-    //location.reload();
-  };
 }
 
 function getServerTime() {
-  var currentTime = getClientTime();
-  var serverTime = Math.round(currentTime + timeStampOffset);
+  const currentTime = Date.now();
+  const serverTime = Math.round(currentTime + timeStampOffset);
   return serverTime;
-}
-
-function getClientTime() {
-  return new Date().getTime();
 }
 
 function viewDidLoad() {
@@ -122,7 +105,7 @@ function viewDidLoad() {
 }
 
 function pingCallback() {
-  sendToServer(MSG_PING, getClientTime());
+  sendToServer(MSG_PING, Date.now());
 }
 
 function noSleepCallback() {
@@ -137,35 +120,35 @@ function noSleepCallback() {
 }
 
 function sendToServer(message, value) {
-  if (ws.readyState === ws.OPEN) {
-    var obj = {
+  if (ws.readyState !== ws.OPEN) {
+    return;
+  }
+
+  ws.send(
+    JSON.stringify({
       sig: staffCode,
       cid: currentIndex,
       sid: sessionId,
       msg: message,
       val: value,
-    };
-    ws.send(JSON.stringify(obj));
-  } else {
-    //location.reload();
-  }
+    })
+  );
 }
 
 function parseMessage(data) {
   var msg = data.m;
   var val1 = data.v1;
   var val2 = data.v2;
-  var time = data.t;
   if (msg == MSG_PING) {
     var timeBeginPing = val2;
-    var timeEndPing = getClientTime();
+    var timeEndPing = Date.now();
     var timeServer = val1;
     var ping = timeEndPing - timeBeginPing;
     timeStampOffset +=
       (timeServer + ping / 2.0 - timeEndPing - timeStampOffset) * timeStampRate;
     if (pingCountToReady > 0) {
       pingCountToReady--;
-      sendToServer(MSG_PING, getClientTime());
+      sendToServer(MSG_PING, Date.now());
     } else if (pingCountToReady == 0) {
       pingCountToReady--;
       viewDidLoad();
@@ -292,17 +275,17 @@ function parseMessage(data) {
 }
 
 function updateNumberOfConnection(numPlayer, numRider) {
-  var player = document.getElementById("spanplayer");
-  var rider = document.getElementById("spanrider");
+  const player = document.getElementById("spanplayer");
+  const rider = document.getElementById("spanrider");
   player.innerHTML = "" + numPlayer;
   rider.innerHTML = "" + numRider;
 }
 
 function updateSelectHistory(data, index) {
-  var select = document.getElementById("history");
-  var content = "";
-  for (var i = 0; i < data.length; i++) {
-    content += '<option value="' + i + '">' + data[i] + "</option>";
+  const select = document.getElementById("history");
+  let content = "";
+  for (let i = 0; i < data.length; i++) {
+    content += `<option value="${i}">${data[i]}</option>`;
   }
   select.innerHTML = content;
   select.selectedIndex = index;
@@ -322,9 +305,9 @@ function sendPause(check) {
   sendToServer(MSG_PAUSE, check.checked);
 }
 
-function sendFinish(obj) {
-  var r = confirm("Are you sure you want to end ?");
-  if (r == true) {
+function sendFinish() {
+  const r = confirm("Are you sure you want to end ?");
+  if (r) {
     sendToServer(MSG_FINISH, 0);
   }
 }
@@ -338,16 +321,12 @@ function sendHistory(select) {
 }
 
 function holdingCallback() {
-  var now = getServerTime();
+  const now = getServerTime();
   if (now <= holdingEndTime) {
-    var elapsedTime = now - holdingStartTime;
-    if (elapsedTime < 0) {
-      //we do nothing here
-    } else if (elapsedTime <= holdingDuration * 1000) {
-      var second = Math.floor(elapsedTime / 1000);
+    const elapsedTime = now - holdingStartTime;
+    if ((elapsedTime >= 0) & (elapsedTime <= holdingDuration * 1000)) {
+      const second = Math.floor(elapsedTime / 1000);
       setHoldingTimeTo(second);
-    } else {
-      //end
     }
   } else {
     hideAllCooldownCircles();
@@ -359,16 +338,12 @@ function holdingCallback() {
 }
 
 function cooldownCallback() {
-  var now = getServerTime();
+  const now = getServerTime();
   if (now <= cooldownEndTime) {
-    var elapsedTime = now - cooldownStartTime;
-    if (elapsedTime < 0) {
-      //we do nothing here
-    } else if (elapsedTime <= cooldownDuration * 1000) {
-      var second = Math.floor(elapsedTime / 1000);
+    const elapsedTime = now - cooldownStartTime;
+    if ((elapsedTime >= 0) & (elapsedTime <= cooldownDuration * 1000)) {
+      const second = Math.floor(elapsedTime / 1000);
       setCooldownTimeTo(second);
-    } else {
-      //end
     }
   } else {
     hideAllCooldownCircles();
@@ -380,8 +355,8 @@ function cooldownCallback() {
 }
 
 function hideAllCooldownCircles() {
-  var list = getListCooldownCircle();
-  for (var i = 0; i < 10; i++) {
+  const list = getListCooldownCircle();
+  for (let i = 0; i < 10; i++) {
     list[i].setAttribute("class", "circle");
   }
 }
@@ -474,20 +449,20 @@ function getListSvg() {
 }
 
 function getListCooldownCircle() {
-  var listCircle = [];
-  for (var i = 1; i < 11; i++) {
+  const listCircle = [];
+  for (let i = 1; i < 11; i++) {
     listCircle.push(document.getElementById("circle_" + i));
   }
   return listCircle;
 }
 
 function showInnerRing(index) {
-  var array = index.split("-");
-  var svgIndex = array[0];
-  var svg = document.getElementById("svg" + svgIndex);
-  var listEllipse = svg.querySelectorAll("ellipse[id]");
-  for (var i = 0; i < listEllipse.length; i++) {
-    var id = listEllipse[i].id;
+  const array = index.split("-");
+  const svgIndex = array[0];
+  const svg = document.getElementById("svg" + svgIndex);
+  const listEllipse = svg.querySelectorAll("ellipse[id]");
+  for (let i = 0; i < listEllipse.length; i++) {
+    let id = listEllipse[i].id;
     if (/^\d+-\d+$/.test(id)) {
       listEllipse[i].setAttribute("class", id == index ? "" : "hidden");
     }
@@ -500,13 +475,13 @@ function setInnerRingText(index, text) {
   if (text.length <= 3) {
     const X = [-212.19, -232.023, -251.04];
     const Y = [-231.138, -230.697, -230.787];
-    var array = index.split("-");
-    var svgIndex = array[0];
-    var svg = document.getElementById("svg" + svgIndex);
-    var selector = "text[id^='ta-" + index + "']";
-    var listText = svg.querySelectorAll(selector);
+    const array = index.split("-");
+    const svgIndex = array[0];
+    const svg = document.getElementById("svg" + svgIndex);
+    const selector = `text[id^='ta-${index}']`;
+    const listText = svg.querySelectorAll(selector);
 
-    for (var i = 0; i < listText.length; i++) {
+    for (let i = 0; i < listText.length; i++) {
       listText[i].innerHTML = text == "0" ? "" : text;
       if (text.length > 0 && text.length <= 3) {
         listText[i].setAttribute("x", X[text.length - 1]);
@@ -518,27 +493,27 @@ function setInnerRingText(index, text) {
 
 function setOpacityForInnerRingText(index, value) {
   index = index + "";
-  var array = index.split("-");
-  var svgIndex = array[0];
-  var svg = document.getElementById("svg" + svgIndex);
-  var selector = "text[id^='ta-" + index + "']";
-  var listText = svg.querySelectorAll(selector);
+  const array = index.split("-");
+  const svgIndex = array[0];
+  const svg = document.getElementById("svg" + svgIndex);
+  const selector = `text[id^='ta-${index}']`;
+  const listText = svg.querySelectorAll(selector);
 
-  for (var i = 0; i < listText.length; i++) {
+  for (let i = 0; i < listText.length; i++) {
     listText[i].style.opacity = value;
   }
 }
 
 function highlightInnerRingText(index) {
-  var array = index.split("-");
-  var svgIndex = array[0];
-  var svg = document.getElementById("svg" + svgIndex);
-  var selector = "text[id^='ta-" + svgIndex + "']";
-  var listText = svg.querySelectorAll(selector);
+  const array = index.split("-");
+  const svgIndex = array[0];
+  const svg = document.getElementById("svg" + svgIndex);
+  const selector = "text[id^='ta-" + svgIndex + "']";
+  const listText = svg.querySelectorAll(selector);
 
-  for (var i = 0; i < listText.length; i++) {
-    var id = listText[i].id;
-    listText[i].style.opacity = id == "ta-" + index ? 1.0 : 0.25;
+  for (let i = 0; i < listText.length; i++) {
+    const id = listText[i].id;
+    listText[i].style.opacity = id === "ta-" + index ? 1.0 : 0.25;
   }
 }
 
@@ -565,50 +540,46 @@ function setIndicatorHold(value) {
 
 function setOverlay(value) {
   if (value) {
-    var svg = document.getElementById("svg" + currentIndex);
-    var fileName = svg.getAttribute("file");
+    const svg = document.getElementById("svg" + currentIndex);
+    const fileName = svg.getAttribute("file");
     if (fileName.startsWith("PRE") || fileName.startsWith("START")) {
-      var div = document.getElementById("divOverlay");
+      const div = document.getElementById("divOverlay");
       div.style.display = "inline";
     } else {
-      var div = document.getElementById("divOverlay");
+      const div = document.getElementById("divOverlay");
       div.style.display = "none";
-      var listDot = document.querySelectorAll(
-        "ellipse[id=dot" + currentIndex + "]"
+      const listDot = document.querySelectorAll(
+        `ellipse[id=dot${currentIndex}]`
       );
-      for (var i = 0; i < listDot.length; i++) {
+      for (let i = 0; i < listDot.length; i++) {
         listDot[i].style.fill = "rgb(0,0,0)";
       }
     }
   } else {
-    var div = document.getElementById("divOverlay");
+    const div = document.getElementById("divOverlay");
     div.style.display = "none";
-    var listDot = document.querySelectorAll(
-      "ellipse[id=dot" + currentIndex + "]"
-    );
-    for (var i = 0; i < listDot.length; i++) {
-      var dot = listDot[i];
-      var r = dot.getAttribute("r");
-      var g = dot.getAttribute("g");
-      var b = dot.getAttribute("b");
-      listDot[i].style.fill = "rgb(" + r + "," + g + "," + b + ")";
+    const listDot = document.querySelectorAll(`ellipse[id=dot${currentIndex}]`);
+    for (let i = 0; i < listDot.length; i++) {
+      const dot = listDot[i];
+      const r = dot.getAttribute("r");
+      const g = dot.getAttribute("g");
+      const b = dot.getAttribute("b");
+      listDot[i].style.fill = `rgb(${r},${g},${b})`;
     }
   }
 }
 
 function refreshScore() {
-  //location.reload(true);
-  var xmlhttp = new XMLHttpRequest();
-  var url = "svgcontent.html";
+  const xmlhttp = new XMLHttpRequest();
 
   xmlhttp.onreadystatechange = function () {
-    if (this.readyState == 4 && this.status == 200) {
-      var html = this.responseText;
+    if (this.readyState === 4 && this.status === 200) {
+      const html = this.responseText;
       document.getElementById("MainSVGContent").innerHTML = html;
 
       sendToServer(MSG_NEED_DISPLAY, 0);
     }
   };
-  xmlhttp.open("GET", url, true);
+  xmlhttp.open("GET", "svgcontent.html", true);
   xmlhttp.send();
 }
