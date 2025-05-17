@@ -108,7 +108,7 @@ router.get("/*", function (req, res) {
     isHtml5: JSON.stringify(session.isHtml5),
     sessionSvg: session.svgContent,
     scoreSlug: utils.slugify(session.folder),
-    soundList: session.soundList && JSON.stringify(session.soundList),
+    soundFileList: session.soundList && JSON.stringify(session.soundList),
     wsPath: db.wsPath,
     aboutNestedNotationSvg: db.aboutSvg,
     aboutScoreSvg: session.aboutSvg,

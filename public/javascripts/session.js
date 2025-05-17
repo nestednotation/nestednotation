@@ -431,8 +431,8 @@ function setHoldingTimeTo(second) {
 }
 
 function tapOn(nextId) {
-  // Don't allow tap when in NEW_SESSION_MODES.PLAY mode
-  if (window.sessionInstance?.newMode === "PLAY") {
+  // Don't allow tap when in SESSION_MODES.PLAY mode
+  if (window.sessionInstance?.mode === window.SESSION_MODES.PLAY) {
     return;
   }
 
