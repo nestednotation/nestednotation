@@ -625,7 +625,7 @@ db.adminPassword = "g3tn3st3d";
 
 const wsPort = process.env.WS_PORT || 8080;
 const serverIp = process.env.SERVER_IP;
-const wsPath = `ws://192.168.0.2:2382`;
+const wsPath = `wss://${serverIp}`;
 
 console.log(`Websocket is running on port ${wsPort}`);
 console.log(`Websocket path is ${wsPath}`);
