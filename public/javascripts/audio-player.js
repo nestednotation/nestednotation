@@ -529,7 +529,6 @@ class AudioSession {
 }
 
 const sessionInstance = new AudioSession();
-
 window.sessionInstance = sessionInstance;
 
 const handleOnUpdateView = ({ detail }) => {

@@ -117,6 +117,7 @@ router.get("/*", function (req, res) {
     qrSharePath: `/session/${session.id}/?p=${encodeURIComponent(
       session.playerPassword
     )}&t=2`,
+    listFiles: JSON.stringify(session.listFiles),
   });
 });
 

@@ -142,7 +142,7 @@ wsServer.on("request", function (request) {
 
   connection.on("close", function () {
     const session = db.sessionTable.getById(connection.sessionId);
-    if (session != null) {
+    if (session !== null) {
       updateNumberOfConnectionForSession(session);
     }
   });
@@ -220,9 +220,25 @@ function countVoteForSession(session) {
   return counts;
 }
 
-function startVotingForSessionWithDelay(session, timeDelay) {
+const parseCustomDur = (defaultDur, customDur) => {
+  if (!customDur) {
+    return defaultDur;
+  }
+
+  if (customDur === "false") {
+    return 0;
+  } else if (customDur.endsWith("%")) {
+    return (defaultDur * Number(customDur.replace("%", ""))) / 100;
+  } else {
+    return Number(customDur);
+  }
+};
+
+function startVotingForSessionWithDelay(session, timeDelay, customDur) {
   const sessionId = session.id;
-  session.currentVotingDuration = session.votingDuration;
+  session.currentVotingDuration = customDur
+    ? parseCustomDur(session.votingDuration, customDur)
+    : session.votingDuration;
   session.currentBeginTimeStamp = Date.now() + timeDelay;
   session.currentEndTimeStamp =
     session.currentBeginTimeStamp + session.currentVotingDuration * 1000;
@@ -289,12 +305,12 @@ function stopVotingForSession(session) {
 
   //stand by signal
   const votingData = countVoteForSession(session);
-  const listId = Object.keys(votingData);
+  const listId = Object.keys(votingData).map(Number);
   let mostVoteCount = 0;
   let mostVoteRingId = 0;
 
   for (const id of listId) {
-    if (id == -1) {
+    if (id === -1) {
       continue;
     }
 
@@ -328,6 +344,7 @@ function stopVotingForSession(session) {
     session.history,
     session.historyIndex
   );
+
   if (!session.isPause) {
     var timestamp = new Date().getTime() + 1000 + 100;
     sendToAllClients(session, timestamp, MESSAGES.MSG_SHOW, mostVoteRingId, 0);
@@ -337,7 +354,10 @@ function stopVotingForSession(session) {
 function startHoldingForSessionWithDelay(session, delay) {
   session.isHolding = true;
   //holding cooldown
-  session.currentHoldingDuration = session.holdDuration;
+  session.currentHoldingDuration = session.nextFrameHoldingDur
+    ? parseCustomDur(session.holdDuration, session.nextFrameHoldingDur)
+    : session.holdDuration;
+  session.nextFrameHoldingDur = null;
   session.currentBeginHoldTimeStamp = new Date().getTime() + delay;
   session.currentEndHoldTimeStamp =
     session.currentBeginHoldTimeStamp + session.currentHoldingDuration * 1000;
@@ -421,6 +441,7 @@ function updateNumberOfConnectionForSession(session) {
   const countRider = wsServer.connections.filter(
     (conn) => conn.sessionId == session.id && !conn.isAdmin && !conn.isStaff
   ).length;
+
   sendToAllAdmins(
     session,
     0,
@@ -431,12 +452,12 @@ function updateNumberOfConnectionForSession(session) {
 }
 
 function messageHandle(conn, message) {
-  const obj = JSON.parse(message.utf8Data);
-  const sessionId = obj.sid;
-  const clientIndex = obj.cid;
-  const password = obj.sig;
-  const msg = obj.msg;
-  const value = obj.val;
+  const messageData = JSON.parse(message.utf8Data);
+  const sessionId = messageData.sid;
+  const clientIndex = messageData.cid;
+  const password = messageData.sig;
+  const msg = messageData.msg;
+  const value = messageData.val;
   const session = db.sessionTable.getById(sessionId);
   if (!session) {
     console.log(
@@ -445,55 +466,68 @@ function messageHandle(conn, message) {
     return;
   }
 
-  const isAdmin = password == session.adminPassword;
+  const isAdmin = password === session.adminPassword;
   if (msg === MESSAGES.MSG_PING) {
     conn.sessionId = sessionId;
     conn.isAdmin = isAdmin;
     conn.isStaff =
-      password == session.playerPassword || password == session.adminPassword;
+      password === session.playerPassword || password === session.adminPassword;
     sendToClient(conn, 0, msg, Date.now(), value);
     return;
   }
 
   if (msg === MESSAGES.MSG_TAP) {
+    const nextFrameIdx = value;
     if (
-      !session.isHolding &&
-      clientIndex == session.currentIndex &&
-      !session.isPause &&
-      value != -1
+      clientIndex !== session.currentIndex ||
+      session.isHolding ||
+      session.isPause ||
+      nextFrameIdx === -1
     ) {
-      if (
-        session.votingDuration == 0 ||
-        session.listPreImages.includes(session.currentIndex)
-      ) {
-        session.setCurrentIndexTo(value);
-        session.saveSessionStateToFile();
+      return;
+    }
 
-        sendToAllAdmins(
-          session,
-          0,
-          MESSAGES.MSG_SELECT_HISTORY,
-          session.history,
-          session.historyIndex
-        );
-        sendToAllClientsWithDelay(
-          session,
-          100,
-          MESSAGES.MSG_SHOW,
-          session.currentIndex
-        );
-        if (session.holdDuration > 0) {
-          startHoldingForSessionWithDelay(session, 0);
+    const { frameVotingDur, nextFrameHoldingDur } = messageData;
+    if (
+      frameVotingDur === "0" ||
+      frameVotingDur === "0%" ||
+      frameVotingDur === "false" ||
+      session.votingDuration === 0 ||
+      session.listPreImages.includes(session.currentIndex)
+    ) {
+      session.setCurrentIndexTo(nextFrameIdx);
+      session.saveSessionStateToFile();
+
+      sendToAllAdmins(
+        session,
+        0,
+        MESSAGES.MSG_SELECT_HISTORY,
+        session.history,
+        session.historyIndex
+      );
+      sendToAllClientsWithDelay(
+        session,
+        100,
+        MESSAGES.MSG_SHOW,
+        session.currentIndex
+      );
+      const customHoldDur = parseCustomDur(
+        session.holdDuration,
+        nextFrameHoldingDur
+      );
+      if (customHoldDur > 0) {
+        session.nextFrameHoldingDur = nextFrameHoldingDur;
+        startHoldingForSessionWithDelay(session, 0);
+      }
+    } else {
+      //change vote of client to new value
+      if (!session.isStandby) {
+        if (!session.isVoting) {
+          session.nextFrameHoldingDur = nextFrameHoldingDur;
+          startVotingForSessionWithDelay(session, 100, frameVotingDur);
         }
-      } else {
-        //change vote of client to new value
-        if (!session.isStandby) {
-          if (!session.isVoting) {
-            startVotingForSessionWithDelay(session, 100);
-          }
-          conn.currentVoteTo = value;
-          sendUpdateVotingToClient(conn, session);
-        }
+        conn.currentVoteTo = nextFrameIdx;
+        sendUpdateVotingToClient(conn, session);
       }
     }
     return;
