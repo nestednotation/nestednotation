@@ -157,7 +157,7 @@ class BMSession {
   standbyDuration = 3;
   holdDuration = 0;
   votingDuration = 10;
-
+  votingSize = 100;
   hasSounds = false;
 
   checkScoreHasSounds(score) {

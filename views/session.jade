@@ -5,6 +5,7 @@ html
     script(src='/javascripts/unmute-audio.js')
     script(src='https://cdn.jsdelivr.net/npm/ua-parser-js/dist/ua-parser.min.js')
     script(src='https://cdn.jsdelivr.net/npm/howler@2.2.4/dist/howler.min.js')
+    script(src='https://cdn.jsdelivr.net/gh/davidshimjs/qrcodejs/qrcode.min.js')
     script(src='/javascripts/ui.js')
     script(src='/javascripts/audio-player.js')
     script(src='/javascripts/nosleep.js')
@@ -21,7 +22,8 @@ html
     
   body(class="play-mode session-page")
     script.
-      window.soundList= JSON.parse('!{soundList}');
+      window.soundFileList= JSON.parse('!{soundFileList}');
+      window.listFiles = JSON.parse('!{listFiles}');
       window.scoreSlug = '#{scoreSlug}';
       window.staffCode = '#{staffCode}';
       window.sessionId = '#{sessionId}';
@@ -29,6 +31,8 @@ html
       window.wsPort = '#{webSocketPort}';
       window.wsPath = '#{wsPath}'
 
+      window.qrSharePath = '#{qrSharePath}';
+      window.votingSize =  JSON.parse('#{votingSize}');
       window.isHtml5 = JSON.parse('!{isHtml5}');
       window.fadeDuration = JSON.parse('!{fadeDuration}')
       window.scoreHasAbout = JSON.parse('!{scoreHasAbout}');
@@ -145,22 +149,32 @@ html
               div(class="autoplay-toggler-knob")
           li(onclick="showAboutNestedNotationPage()") about
             img(src="/svg/about-icon.svg")
+          li(onclick="showQRShare()") QR share
+            img(src="/svg/qr-icon.svg")
 
-    div(id="about-nested-notation", class="about-containter")
+    div(id="about-nested-notation", class="overlay-content-container")
       div(class="side-menu-title")
-        button(class="return-btn", onclick="closeSideMenu()") return to session
-        button(class="close-btn", onclick="closeSideMenu()", type="button", title="close side menu")
+        button(class="return-btn", onclick="closeOverlay()") return to session
+        button(class="close-btn", onclick="closeOverlay()", type="button", title="close side menu")
           img(src="/svg/close-icon.svg")
-      div(class="about-content")
+      div(class="overlay-content")
         | !{aboutNestedNotationSvg}
 
-    div(id="about-score", class="about-containter")
+    div(id="about-score", class="overlay-content-container")
       div(class="side-menu-title")
-        button(class="return-btn", onclick="closeSideMenu()") return to session
-        button(class="close-btn", onclick="closeSideMenu()", type="button", title="close side menu")
+        button(class="return-btn", onclick="closeOverlay()") return to session
+        button(class="close-btn", onclick="closeOverlay()", type="button", title="close side menu")
           img(src="/svg/close-icon.svg")
-      div(class="about-content")
+      div(class="overlay-content")
         | !{aboutScoreSvg}
+
+    div(id="qr-code", class="overlay-content-container")
+      div(class="side-menu-title")
+        button(class="return-btn", onclick="closeOverlay()") return to session
+        button(class="close-btn", onclick="closeOverlay()", type="button", title="close side menu")
+          img(src="/svg/close-icon.svg")
+      div(id="qr-container", class="overlay-content")
+        
 
 
 

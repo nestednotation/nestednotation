@@ -27,11 +27,11 @@ let holdingEndTime = 0;
 let holdingStartTime = 0;
 let isHolding = false;
 
-let votingData = null;
 let votingDataTimeStamp = 0;
 
-document.addEventListener("DOMContentLoaded", fn, false);
-function fn() {
+document.addEventListener("DOMContentLoaded", onDOMContentLoaded, false);
+
+function onDOMContentLoaded() {
   lblVotingTime = document.getElementById("VotingTime");
   divMainContent = document.getElementById("MainContent");
   btnSleep = document.getElementById("SleepActivate");
@@ -46,70 +46,55 @@ function fn() {
     },
     false
   );
-
-  var qs = (function (a) {
-    if (a == "") return {};
-    var b = {};
-    for (var i = 0; i < a.length; ++i) {
-      var p = a[i].split("=", 2);
-      if (p.length == 1) b[p[0]] = "";
-      else b[p[0]] = decodeURIComponent(p[1].replace(/\+/g, " "));
-    }
-    return b;
-  })(window.location.search.substr(1).split("&"));
-
-  var isAdmin = qs["t"];
-  if (isAdmin != null && isAdmin == "1") {
+  const searchParams = new URLSearchParams(window.location.search);
+  const isAdmin = searchParams.get("t");
+  if (isAdmin === "1") {
     console.log("This is Admin");
-    var divhold = document.getElementById("divhold");
+    const divhold = document.getElementById("divhold");
     divhold.style.display = "block";
 
-    var divpause = document.getElementById("divpause");
+    const divpause = document.getElementById("divpause");
     divpause.style.display = "block";
 
-    var divfinish = document.getElementById("divfinish");
+    const divfinish = document.getElementById("divfinish");
     divfinish.style.display = "block";
 
-    var divhistory = document.getElementById("divhistory");
+    const divhistory = document.getElementById("divhistory");
     divhistory.style.display = "block";
 
-    var tablefooter = document.getElementById("tablefooter");
+    const tablefooter = document.getElementById("tablefooter");
     tablefooter.style.display = "flex";
   }
 
   ws = new WebSocket(wsPath);
-  ws.onopen = function (event) {
-    var currentTime = getClientTime();
-    sendToServer(MSG_PING, currentTime);
+
+  ws.onopen = function () {
+    const currTime = Date.now();
+    sendToServer(MSG_PING, { val: currTime });
   };
+
   ws.onmessage = function (event) {
-    var data = JSON.parse(event.data);
-    var timeOfJob = data.t;
-    if (timeOfJob == 0) {
+    const data = JSON.parse(event.data);
+    const timeOfJob = data.t;
+
+    if (timeOfJob === 0) {
       parseMessage(data);
     } else {
-      var serverTime = getServerTime();
+      const serverTime = getServerTime();
       if (serverTime >= timeOfJob) {
         parseMessage(data);
       } else {
-        var delay = timeOfJob - serverTime;
+        const delay = timeOfJob - serverTime;
         setTimeout(parseMessage, delay, data);
       }
     }
   };
-  ws.onerror = function (event) {
-    //location.reload();
-  };
 }
 
 function getServerTime() {
-  var currentTime = getClientTime();
-  var serverTime = Math.round(currentTime + timeStampOffset);
+  const currentTime = Date.now();
+  const serverTime = Math.round(currentTime + timeStampOffset);
   return serverTime;
-}
-
-function getClientTime() {
-  return new Date().getTime();
 }
 
 function viewDidLoad() {
@@ -118,11 +103,11 @@ function viewDidLoad() {
   //start ping timer every 60s
   pingTimer = setInterval(pingCallback, 1000 * 60);
   //request currentIndex
-  sendToServer(MSG_NEED_DISPLAY, 0);
+  sendToServer(MSG_NEED_DISPLAY, { val: 0 });
 }
 
 function pingCallback() {
-  sendToServer(MSG_PING, getClientTime());
+  sendToServer(MSG_PING, { val: Date.now() });
 }
 
 function noSleepCallback() {
@@ -136,41 +121,42 @@ function noSleepCallback() {
   noSleepTimerCount++;
 }
 
-function sendToServer(message, value) {
-  if (ws.readyState === ws.OPEN) {
-    var obj = {
+function sendToServer(message, payload) {
+  if (ws.readyState !== ws.OPEN) {
+    return;
+  }
+
+  ws.send(
+    JSON.stringify({
       sig: staffCode,
       cid: currentIndex,
       sid: sessionId,
       msg: message,
-      val: value,
-    };
-    ws.send(JSON.stringify(obj));
-  } else {
-    //location.reload();
-  }
+      ...payload,
+    })
+  );
 }
 
 function parseMessage(data) {
-  var msg = data.m;
-  var val1 = data.v1;
-  var val2 = data.v2;
-  var time = data.t;
-  if (msg == MSG_PING) {
-    var timeBeginPing = val2;
-    var timeEndPing = getClientTime();
-    var timeServer = val1;
-    var ping = timeEndPing - timeBeginPing;
+  const msg = data.m;
+  const val1 = data.v1;
+  const val2 = data.v2;
+
+  if (msg === MSG_PING) {
+    const timeBeginPing = val2;
+    const timeEndPing = Date.now();
+    const timeServer = val1;
+    const ping = timeEndPing - timeBeginPing;
     timeStampOffset +=
       (timeServer + ping / 2.0 - timeEndPing - timeStampOffset) * timeStampRate;
     if (pingCountToReady > 0) {
       pingCountToReady--;
-      sendToServer(MSG_PING, getClientTime());
+      sendToServer(MSG_PING, { val: Date.now() });
     } else if (pingCountToReady == 0) {
       pingCountToReady--;
       viewDidLoad();
     }
-  } else if (msg == MSG_SHOW) {
+  } else if (msg === MSG_SHOW) {
     currentIndex = val1;
     console.log("received show image at index " + currentIndex);
     if (currentIndex == -1) {
@@ -183,49 +169,53 @@ function parseMessage(data) {
     setOverlay(isHolding);
     setOpacityForInnerRingText(currentIndex, 0.25);
     setInnerRingText(currentIndex, "");
-  } else if (msg == MSG_NEED_DISPLAY) {
+  } else if (msg === MSG_NEED_DISPLAY) {
     console.log("receive need to refresh");
     refreshScore();
-  } else if (msg == MSG_UPDATE_VOTING) {
-    var timestamp = val2;
+  } else if (msg === MSG_UPDATE_VOTING) {
+    const timestamp = val2;
     if (timestamp > votingDataTimeStamp) {
       votingDataTimeStamp = timestamp;
-      votingData = val1;
-      var listRingId = Object.keys(votingData);
+      const votingData = val1;
 
-      var svg = document.getElementById("svg" + currentIndex);
-      var selector = "text[id^='ta-" + currentIndex + "']";
-      var listText = svg.querySelectorAll(selector);
-      for (var i = 0; i < listText.length; i++) {
-        var id = listText[i].id;
-        var ringId = id.substring(id.lastIndexOf("-") + 1);
+      const listRingId = Object.keys(votingData);
+      const svg = document.getElementById("svg" + currentIndex);
+      const selector = `text[id^='ta-${currentIndex}']`;
+      const listText = svg.querySelectorAll(selector);
+
+      for (let i = 0; i < listText.length; i++) {
+        const id = listText[i].id;
+        const ringId = id.substring(id.lastIndexOf("-") + 1);
+
         if (listRingId.includes(ringId)) {
-          var count = votingData[ringId];
-          setInnerRingText(currentIndex + "-" + ringId, count);
+          const count = votingData[ringId];
+          setInnerRingText(`${currentIndex}-${ringId}`, count);
         } else {
-          setInnerRingText(currentIndex + "-" + ringId, 0);
+          setInnerRingText(`${currentIndex}-${ringId}`, 0);
         }
       }
 
-      var mostVoteCount = 0;
-      var mostVoteRingId = 0;
-      for (var i = 0; i < listRingId.length; i++) {
-        var id = listRingId[i];
-        if (id != -1) {
-          var count = votingData[id];
-          if (count > mostVoteCount) {
-            mostVoteCount = count;
-            mostVoteRingId = id;
-          }
+      let mostVoteCount = 0;
+      let mostVoteRingId = 0;
+      for (let i = 0; i < listRingId.length; i++) {
+        const id = listRingId[i];
+        if (id == -1) {
+          continue;
+        }
+
+        const count = votingData[id];
+        if (count > mostVoteCount) {
+          mostVoteCount = count;
+          mostVoteRingId = id;
         }
       }
       showInnerRing(currentIndex + "-" + mostVoteRingId);
     }
-  } else if (msg == MSG_BEGIN_VOTING) {
+  } else if (msg === MSG_BEGIN_VOTING) {
     cooldownEndTime = val1;
     cooldownDuration = val2;
     cooldownStartTime = cooldownEndTime - cooldownDuration * 1000;
-    var serverTime = getServerTime();
+    const serverTime = getServerTime();
     setIndicatorCooldown(true);
 
     if (serverTime < cooldownEndTime) {
@@ -233,18 +223,20 @@ function parseMessage(data) {
         clearInterval(cooldownTimer);
         cooldownTimer = null;
       }
-      cooldownTimer = setInterval(cooldownCallback, 10);
+
+      cooldownTimer = setInterval(cooldownCallback, 100);
       isCooldowning = true;
     } else {
       // nothing we can do here. just wait for next signal
       hideAllCooldownCircles();
       setIndicatorCooldown(false);
     }
-  } else if (msg == MSG_BEGIN_HOLDING) {
+  } else if (msg === MSG_BEGIN_HOLDING) {
     holdingEndTime = val1;
     holdingDuration = val2;
     holdingStartTime = holdingEndTime - holdingDuration * 1000;
-    var serverTime = getServerTime();
+
+    const serverTime = getServerTime();
     setIndicatorHold(true);
 
     if (serverTime < holdingEndTime) {
@@ -252,7 +244,8 @@ function parseMessage(data) {
         clearInterval(holdingTimer);
         holdingTimer = null;
       }
-      holdingTimer = setInterval(holdingCallback, 10);
+
+      holdingTimer = setInterval(holdingCallback, 100);
       isHolding = true;
     } else {
       // nothing we can do here. just wait for next signal
@@ -263,6 +256,7 @@ function parseMessage(data) {
           holdingTimer = null;
           isHolding = false;
         }
+
         hideAllCooldownCircles();
         setIndicatorHold(holdingDuration == 0 ? false : true);
       } else {
@@ -270,84 +264,76 @@ function parseMessage(data) {
         setIndicatorHold(false);
       }
     }
-  } else if (msg == MSG_BEGIN_STANDBY) {
-  } else if (msg == MSG_CHECK_HOLD) {
+  } else if (msg === MSG_CHECK_HOLD) {
     console.log("check hold");
     setCheckHold(val1);
     setIndicatorHold(val1);
-  } else if (msg == MSG_PAUSE) {
+  } else if (msg === MSG_PAUSE) {
     setCheckPause(val1);
-    if (val1) {
-      showImageAtIndex(-1);
-    } else {
-      showImageAtIndex(val2);
-    }
-  } else if (msg == MSG_FINISH) {
+    showImageAtIndex(val1 ? -1 : val2);
+  } else if (msg === MSG_FINISH) {
     window.location.href = "/finish";
-  } else if (msg == MSG_SELECT_HISTORY) {
+  } else if (msg === MSG_SELECT_HISTORY) {
     updateSelectHistory(val1, val2);
-  } else if (msg == MSG_SHOW_NUMBER_CONNECTION) {
+  } else if (msg === MSG_SHOW_NUMBER_CONNECTION) {
     updateNumberOfConnection(val1, val2);
   }
 }
 
 function updateNumberOfConnection(numPlayer, numRider) {
-  var player = document.getElementById("spanplayer");
-  var rider = document.getElementById("spanrider");
+  const player = document.getElementById("spanplayer");
+  const rider = document.getElementById("spanrider");
   player.innerHTML = "" + numPlayer;
   rider.innerHTML = "" + numRider;
 }
 
 function updateSelectHistory(data, index) {
-  var select = document.getElementById("history");
-  var content = "";
-  for (var i = 0; i < data.length; i++) {
-    content += '<option value="' + i + '">' + data[i] + "</option>";
+  const select = document.getElementById("history");
+  let content = "";
+  for (let i = 0; i < data.length; i++) {
+    content += `<option value="${i}">${data[i]}</option>`;
   }
   select.innerHTML = content;
   select.selectedIndex = index;
 }
 
 function setCheckHold(value) {
-  var check = document.getElementById("hold");
+  const check = document.getElementById("hold");
   check.checked = value;
 }
 
 function setCheckPause(value) {
-  var check = document.getElementById("pause");
+  const check = document.getElementById("pause");
   check.checked = value;
 }
 
 function sendPause(check) {
-  sendToServer(MSG_PAUSE, check.checked);
+  sendToServer(MSG_PAUSE, { val: check.checked });
 }
 
-function sendFinish(obj) {
-  var r = confirm("Are you sure you want to end ?");
-  if (r == true) {
-    sendToServer(MSG_FINISH, 0);
+function sendFinish() {
+  const r = confirm("Are you sure you want to end ?");
+
+  if (r) {
+    sendToServer(MSG_FINISH, { val: 0 });
   }
 }
 
 function sendHold(check) {
-  sendToServer(MSG_CHECK_HOLD, check.checked);
+  sendToServer(MSG_CHECK_HOLD, { val: check.checked });
 }
 
 function sendHistory(select) {
-  sendToServer(MSG_SELECT_HISTORY, select.selectedIndex);
+  sendToServer(MSG_SELECT_HISTORY, { val: select.selectedIndex });
 }
 
 function holdingCallback() {
-  var now = getServerTime();
+  const now = getServerTime();
   if (now <= holdingEndTime) {
-    var elapsedTime = now - holdingStartTime;
-    if (elapsedTime < 0) {
-      //we do nothing here
-    } else if (elapsedTime <= holdingDuration * 1000) {
-      var second = Math.floor(elapsedTime / 1000);
+    const elapsedTime = now - holdingStartTime;
+    if ((elapsedTime >= 0) & (elapsedTime <= holdingDuration * 1000)) {
+      const second = Math.floor(elapsedTime / 1000);
       setHoldingTimeTo(second);
-    } else {
-      //end
     }
   } else {
     hideAllCooldownCircles();
@@ -359,16 +345,12 @@ function holdingCallback() {
 }
 
 function cooldownCallback() {
-  var now = getServerTime();
+  const now = getServerTime();
   if (now <= cooldownEndTime) {
-    var elapsedTime = now - cooldownStartTime;
-    if (elapsedTime < 0) {
-      //we do nothing here
-    } else if (elapsedTime <= cooldownDuration * 1000) {
-      var second = Math.floor(elapsedTime / 1000);
+    const elapsedTime = now - cooldownStartTime;
+    if ((elapsedTime >= 0) & (elapsedTime <= cooldownDuration * 1000)) {
+      const second = Math.floor(elapsedTime / 1000);
       setCooldownTimeTo(second);
-    } else {
-      //end
     }
   } else {
     hideAllCooldownCircles();
@@ -380,8 +362,8 @@ function cooldownCallback() {
 }
 
 function hideAllCooldownCircles() {
-  var list = getListCooldownCircle();
-  for (var i = 0; i < 10; i++) {
+  const list = getCoundownCircleList();
+  for (let i = 0; i < 10; i++) {
     list[i].setAttribute("class", "circle");
   }
 }
@@ -416,17 +398,17 @@ function showImageAtIndex(index) {
 }
 
 function setCooldownTimeTo(second) {
-  second = cooldownDuration - second; //7, 6, 5, 4, 3, 2, 1
-  if (second > 0) {
-    var list = getListCooldownCircle();
-    second =
+  let secondLeft = cooldownDuration - second; //7, 6, 5, 4, 3, 2, 1
+  if (secondLeft > 0) {
+    const list = getCoundownCircleList();
+    secondLeft =
       cooldownDuration > 10
-        ? Math.ceil((second * 10) / cooldownDuration)
-        : second;
-    for (var i = 0; i < 10; i++) {
+        ? Math.ceil((secondLeft * 10) / cooldownDuration)
+        : secondLeft;
+    for (let i = 0; i < 10; i++) {
       list[i].setAttribute(
         "class",
-        i + 1 <= second ? "circle active" : "circle active filled"
+        i + 1 <= secondLeft ? "circle active" : "circle active filled"
       );
       if (i + 1 > cooldownDuration) {
         list[i].setAttribute("class", "hidden");
@@ -436,17 +418,17 @@ function setCooldownTimeTo(second) {
 }
 
 function setHoldingTimeTo(second) {
-  second = holdingDuration - second; //7, 6, 5, 4, 3, 2, 1
-  if (second > 0) {
-    var list = getListCooldownCircle();
-    second =
+  let secondLeft = holdingDuration - second; //7, 6, 5, 4, 3, 2, 1
+  if (secondLeft > 0) {
+    const list = getCoundownCircleList();
+    secondLeft =
       holdingDuration > 10
-        ? Math.ceil((second * 10) / holdingDuration)
-        : second;
-    for (var i = 0; i < 10; i++) {
+        ? Math.ceil((secondLeft * 10) / holdingDuration)
+        : secondLeft;
+    for (let i = 0; i < 10; i++) {
       list[i].setAttribute(
         "class",
-        i + 1 <= second ? "circle active" : "circle active filled"
+        i + 1 <= secondLeft ? "circle active" : "circle active filled"
       );
       if (i + 1 > holdingDuration) {
         list[i].setAttribute("class", "hidden");
@@ -456,38 +438,44 @@ function setHoldingTimeTo(second) {
 }
 
 function tapOn(nextId) {
-  // Don't allow tap when in NEW_SESSION_MODES.PLAY mode
-  if (window.sessionInstance?.newMode === "PLAY") {
+  // Don't allow tap when in SESSION_MODES.PLAY mode
+  if (
+    window.sessionInstance?.mode === window.SESSION_MODES.PLAY ||
+    isHolding ||
+    !staffCode
+  ) {
     return;
   }
 
-  if (!isHolding) {
-    if (staffCode.length > 0) {
-      highlightInnerRingText(currentIndex + "-" + nextId);
-      sendToServer(MSG_TAP, nextId);
-    }
-  }
+  const currFrame = window.sessionInstance.getCurrentPlayingFrame();
+  const frameVotingDur = currFrame.frameElement.getAttribute("voting");
+
+  const nextSvgFile = window.listFiles[nextId];
+  const nextSvgEle = document.querySelector(`[file="${nextSvgFile}"]`);
+  const nextFrameHoldingDur = nextSvgEle?.getAttribute("holding");
+  highlightInnerRingText(`${currentIndex}-${nextId}`);
+  sendToServer(MSG_TAP, { val: nextId, frameVotingDur, nextFrameHoldingDur });
 }
 
 function getListSvg() {
   return document.querySelectorAll("#MainContent svg[id]");
 }
 
-function getListCooldownCircle() {
-  var listCircle = [];
-  for (var i = 1; i < 11; i++) {
+function getCoundownCircleList() {
+  const listCircle = [];
+  for (let i = 1; i < 11; i++) {
     listCircle.push(document.getElementById("circle_" + i));
   }
   return listCircle;
 }
 
 function showInnerRing(index) {
-  var array = index.split("-");
-  var svgIndex = array[0];
-  var svg = document.getElementById("svg" + svgIndex);
-  var listEllipse = svg.querySelectorAll("ellipse[id]");
-  for (var i = 0; i < listEllipse.length; i++) {
-    var id = listEllipse[i].id;
+  const array = index.split("-");
+  const svgIndex = array[0];
+  const svg = document.getElementById("svg" + svgIndex);
+  const listEllipse = svg.querySelectorAll("ellipse[id]");
+  for (let i = 0; i < listEllipse.length; i++) {
+    let id = listEllipse[i].id;
     if (/^\d+-\d+$/.test(id)) {
       listEllipse[i].setAttribute("class", id == index ? "" : "hidden");
     }
@@ -500,14 +488,15 @@ function setInnerRingText(index, text) {
   if (text.length <= 3) {
     const X = [-212.19, -232.023, -251.04];
     const Y = [-231.138, -230.697, -230.787];
-    var array = index.split("-");
-    var svgIndex = array[0];
-    var svg = document.getElementById("svg" + svgIndex);
-    var selector = "text[id^='ta-" + index + "']";
-    var listText = svg.querySelectorAll(selector);
+    const array = index.split("-");
+    const svgIndex = array[0];
+    const svg = document.getElementById("svg" + svgIndex);
+    const selector = `text[id^='ta-${index}']`;
+    const listText = svg.querySelectorAll(selector);
 
-    for (var i = 0; i < listText.length; i++) {
+    for (let i = 0; i < listText.length; i++) {
       listText[i].innerHTML = text == "0" ? "" : text;
+
       if (text.length > 0 && text.length <= 3) {
         listText[i].setAttribute("x", X[text.length - 1]);
         listText[i].setAttribute("y", Y[text.length - 1]);
@@ -518,27 +507,27 @@ function setInnerRingText(index, text) {
 
 function setOpacityForInnerRingText(index, value) {
   index = index + "";
-  var array = index.split("-");
-  var svgIndex = array[0];
-  var svg = document.getElementById("svg" + svgIndex);
-  var selector = "text[id^='ta-" + index + "']";
-  var listText = svg.querySelectorAll(selector);
+  const array = index.split("-");
+  const svgIndex = array[0];
+  const svg = document.getElementById("svg" + svgIndex);
+  const selector = `text[id^='ta-${index}']`;
+  const listText = svg.querySelectorAll(selector);
 
-  for (var i = 0; i < listText.length; i++) {
+  for (let i = 0; i < listText.length; i++) {
     listText[i].style.opacity = value;
   }
 }
 
 function highlightInnerRingText(index) {
-  var array = index.split("-");
-  var svgIndex = array[0];
-  var svg = document.getElementById("svg" + svgIndex);
-  var selector = "text[id^='ta-" + svgIndex + "']";
-  var listText = svg.querySelectorAll(selector);
+  const array = index.split("-");
+  const svgIndex = array[0];
+  const svg = document.getElementById("svg" + svgIndex);
+  const selector = "text[id^='ta-" + svgIndex + "']";
+  const listText = svg.querySelectorAll(selector);
 
-  for (var i = 0; i < listText.length; i++) {
-    var id = listText[i].id;
-    listText[i].style.opacity = id == "ta-" + index ? 1.0 : 0.25;
+  for (let i = 0; i < listText.length; i++) {
+    const id = listText[i].id;
+    listText[i].style.opacity = id === "ta-" + index ? 1.0 : 0.25;
   }
 }
 
@@ -565,50 +554,46 @@ function setIndicatorHold(value) {
 
 function setOverlay(value) {
   if (value) {
-    var svg = document.getElementById("svg" + currentIndex);
-    var fileName = svg.getAttribute("file");
+    const svg = document.getElementById("svg" + currentIndex);
+    const fileName = svg.getAttribute("file");
     if (fileName.startsWith("PRE") || fileName.startsWith("START")) {
-      var div = document.getElementById("divOverlay");
+      const div = document.getElementById("divOverlay");
       div.style.display = "inline";
     } else {
-      var div = document.getElementById("divOverlay");
+      const div = document.getElementById("divOverlay");
       div.style.display = "none";
-      var listDot = document.querySelectorAll(
-        "ellipse[id=dot" + currentIndex + "]"
+      const listDot = document.querySelectorAll(
+        `ellipse[id=dot${currentIndex}]`
       );
-      for (var i = 0; i < listDot.length; i++) {
+      for (let i = 0; i < listDot.length; i++) {
         listDot[i].style.fill = "rgb(0,0,0)";
       }
     }
   } else {
-    var div = document.getElementById("divOverlay");
+    const div = document.getElementById("divOverlay");
     div.style.display = "none";
-    var listDot = document.querySelectorAll(
-      "ellipse[id=dot" + currentIndex + "]"
-    );
-    for (var i = 0; i < listDot.length; i++) {
-      var dot = listDot[i];
-      var r = dot.getAttribute("r");
-      var g = dot.getAttribute("g");
-      var b = dot.getAttribute("b");
-      listDot[i].style.fill = "rgb(" + r + "," + g + "," + b + ")";
+    const listDot = document.querySelectorAll(`ellipse[id=dot${currentIndex}]`);
+    for (let i = 0; i < listDot.length; i++) {
+      const dot = listDot[i];
+      const r = dot.getAttribute("r");
+      const g = dot.getAttribute("g");
+      const b = dot.getAttribute("b");
+      listDot[i].style.fill = `rgb(${r},${g},${b})`;
     }
   }
 }
 
 function refreshScore() {
-  //location.reload(true);
-  var xmlhttp = new XMLHttpRequest();
-  var url = "svgcontent.html";
+  const xmlhttp = new XMLHttpRequest();
 
   xmlhttp.onreadystatechange = function () {
-    if (this.readyState == 4 && this.status == 200) {
-      var html = this.responseText;
+    if (this.readyState === 4 && this.status === 200) {
+      const html = this.responseText;
       document.getElementById("MainSVGContent").innerHTML = html;
 
-      sendToServer(MSG_NEED_DISPLAY, 0);
+      sendToServer(MSG_NEED_DISPLAY, { val: 0 });
     }
   };
-  xmlhttp.open("GET", url, true);
+  xmlhttp.open("GET", "svgcontent.html", true);
   xmlhttp.send();
 }

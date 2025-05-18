@@ -14,9 +14,16 @@ const MESSAGES = {
   MSG_SHOW_NUMBER_CONNECTION: 12,
 };
 
+const FORM_MESSAGES = {
+  INVALID_SESSION_DATA: "Session or password invalid",
+  INVALID_SESSION: "Invalid session",
+  INVALID_ADMIN_USER: "Username or password invalid",
+};
+
 const ABOUT_DATA_DIR = "about Nested notation";
 
 module.exports = {
   MESSAGES,
   ABOUT_DATA_DIR,
+  FORM_MESSAGES,
 };

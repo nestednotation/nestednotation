@@ -1,12 +1,80 @@
-const NEW_SESSION_MODES = {
+const SESSION_MODES = {
   PLAY: "PLAY",
   GUIDE: "GUIDE",
 };
 
-const removeFileExt = (fileName) => {
-  const splitted = fileName.split(".");
+window.SESSION_MODES = SESSION_MODES;
 
-  return splitted.slice(0, splitted.length - 1).join(".");
+const removeFileExt = (fileName) => {
+  return fileName.replace(/\.[^/.]+$/, "");
+};
+
+// SOUND_FILE_LIST main purpose to cache the list of sound name and it's file name
+// Usually soundName and fileName will be similiar, only different is fileName have
+// additional .m4u3 as ext.
+// But I cache the list just in case the score using different file ext like .mp3
+let SOUND_FILE_LIST = null;
+const getSoundLink = (soundName) => {
+  const { scoreSlug, soundFileList } = window;
+
+  if (!SOUND_FILE_LIST) {
+    SOUND_FILE_LIST = soundFileList.reduce((acc, soundFile) => {
+      const fileNameWithoutExt = removeFileExt(soundFile);
+      acc[fileNameWithoutExt] = soundFile;
+      return acc;
+    }, {});
+  }
+
+  const fileName = SOUND_FILE_LIST[soundName];
+  if (!fileName) {
+    alert(`Sound file not found for ${soundName}`);
+  }
+
+  return `/audio/${scoreSlug}/${fileName}`;
+};
+
+// Log all mismatch sounds found in the session
+const logMismatchSound = () => {
+  const soundSet = new Set();
+
+  const { soundFileList } = window;
+  for (const soundFile of soundFileList) {
+    soundSet.add(removeFileExt(soundFile));
+  }
+
+  const mainSvgContainer = document.getElementById("MainSVGContent");
+  if (!mainSvgContainer) {
+    console.error("MainSVGContent not found");
+    return;
+  }
+
+  const frameSvgNodes = mainSvgContainer.querySelectorAll("svg[id]");
+  if (frameSvgNodes.length === 0) {
+    console.error("No frame found");
+    return;
+  }
+
+  for (const frame of frameSvgNodes) {
+    const frameSvgSoundNodes = frame.querySelectorAll("[sound]");
+    for (const svgSoundNode of frameSvgSoundNodes) {
+      const soundNames = svgSoundNode.getAttribute("sound")?.split(",");
+      if (!soundNames) {
+        return;
+      }
+
+      for (const soundName of soundNames) {
+        const isExist = soundSet.has(soundName);
+
+        if (!isExist) {
+          console.error(
+            `Incorrect sound name: ${soundName} \n Found in file: ${frame.getAttribute(
+              "file"
+            )}`
+          );
+        }
+      }
+    }
+  }
 };
 
 /***************************************************************
@@ -23,119 +91,196 @@ function volumeToGain(v) {
   // Prototype copied from Mathematica:
   // volumeToGain[v_] := If[v < 1, 0, 0.001*Power[1000, (v - 1)/99.]]
   if (v < 1) return 0.0;
-  return 0.001 * Math.pow(1000.0, (v - 1.0) / 99.0);
+  const result = 0.001 * Math.pow(1000.0, (v - 1.0) / 99.0);
+  return Math.round(result * 100) / 100;
 }
 
 const DEFAULT_VOLUME = 80;
 
-function mergeSoundsAndVolumes(sounds, volumes, autoplay) {
-  if (volumes.length === 1) {
-    return sounds.map((s) => ({
-      soundInstance: s,
-      name: s.name,
-      volume: volumes[0] ?? DEFAULT_VOLUME,
-      autoplay,
-    }));
-  }
-
-  if (volumes.length === sounds.length) {
-    return sounds.map((s, idx) => ({
-      soundInstance: s,
-      name: s.name,
-      volume: volumes[idx],
-      autoplay,
-    }));
-  }
-
-  console.warn(
-    "Volume values mismatch with sound values, will fallback to default volume (80)"
-  );
-
-  return sounds.map((s) => ({
-    soundInstance: s,
-    name: s.name,
-    volume: DEFAULT_VOLUME,
-    autoplay,
-  }));
-}
-
 class Note {
   isAutoplay = true;
-  _isPlaying = false;
+  isLoop = true;
 
-  sounds = [];
-  soundId = null;
+  _playingCount = 0;
+
+  soundNames = [];
+  soundInstances = [];
+  volumes = [DEFAULT_VOLUME];
+
+  id = null;
   frameInstance = null;
-
   domElement = null;
 
   get viewMode() {
-    return this.frameInstance.sessionInstance.newMode;
+    return this.frameInstance.sessionInstance.mode;
   }
 
-  get isPlaying() {
-    return this._isPlaying;
+  get playingCount() {
+    return this._playingCount;
+  }
+  set playingCount(value) {
+    this._playingCount = Math.max(value, 0);
+
+    if (this._playingCount === this.soundInstances.length) {
+      this.domElement.dataset.playing = true;
+    }
+
+    if (this._playingCount === 0) {
+      this.domElement.dataset.playing = false;
+    }
   }
 
-  set isPlaying(value) {
-    this._isPlaying = value;
-
-    this.domElement.dataset.playing = value;
-  }
-
-  constructor(frameInstance, svgElement, sounds, isAutoplay = true) {
+  constructor(frameInstance, svgSoundNode) {
     this.frameInstance = frameInstance;
-    this.isAutoplay = isAutoplay;
-    this.sounds = sounds;
-    this.soundId = this.generateSoundId();
 
-    sounds.forEach((sound) => sound.soundInstance.notes.push(this));
-
-    this.domElement = svgElement;
-    this.domElement.dataset.playing = "false";
+    this.domElement = svgSoundNode;
     this.domElement.addEventListener("click", this.onNoteClicked.bind(this));
+
+    this.initialSounds();
   }
 
-  generateSoundId() {
-    return this.sounds
-      .map((s) => s.name)
-      .sort()
-      .join("|");
+  initialSounds() {
+    const soundNames = this.domElement.getAttribute("sound")?.split(",");
+    if (!soundNames) {
+      alert("[sound] attribute shouldn't be empty!");
+      return;
+    }
+
+    this.id = soundNames.sort().join("|");
+    this.soundNames = soundNames;
+
+    const nodeVolumns = this.domElement
+      .getAttribute("volume")
+      ?.split(",")
+      .map(Number) ?? [DEFAULT_VOLUME];
+    this.volumes =
+      nodeVolumns.length === soundNames.length ? nodeVolumns : [DEFAULT_VOLUME];
+    if (nodeVolumns.length !== soundNames.length) {
+      console.warn(
+        "Volume values mismatch with sound values, will fallback to default volume (80)"
+      );
+    }
+
+    this.isAutoplay = JSON.parse(
+      this.domElement.getAttribute("autoplay") ?? true
+    );
+    this.isLoop = JSON.parse(this.domElement.getAttribute("loop") ?? true);
+
+    const isVolumeMismatch = this.volumes.length === this.soundInstances;
+    this.soundInstances = soundNames.map((sn, idx) => {
+      const { isHtml5 } = window;
+      // If volume mismatch the number of sounds => this.volumes will be
+      // an array with 1 element, which is the default vol value
+      const volumeIdx = isVolumeMismatch ? idx : 0;
+
+      const soundInst = new Howl({
+        src: [getSoundLink(sn)],
+        loop: this.isLoop,
+        preload: false,
+        html5: isHtml5,
+        volume: volumeToGain(this.volumes[volumeIdx]),
+        onload: () => {
+          const soundLoadedEvent = new CustomEvent("sound-loaded", {
+            detail: {
+              key: sn,
+            },
+          });
+          console.log(`Loaded sound: ${sn}`);
+          window.dispatchEvent(soundLoadedEvent);
+        },
+      });
+
+      soundInst.on("play", () => {
+        console.log(`Start playing sound ${sn}`);
+        this.playingCount++;
+      });
+      soundInst.on("stop", () => {
+        console.log(`Stop playing sound ${sn}`);
+        this.playingCount--;
+      });
+      soundInst.on("end", () => {
+        console.log(`Sound ${sn} ended`);
+        this.playingCount--;
+      });
+      soundInst.on("loaderror", (...e) => {
+        logMismatchSound();
+        console.error(`Unable to load sound ${sn}`, ...e);
+      });
+
+      return soundInst;
+    });
+  }
+
+  loadNoteSounds() {
+    for (const soundInst of this.soundInstances) {
+      soundInst.load();
+    }
   }
 
   play() {
-    this.sounds.forEach((s) => {
-      const { soundInstance, volume } = s;
-
-      soundInstance.volume(volumeToGain(volume));
-      soundInstance.play();
-    });
-
-    this.isPlaying = true;
+    this.loadNoteSounds();
+    for (let idx = 0; idx < this.soundInstances.length; idx++) {
+      this.soundInstances[idx].play();
+    }
   }
 
   stop() {
-    this.isPlaying = false;
+    for (let idx = 0; idx < this.soundInstances.length; idx++) {
+      this.soundInstances[idx].stop();
+    }
+  }
 
-    this.sounds.forEach((s) => {
-      const { soundInstance } = s;
-
-      if (soundInstance.notes.some((n) => n.isPlaying)) {
-        return;
-      }
-
-      soundInstance.stop();
+  fadeStop(fadeDuration = 1000) {
+    this.soundInstances.forEach((s) => {
+      const vol = s.volume();
+      s.fade(vol, 0, fadeDuration);
+      setTimeout(() => {
+        s.stop();
+        s.volume(vol);
+      }, fadeDuration);
     });
+  }
+
+  fadeStart(fadeDuration = 1000) {
+    this.loadNoteSounds();
+    this.soundInstances.forEach((s) => {
+      const vol = s.volume();
+      s.fade(0, vol, fadeDuration);
+      s.play();
+    });
+  }
+
+  fadeInFrom(fromVolumes, fadeDuration = 1000) {
+    this.loadNoteSounds();
+
+    const finalVolumes =
+      fromVolumes.length === this.soundInstances.length
+        ? fromVolumes
+        : [DEFAULT_VOLUME];
+    const isVolumeMismatch = finalVolumes.length === this.soundInstances;
+
+    for (let idx = 0; idx < this.soundInstances.length; idx++) {
+      const sound = this.soundInstances[idx];
+      // If volume mismatch the number of sounds => this.volumes will be
+      // an array with 1 element, which is the default vol value
+      const volumeIdx = isVolumeMismatch ? idx : 0;
+      sound.fade(
+        volumeToGain(finalVolumes[volumeIdx]),
+        sound.volume(),
+        fadeDuration
+      );
+      sound.play();
+    }
   }
 
   onNoteClicked(e) {
     // In GUIDE mode, sound can't be interacted
-    if (this.viewMode === NEW_SESSION_MODES.GUIDE) {
+    if (this.viewMode === SESSION_MODES.GUIDE) {
       return;
     }
 
     e.preventDefault();
-    if (this.isPlaying) {
+    if (this.playingCount > 0) {
       this.stop();
     } else {
       this.play();
@@ -145,171 +290,90 @@ class Note {
 
 class Frame {
   id = null;
-  notes = [];
 
-  soundMap = {};
+  notes = [];
+  noteIds = [];
+  noteMap = {};
 
   sessionInstance = null;
+  frameElement = null;
 
-  constructor(sessionInstance, id, frameElement) {
+  constructor(sessionInstance, frameElement) {
+    this.frameElement = frameElement;
     this.sessionInstance = sessionInstance;
-    this.notes = this.getFrameNotes(frameElement);
-    this.id = id;
-    this.soundMap = this.getSoundMap();
+    this.id = frameElement.id;
+
+    this.initialFrameNotes();
   }
 
-  playAll() {
+  playAllAutoplayNotes() {
     this.notes.forEach((e) => {
       e.isAutoplay && e.play();
     });
   }
 
-  stopAll() {
+  stopAllNotes() {
     this.notes.forEach((e) => {
       e.stop();
     });
   }
 
-  loadSounds() {
-    Object.values(this.soundMap).forEach((s) => s.soundInstance.load());
+  loadFrameSounds() {
+    for (const note of this.notes) {
+      note.loadNoteSounds();
+    }
 
-    return Object.keys(this.soundMap);
+    return this.noteIds;
   }
 
-  getSoundMap() {
-    return this.notes.reduce((acc, curr) => {
-      for (const s of curr.sounds) {
-        acc[s.name] = s;
-      }
-
-      return acc;
-    }, {});
+  getAllSoundNameInFrame() {
+    return this.notes.map((n) => n.soundNames).flat();
   }
 
-  getFrameNotes(frame) {
-    const notes = [];
-
-    const frameSvgSoundNodes = frame.querySelectorAll("[sound]");
+  initialFrameNotes() {
+    const frameSvgSoundNodes = this.frameElement.querySelectorAll("[sound]");
     for (const svgSoundNode of frameSvgSoundNodes) {
-      const soundNames = svgSoundNode.getAttribute("sound")?.split(",");
-      if (!soundNames) {
-        return;
-      }
-
-      const nodeVolums = svgSoundNode
-        .getAttribute("volume")
-        ?.split(",")
-        .map(Number) ?? [DEFAULT_VOLUME];
-      const autoplay = JSON.parse(
-        svgSoundNode.getAttribute("autoplay") ?? true
-      );
-      const nodeSounds = soundNames.map((name) => {
-        const soundInstant = this.sessionInstance.soundMap[name];
-
-        if (!soundInstant) {
-          this.logMismatchSound();
-          alert(
-            "Sound name mismatch, please open Developer Tool - Console (F12) to check"
-          );
-        }
-
-        soundInstant.name = name;
-        return soundInstant;
-      });
-
-      const note = new Note(
-        this,
-        svgSoundNode,
-        mergeSoundsAndVolumes(nodeSounds, nodeVolums, autoplay),
-        autoplay
-      );
-
-      notes.push(note);
+      const note = new Note(this, svgSoundNode);
+      this.notes.push(note);
+      this.noteIds.push(note.id);
+      this.noteMap[note.id] = note;
     }
 
-    return notes;
-  }
-
-  // Log all mismatch sounds found in the session
-  logMismatchSound() {
-    const mainSvgContainer = document.getElementById("MainSVGContent");
-    if (!mainSvgContainer) {
-      console.error("MainSVGContent not found");
-      return;
-    }
-
-    const frameSvgNodes = mainSvgContainer.querySelectorAll("svg[id]");
-    if (frameSvgNodes.length === 0) {
-      console.error("No frame found");
-      return;
-    }
-
-    for (const frame of frameSvgNodes) {
-      const frameSvgSoundNodes = frame.querySelectorAll("[sound]");
-      for (const svgSoundNode of frameSvgSoundNodes) {
-        const soundNames = svgSoundNode.getAttribute("sound")?.split(",");
-        if (!soundNames) {
-          return;
-        }
-
-        for (const soundName of soundNames) {
-          const isExist = Boolean(this.sessionInstance.soundMap[soundName]);
-
-          if (!isExist) {
-            console.error(
-              `Incorrect sound name: ${soundName} \n Found in file: ${frame.getAttribute(
-                "file"
-              )}`
-            );
-          }
-        }
-      }
-    }
+    return this.notes;
   }
 }
 
 class AudioSession {
   currFrameId = null;
 
-  // Map of sound name to Howl instance
-  soundMap = {};
   // Map of frame id to Frame instance
   frameMap = {};
 
-  _newMode = NEW_SESSION_MODES.PLAY;
+  _mode = SESSION_MODES.PLAY;
   guideLock = false;
 
   soundLoadSet = new Set();
 
   autoPlay = false;
 
-  get newMode() {
-    return this._newMode;
+  get mode() {
+    return this._mode;
   }
-  set newMode(value) {
+  set mode(value) {
     // Toggle guide lock after switching to guide mode
-    if (
-      this._newMode === NEW_SESSION_MODES.GUIDE &&
-      value === NEW_SESSION_MODES.GUIDE
-    ) {
+    if (this._mode === SESSION_MODES.GUIDE && value === SESSION_MODES.GUIDE) {
       this.guideLock = !this.guideLock;
     }
 
     // Unlock guide mode when switching to play mode
-    if (value === NEW_SESSION_MODES.PLAY) {
+    if (value === SESSION_MODES.PLAY) {
       this.guideLock = false;
     }
 
-    this._newMode = value;
+    this._mode = value;
 
-    document.body.classList.toggle(
-      "guide-mode",
-      value === NEW_SESSION_MODES.GUIDE
-    );
-    document.body.classList.toggle(
-      "play-mode",
-      value === NEW_SESSION_MODES.PLAY
-    );
+    document.body.classList.toggle("guide-mode", value === SESSION_MODES.GUIDE);
+    document.body.classList.toggle("play-mode", value === SESSION_MODES.PLAY);
 
     document.getElementById("change-mode-container").dataset.mode = value;
     document.getElementById("change-mode-container").dataset.guideLock =
@@ -317,30 +381,6 @@ class AudioSession {
   }
 
   init() {
-    const { scoreSlug, soundList, isHtml5 } = window;
-
-    for (const soundFile of soundList) {
-      const key = removeFileExt(soundFile);
-      this.soundMap[key] = new Howl({
-        src: [`/audio/${scoreSlug}/${soundFile}`],
-        loop: true,
-        preload: false,
-        html5: isHtml5,
-        onload: function () {
-          const soundLoadedEvent = new CustomEvent("sound-loaded", {
-            detail: {
-              key: key,
-              soundInstance: this,
-            },
-          });
-
-          window.dispatchEvent(soundLoadedEvent);
-        },
-      });
-
-      this.soundMap[key].notes = [];
-    }
-
     window.addEventListener("sound-loaded", (e) => {
       this.handleSoundLoaded(e.detail);
     });
@@ -362,7 +402,8 @@ class AudioSession {
     }
 
     for (const frame of frameSvg) {
-      const frameInstance = new Frame(this, frame.id, frame);
+      const frameInstance = new Frame(this, frame);
+      // frameInstance.loadFrameSounds();
       this.frameMap[frame.id] = frameInstance;
       this.markToGrayscaleNonLinkSvg(frame);
     }
@@ -374,145 +415,75 @@ class AudioSession {
 
     this.currFrameId = nextFrameId;
     if (!prevId) {
-      const soundKeyToLoads = this.frameMap[nextId].loadSounds();
-      soundKeyToLoads.forEach((s) => this.markSoundAsLoading(s));
+      const initialFrame = this.frameMap[nextId];
+      initialFrame.loadFrameSounds();
+      initialFrame
+        .getAllSoundNameInFrame()
+        .forEach((s) => this.markSoundAsLoading(s));
       Howler.stop();
       return;
     }
 
     const { fadeDuration = 1000 } = window;
 
-    if (this.autoPlay) {
-      const prevSoundData = this.frameMap[prevId].soundMap;
-      const nextSoundData = this.frameMap[nextId].soundMap;
+    const prevSoundData = this.frameMap[prevId].noteMap;
+    const nextSoundData = this.frameMap[nextId].noteMap;
+    const continueNotes = {};
+    for (const [noteId, note] of Object.entries(prevSoundData)) {
+      if (nextSoundData[noteId] && note.playingCount > 0) {
+        continueNotes[noteId] = note;
+      } else {
+        note.fadeStop(fadeDuration);
+      }
+    }
 
-      const continueSound = {};
-      Object.entries(prevSoundData).map(([key, val]) => {
-        if (nextSoundData[key]) {
-          continueSound[key] = volumeToGain(val.volume);
-        } else {
-          const { soundInstance, volume } = val;
-          soundInstance.fade(volumeToGain(volume), 0, fadeDuration);
+    console.log(
+      "Common sound notes between prev and current frame:",
+      Object.keys(continueNotes)
+    );
 
-          setTimeout(() => {
-            soundInstance.unload();
-          }, fadeDuration);
+    for (const [noteId, note] of Object.entries(nextSoundData)) {
+      if (continueNotes[noteId]) {
+        const prevNote = continueNotes[noteId];
+        note.fadeInFrom(prevNote.volumes, fadeDuration);
+        prevNote.fadeStop(fadeDuration);
+      } else {
+        note.soundNames.forEach((sn) => this.markSoundAsLoading(sn));
+        note.loadNoteSounds();
+
+        if (this.autoPlay && note.isAutoplay) {
+          note.fadeStart(fadeDuration);
         }
-      });
-
-      console.log(
-        "Common sounds between prev and current frame:",
-        Object.keys(continueSound)
-      );
-
-      Object.entries(nextSoundData).map(([key, val]) => {
-        const { soundInstance, volume, autoplay } = val;
-
-        if (autoplay) {
-          soundInstance.play();
-        }
-
-        if (continueSound[key]) {
-          soundInstance.fade(
-            continueSound[key],
-            volumeToGain(volume),
-            fadeDuration
-          );
-        } else {
-          this.markSoundAsLoading(key);
-          soundInstance.load();
-          soundInstance.fade(0, volumeToGain(volume), fadeDuration);
-        }
-      });
-
-      this.frameMap[prevId].notes.forEach((n) => {
-        n.isPlaying = false;
-      });
-
-      this.frameMap[nextId].notes.forEach((n) => {
-        if (n.isAutoplay) {
-          n.isPlaying = true;
-        }
-      });
-    } else {
-      const prevSoundData = this.frameMap[prevId].soundMap;
-      const nextSoundData = this.frameMap[nextId].soundMap;
-
-      const continueSound = {};
-      Object.entries(prevSoundData).map(([key, val]) => {
-        if (nextSoundData[key]) {
-          continueSound[key] = volumeToGain(val.volume);
-        } else {
-          const { soundInstance, volume } = val;
-          soundInstance.fade(volumeToGain(volume), 0, fadeDuration);
-
-          setTimeout(() => {
-            soundInstance.unload();
-          }, fadeDuration);
-        }
-      });
-
-      this.frameMap[prevId].notes.forEach((n) => {
-        n.isPlaying = false;
-      });
-
-      console.log(
-        "Common sounds between prev and current frame:",
-        Object.keys(continueSound)
-      );
-
-      Object.entries(nextSoundData).map(([key, val]) => {
-        const { soundInstance, volume } = val;
-        if (continueSound[key]) {
-          soundInstance.fade(
-            continueSound[key],
-            volumeToGain(volume),
-            fadeDuration
-          );
-
-          const parentNote = soundInstance.notes.find(
-            (note) => note.frameInstance === this.frameMap[nextId]
-          );
-
-          // Check if the note have all sounds play in next frame
-          // => should mark as isPlaying, else assume as partial playing
-          if (parentNote?.sounds.every((s) => s.soundInstance.playing())) {
-            parentNote.isPlaying = true;
-          }
-        } else {
-          this.markSoundAsLoading(key);
-          soundInstance.load();
-        }
-      });
+      }
     }
 
     // Switch back to play mode after changing frame if not in guide lock
     if (!this.guideLock) {
-      this.newMode = NEW_SESSION_MODES.PLAY;
+      this.mode = SESSION_MODES.PLAY;
     }
   }
 
-  getPlayingSound() {
-    return Object.values(this.soundMap).filter((s) => s.playing());
+  getPlayingNotes() {
+    return this.frameMap[this.currFrameId].notes.filter(
+      (n) => n.playingCount > 0
+    );
   }
 
   getPlayingSoundName() {
-    return this.getPlayingSound()
-      .map((s) => s.name)
-      .sort();
+    return this.frameMap[this.currFrameId].getAllSoundNameInFrame();
   }
 
-  getCurrentFrameSound() {
-    return this.frameMap[this.currFrameId].soundMap;
+  getCurrentPlayingFrame() {
+    return this.frameMap[this.currFrameId];
   }
 
   toggleAutoplay() {
     this.autoPlay = !this.autoPlay;
 
     if (this.autoPlay) {
-      this.frameMap[this.currFrameId]?.playAll();
+      this.frameMap[this.currFrameId]?.playAllAutoplayNotes();
     } else {
-      this.frameMap[this.currFrameId]?.stopAll();
+      this.frameMap[this.currFrameId]?.stopAllNotes();
     }
   }
 
@@ -558,7 +529,6 @@ class AudioSession {
 }
 
 const sessionInstance = new AudioSession();
-
 window.sessionInstance = sessionInstance;
 
 const handleOnUpdateView = ({ detail }) => {
@@ -619,7 +589,7 @@ function toggleSessionMode(mode) {
     return;
   }
 
-  window.sessionInstance.newMode = mode;
+  window.sessionInstance.mode = mode;
 }
 
 function toggleAutoplay(element) {
