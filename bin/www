@@ -142,66 +142,58 @@ wsServer.on("request", function (request) {
 
   connection.on("close", function () {
     const session = db.sessionTable.getById(connection.sessionId);
-    if (session !== null) {
+    if (session) {
       updateNumberOfConnectionForSession(session);
     }
   });
 });
 
 //time = 0 => immediately
-function sendToClient(conn, time, messageId, value1, value2) {
+function sendToClient(conn, time, payload) {
   const obj = {
     t: time,
-    m: messageId,
-    v1: value1,
-    v2: value2,
+    ...payload,
   };
   conn.sendUTF(JSON.stringify(obj));
 }
 
-function sendToAllClients(session, time, messageId, value1, value2) {
+function sendToAllClients(session, time, payload) {
   const obj = {
     t: time,
-    m: messageId,
-    v1: value1,
-    v2: value2,
+    ...payload,
   };
   wsServer.connections.forEach(function each(conn) {
-    if (conn.sessionId == session.id) {
+    if (conn.sessionId === session.id) {
       conn.sendUTF(JSON.stringify(obj));
     }
   });
 }
 
-function sendToAllClientsWithDelay(
-  session,
-  timeDelay,
-  messageId,
-  value1,
-  value2
-) {
-  var time = new Date().getTime() + timeDelay;
-  sendToAllClients(session, time, messageId, value1, value2);
+function sendToAllClientsWithDelay(session, timeDelay, payload) {
+  const time = new Date().getTime() + timeDelay;
+  sendToAllClients(session, time, payload);
 }
 
-function sendToAllAdmins(session, time, messageId, value1, value2) {
-  var obj = {
+function sendToAllAdmins(session, time, payload) {
+  const obj = {
     t: time,
-    m: messageId,
-    v1: value1,
-    v2: value2,
+    ...payload,
   };
   wsServer.connections.forEach(function each(conn) {
-    if (conn.sessionId == session.id && conn.isAdmin) {
+    if (conn.sessionId === session.id && conn.isAdmin) {
       conn.sendUTF(JSON.stringify(obj));
     }
   });
 }
 
 function sendUpdateVotingToClient(conn, session) {
-  var countDic = countVoteForSession(session);
-  var timestamp = new Date().getTime();
-  sendToClient(conn, 0, MESSAGES.MSG_UPDATE_VOTING, countDic, timestamp);
+  const countDic = countVoteForSession(session);
+  const timestamp = new Date().getTime();
+  sendToClient(conn, 0, {
+    m: MESSAGES.MSG_UPDATE_VOTING,
+    countDic,
+    timestamp,
+  });
 }
 
 function countVoteForSession(session) {
@@ -213,10 +205,33 @@ function countVoteForSession(session) {
 
   for (let i = 0; i < voteData.length; i++) {
     const num = voteData[i];
-    if (typeof num != "undefined" && num != -1) {
+    if (typeof num !== "undefined" && num !== -1) {
       counts[num] = counts[num] ? counts[num] + 1 : 1;
     }
   }
+
+  const winningVoteCount = Math.max(...Object.values(counts));
+  const winningVoteIdxs = [];
+  for (const [voteIdx, voteCount] of Object.entries(counts)) {
+    if (voteCount === winningVoteCount) {
+      winningVoteIdxs.push(voteIdx);
+    }
+  }
+
+  if (
+    session.currWinningIdx &&
+    winningVoteIdxs.includes(session.currWinningIdx) &&
+    session.previousWinningCount === winningVoteIdxs.length
+  ) {
+    counts.winningVoteIdx = session.currWinningIdx;
+  } else {
+    const randomWinningIdx = Math.floor(Math.random() * winningVoteIdxs.length);
+    counts.winningVoteIdx = winningVoteIdxs[randomWinningIdx];
+  }
+
+  session.previousWinningCount = winningVoteIdxs.length;
+  session.currWinningIdx = counts.winningVoteIdx;
+
   return counts;
 }
 
@@ -254,13 +269,11 @@ function startVotingForSessionWithDelay(session, timeDelay, customDur) {
 
       const countDic = countVoteForSession(session);
       const timestamp = new Date().getTime();
-      sendToAllClients(
-        session,
-        0,
-        MESSAGES.MSG_UPDATE_VOTING,
+      sendToAllClients(session, 0, {
+        m: MESSAGES.MSG_UPDATE_VOTING,
         countDic,
-        timestamp
-      );
+        timestamp,
+      });
 
       if (
         !session.didSendStopVoting &&
@@ -287,13 +300,11 @@ function startVotingForSessionWithDelay(session, timeDelay, customDur) {
     }
   });
 
-  sendToAllClients(
-    session,
-    0,
-    MESSAGES.MSG_BEGIN_VOTING,
-    session.currentEndTimeStamp,
-    session.currentVotingDuration
-  );
+  sendToAllClients(session, 0, {
+    m: MESSAGES.MSG_BEGIN_VOTING,
+    endTime: session.currentEndTimeStamp,
+    duration: session.currentVotingDuration,
+  });
 }
 
 function stopVotingForSession(session) {
@@ -305,21 +316,10 @@ function stopVotingForSession(session) {
 
   //stand by signal
   const votingData = countVoteForSession(session);
-  const listId = Object.keys(votingData).map(Number);
-  let mostVoteCount = 0;
-  let mostVoteRingId = 0;
-
-  for (const id of listId) {
-    if (id === -1) {
-      continue;
-    }
-
-    const count = votingData[id];
-    if (count > mostVoteCount) {
-      mostVoteCount = count;
-      mostVoteRingId = id;
-    }
-  }
+  const mostVoteRingId =
+    votingData.winningVoteIdx === "stay"
+      ? session.currentIndex
+      : Number(votingData.winningVoteIdx);
 
   session.setCurrentIndexTo(mostVoteRingId);
   //unlock
@@ -337,17 +337,19 @@ function stopVotingForSession(session) {
   );
   session.saveSessionStateToFile();
 
-  sendToAllAdmins(
-    session,
-    0,
-    MESSAGES.MSG_SELECT_HISTORY,
-    session.history,
-    session.historyIndex
-  );
+  sendToAllAdmins(session, 0, {
+    m: MESSAGES.MSG_SELECT_HISTORY,
+    history: session.history,
+    selectedIdx: session.historyIndex,
+  });
 
   if (!session.isPause) {
-    var timestamp = new Date().getTime() + 1000 + 100;
-    sendToAllClients(session, timestamp, MESSAGES.MSG_SHOW, mostVoteRingId, 0);
+    const timestamp = new Date().getTime() + 1000 + 100;
+    sendToAllClients(session, timestamp, {
+      m: MESSAGES.MSG_SHOW,
+      showIdx: mostVoteRingId,
+    });
+    session.winningVoteIdx = null;
   }
 }
 
@@ -366,29 +368,27 @@ function startHoldingForSessionWithDelay(session, delay) {
   session.holdingTimer = setTimeout(
     (session) => {
       session.isHolding = false;
-      sendToAllAdmins(
-        session,
-        0,
-        MESSAGES.MSG_CHECK_HOLD,
-        session.isHolding,
-        0
-      );
+      sendToAllAdmins(session, 0, {
+        m: MESSAGES.MSG_CHECK_HOLD,
+        isHold: session.isHolding,
+      });
       session.holdingTimer = null;
       session.saveSessionStateToFile();
     },
-    session.holdDuration * 1000,
+    session.currentHoldingDuration * 1000,
     session
   );
   session.saveSessionStateToFile();
 
-  sendToAllAdmins(session, 0, MESSAGES.MSG_CHECK_HOLD, session.isHolding, 0);
-  sendToAllClients(
-    session,
-    0,
-    MESSAGES.MSG_BEGIN_HOLDING,
-    session.currentEndHoldTimeStamp,
-    session.currentHoldingDuration
-  );
+  sendToAllAdmins(session, 0, {
+    m: MESSAGES.MSG_CHECK_HOLD,
+    isHold: session.isHolding,
+  });
+  sendToAllClients(session, 0, {
+    m: MESSAGES.MSG_BEGIN_HOLDING,
+    endTime: session.currentEndHoldTimeStamp,
+    duration: session.currentHoldingDuration,
+  });
 }
 
 function jumpScoreForSession(session, value) {
@@ -409,29 +409,38 @@ function jumpScoreForSession(session, value) {
   session.setCurrentIndexTo(index);
   session.saveSessionStateToFile();
 
-  sendToAllAdmins(
-    session,
-    0,
-    MESSAGES.MSG_SELECT_HISTORY,
-    session.history,
-    session.historyIndex
-  );
+  sendToAllAdmins(session, 0, {
+    m: MESSAGES.MSG_SELECT_HISTORY,
+    history: session.history,
+    selectedIdx: session.historyIndex,
+  });
 
   if (!session.isPause) {
-    sendToAllClients(session, Date.now() + 100, MESSAGES.MSG_SHOW, index, 0);
+    sendToAllClients(session, Date.now() + 100, {
+      m: MESSAGES.MSG_SHOW,
+      showIdx: index,
+    });
   }
 }
 
 function cancelHoldingTimer(session, onOff) {
   clearTimeout(session.holdingTimer);
   session.patchState({ holdingTimer: null }, true);
-  sendToAllClients(session, 0, MESSAGES.MSG_BEGIN_HOLDING, 0, onOff);
+  sendToAllClients(session, 0, {
+    m: MESSAGES.MSG_BEGIN_HOLDING,
+    endTime: 0,
+    duration: onOff,
+  });
 }
 
 function cancelVotingTimer(session) {
   clearInterval(session.votingTimer);
   session.patchState({ votingTimer: null }, true);
-  sendToAllClients(session, 0, MESSAGES.MSG_BEGIN_VOTING, 0, 0);
+  sendToAllClients(session, 0, {
+    m: MESSAGES.MSG_BEGIN_VOTING,
+    endTime: 0,
+    duration: 0,
+  });
 }
 
 function updateNumberOfConnectionForSession(session) {
@@ -442,13 +451,11 @@ function updateNumberOfConnectionForSession(session) {
     (conn) => conn.sessionId == session.id && !conn.isAdmin && !conn.isStaff
   ).length;
 
-  sendToAllAdmins(
-    session,
-    0,
-    MESSAGES.MSG_SHOW_NUMBER_CONNECTION,
-    countPlayer,
-    countRider
-  );
+  sendToAllAdmins(session, 0, {
+    m: MESSAGES.MSG_SHOW_NUMBER_CONNECTION,
+    playerCount: countPlayer,
+    riderCount: countRider,
+  });
 }
 
 function messageHandle(conn, message) {
@@ -457,8 +464,8 @@ function messageHandle(conn, message) {
   const clientIndex = messageData.cid;
   const password = messageData.sig;
   const msg = messageData.msg;
-  const value = messageData.val;
   const session = db.sessionTable.getById(sessionId);
+
   if (!session) {
     console.log(
       `Session with id ${sessionId} not found while processing message`
@@ -468,21 +475,27 @@ function messageHandle(conn, message) {
 
   const isAdmin = password === session.adminPassword;
   if (msg === MESSAGES.MSG_PING) {
+    const { clientTime } = messageData;
     conn.sessionId = sessionId;
     conn.isAdmin = isAdmin;
     conn.isStaff =
       password === session.playerPassword || password === session.adminPassword;
-    sendToClient(conn, 0, msg, Date.now(), value);
+
+    sendToClient(conn, 0, {
+      m: MESSAGES.MSG_PING,
+      serverTime: Date.now(),
+      clientTime,
+    });
     return;
   }
 
   if (msg === MESSAGES.MSG_TAP) {
-    const nextFrameIdx = value;
+    const { selectedIdx } = messageData;
     if (
       clientIndex !== session.currentIndex ||
       session.isHolding ||
       session.isPause ||
-      nextFrameIdx === -1
+      selectedIdx === -1
     ) {
       return;
     }
@@ -492,25 +505,20 @@ function messageHandle(conn, message) {
       frameVotingDur === "0" ||
       frameVotingDur === "0%" ||
       frameVotingDur === "false" ||
-      session.votingDuration === 0 ||
-      session.listPreImages.includes(session.currentIndex)
+      session.votingDuration === 0
     ) {
-      session.setCurrentIndexTo(nextFrameIdx);
+      session.setCurrentIndexTo(selectedIdx);
       session.saveSessionStateToFile();
 
-      sendToAllAdmins(
-        session,
-        0,
-        MESSAGES.MSG_SELECT_HISTORY,
-        session.history,
-        session.historyIndex
-      );
-      sendToAllClientsWithDelay(
-        session,
-        100,
-        MESSAGES.MSG_SHOW,
-        session.currentIndex
-      );
+      sendToAllAdmins(session, 0, {
+        m: MESSAGES.MSG_SELECT_HISTORY,
+        history: session.history,
+        selectedIdx: session.historyIndex,
+      });
+      sendToAllClientsWithDelay(session, 100, {
+        m: MESSAGES.MSG_SHOW,
+        showIdx: session.currentIndex,
+      });
       const customHoldDur = parseCustomDur(
         session.holdDuration,
         nextFrameHoldingDur
@@ -519,98 +527,109 @@ function messageHandle(conn, message) {
         session.nextFrameHoldingDur = nextFrameHoldingDur;
         startHoldingForSessionWithDelay(session, 0);
       }
-    } else {
-      //change vote of client to new value
-      if (!session.isStandby) {
-        if (!session.isVoting) {
-          session.nextFrameHoldingDur = nextFrameHoldingDur;
-          startVotingForSessionWithDelay(session, 100, frameVotingDur);
-        }
-        conn.currentVoteTo = nextFrameIdx;
-        sendUpdateVotingToClient(conn, session);
+      return;
+    }
+
+    //change vote of client to new value
+    if (!session.isStandby) {
+      if (!session.isVoting) {
+        session.nextFrameHoldingDur = nextFrameHoldingDur;
+        startVotingForSessionWithDelay(session, 100, frameVotingDur);
       }
+
+      conn.currentVoteTo = selectedIdx;
+      sendUpdateVotingToClient(conn, session);
     }
     return;
   }
 
   if (msg === MESSAGES.MSG_NEED_DISPLAY) {
     if (!session.isPause) {
-      sendToClient(conn, 0, MESSAGES.MSG_SHOW, session.currentIndex, 0);
+      sendToClient(conn, 0, {
+        m: MESSAGES.MSG_SHOW,
+        showIdx: session.currentIndex,
+      });
     }
 
     if (session.isVoting) {
       conn.currentVoteTo = -1;
-      sendToClient(
-        conn,
-        0,
-        MESSAGES.MSG_BEGIN_VOTING,
-        session.currentEndTimeStamp,
-        session.currentVotingDuration
-      );
+      sendToClient(conn, 0, {
+        m: MESSAGES.MSG_BEGIN_VOTING,
+        endTime: session.currentEndTimeStamp,
+        duration: session.currentVotingDuration,
+      });
     }
 
     if (session.isHolding) {
-      sendToClient(
-        conn,
-        0,
-        MESSAGES.MSG_BEGIN_HOLDING,
-        session.currentEndHoldTimeStamp,
-        session.currentHoldingDuration
-      );
+      sendToClient(conn, 0, {
+        m: MESSAGES.MSG_BEGIN_HOLDING,
+        endTime: session.currentEndHoldTimeStamp,
+        duration: session.currentHoldingDuration,
+      });
     }
 
     if (isAdmin) {
-      sendToClient(
-        conn,
-        0,
-        MESSAGES.MSG_SELECT_HISTORY,
-        session.history,
-        session.historyIndex
-      );
+      sendToClient(conn, 0, {
+        m: MESSAGES.MSG_SELECT_HISTORY,
+        history: session.history,
+        selectedIdx: session.historyIndex,
+      });
     }
 
     updateNumberOfConnectionForSession(session);
-    sendToAllClients(session, 0, MESSAGES.MSG_CHECK_HOLD, session.isHolding, 0);
-    sendToAllClients(
-      session,
-      0,
-      MESSAGES.MSG_PAUSE,
-      session.isPause,
-      session.currentIndex
-    );
+    sendToAllClients(session, 0, {
+      m: MESSAGES.MSG_CHECK_HOLD,
+      isHold: session.isHolding,
+    });
+    sendToAllClients(session, 0, {
+      m: MESSAGES.MSG_PAUSE,
+      isPause: session.isPause,
+      showIdx: session.currentIndex,
+    });
     return;
   }
 
-  if (isAdmin && msg === MESSAGES.MSG_CHECK_HOLD) {
+  // Below are only admin permisison msg
+  if (!isAdmin) {
+    return;
+  }
+
+  if (msg === MESSAGES.MSG_CHECK_HOLD) {
     if (session.isHolding && session.holdingTimer != null) {
       cancelHoldingTimer(session, 0);
     }
 
-    session.patchState({ isHolding: value }, true);
-    sendToAllClients(session, 0, MESSAGES.MSG_CHECK_HOLD, value, 0);
+    const { isHold } = messageData;
+    session.patchState({ isHolding: isHold }, true);
+    sendToAllClients(session, 0, {
+      m: MESSAGES.MSG_CHECK_HOLD,
+      isHold,
+    });
     return;
   }
 
-  if (isAdmin && msg === MESSAGES.MSG_FINISH) {
+  if (msg === MESSAGES.MSG_FINISH) {
     db.sessionTable.forceSessionStop(session);
-    sendToAllClientsWithDelay(session, 100, MESSAGES.MSG_FINISH, 0, 0);
+    sendToAllClientsWithDelay(session, 100, {
+      m: MESSAGES.MSG_FINISH,
+    });
     return;
   }
 
-  if (isAdmin && msg === MESSAGES.MSG_PAUSE) {
-    session.patchState({ isPause: value }, true);
-    sendToAllClients(
-      session,
-      0,
-      MESSAGES.MSG_PAUSE,
-      value,
-      session.currentIndex
-    );
+  if (msg === MESSAGES.MSG_PAUSE) {
+    const { isPause } = messageData;
+    session.patchState({ isPause }, true);
+    sendToAllClients(session, 0, {
+      m: MESSAGES.MSG_PAUSE,
+      isPause,
+      showIdx: session.currentIndex,
+    });
     return;
   }
 
-  if (isAdmin && msg === MESSAGES.MSG_SELECT_HISTORY) {
-    jumpScoreForSession(session, value);
+  if (msg === MESSAGES.MSG_SELECT_HISTORY) {
+    const { selectedIdx } = messageData;
+    jumpScoreForSession(session, selectedIdx);
     return;
   }
 }

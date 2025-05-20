@@ -185,21 +185,17 @@ class Note {
               key: sn,
             },
           });
-          console.log(`Loaded sound: ${sn}`);
           window.dispatchEvent(soundLoadedEvent);
         },
       });
 
       soundInst.on("play", () => {
-        console.log(`Start playing sound ${sn}`);
         this.playingCount++;
       });
       soundInst.on("stop", () => {
-        console.log(`Stop playing sound ${sn}`);
         this.playingCount--;
       });
       soundInst.on("end", () => {
-        console.log(`Sound ${sn} ended`);
         this.playingCount--;
       });
       soundInst.on("loaderror", (...e) => {
