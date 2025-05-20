@@ -301,7 +301,6 @@ class BMSession {
       fileName.toLowerCase()
     );
 
-    this.listPreImages = [];
     this.listMultiChooseImages = [];
     this.svgContent = "";
 
@@ -316,10 +315,6 @@ class BMSession {
         "<svg",
         `<svg id="svg${svgIndex}" class="hidden" file="${filename}" `
       );
-
-      if (filename.startsWith("PRE") || filename.startsWith("START")) {
-        this.listPreImages.push(svgIndex);
-      }
 
       const listA = svg.match(/<a.*?>/g);
       if (listA === null) {

@@ -76,7 +76,7 @@ router.get("/", function (req, res) {
           true
         );
 
-        if (session.folder.trim() != folder) {
+        if (session.folder.trim() !== folder) {
           const listScore = db.getListScore();
           if (listScore.indexOf(folder) >= 0) {
             session.reloadScore(folder);
@@ -84,7 +84,11 @@ router.get("/", function (req, res) {
             session.saveSessionStateToFile();
 
             const sendToAllClients = req.app.get("sendToAllClients");
-            sendToAllClients(session, 0, MESSAGES.MSG_NEED_DISPLAY, 0, 0);
+            sendToAllClients(session, 0, {
+              m: MESSAGES.MSG_NEED_DISPLAY,
+              v1: 0,
+              v2: 0,
+            });
           }
         }
       } else if (command === "create-session") {
@@ -120,13 +124,11 @@ router.get("/", function (req, res) {
           const sendToAllClientsWithDelay = req.app.get(
             "sendToAllClientsWithDelay"
           );
-          sendToAllClientsWithDelay(
-            session,
-            0,
-            MESSAGES.MSG_NEED_DISPLAY,
-            0,
-            0
-          );
+          sendToAllClientsWithDelay(session, 0, {
+            m: MESSAGES.MSG_NEED_DISPLAY,
+            v1: 0,
+            v2: 0,
+          });
         }
       }
     }

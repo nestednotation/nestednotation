@@ -11,7 +11,7 @@ let btnSleep = null;
 
 let divMainContent = null;
 
-let currentIndex = 0;
+window.currentIndex = 0;
 let timeStampOffset = 0;
 let timeStampRate = 1.0;
 
@@ -25,7 +25,7 @@ let holdingTimer = null;
 let holdingDuration = 11;
 let holdingEndTime = 0;
 let holdingStartTime = 0;
-let isHolding = false;
+window.isHolding = false;
 
 let votingDataTimeStamp = 0;
 
@@ -69,8 +69,7 @@ function onDOMContentLoaded() {
   ws = new WebSocket(wsPath);
 
   ws.onopen = function () {
-    const currTime = Date.now();
-    sendToServer(MSG_PING, { val: currTime });
+    sendToServer(MSG_PING, { clientTime: Date.now() });
   };
 
   ws.onmessage = function (event) {
@@ -102,12 +101,12 @@ function viewDidLoad() {
   isReady = true;
   //start ping timer every 60s
   pingTimer = setInterval(pingCallback, 1000 * 60);
-  //request currentIndex
-  sendToServer(MSG_NEED_DISPLAY, { val: 0 });
+  //request window.currentIndex
+  sendToServer(MSG_NEED_DISPLAY);
 }
 
 function pingCallback() {
-  sendToServer(MSG_PING, { val: Date.now() });
+  sendToServer(MSG_PING, { clientTime: Date.now() });
 }
 
 function noSleepCallback() {
@@ -128,9 +127,9 @@ function sendToServer(message, payload) {
 
   ws.send(
     JSON.stringify({
-      sig: staffCode,
-      cid: currentIndex,
-      sid: sessionId,
+      sig: window.staffCode,
+      cid: window.currentIndex,
+      sid: window.sessionId,
       msg: message,
       ...payload,
     })
@@ -139,81 +138,100 @@ function sendToServer(message, payload) {
 
 function parseMessage(data) {
   const msg = data.m;
-  const val1 = data.v1;
-  const val2 = data.v2;
-
   if (msg === MSG_PING) {
-    const timeBeginPing = val2;
+    const { serverTime, clientTime } = data;
+    const timeBeginPing = clientTime;
     const timeEndPing = Date.now();
-    const timeServer = val1;
+    const timeServer = serverTime;
     const ping = timeEndPing - timeBeginPing;
     timeStampOffset +=
       (timeServer + ping / 2.0 - timeEndPing - timeStampOffset) * timeStampRate;
+
     if (pingCountToReady > 0) {
       pingCountToReady--;
-      sendToServer(MSG_PING, { val: Date.now() });
-    } else if (pingCountToReady == 0) {
+      sendToServer(MSG_PING, { clientTime: Date.now() });
+      return;
+    }
+
+    if (pingCountToReady === 0) {
       pingCountToReady--;
       viewDidLoad();
     }
-  } else if (msg === MSG_SHOW) {
-    currentIndex = val1;
-    console.log("received show image at index " + currentIndex);
-    if (currentIndex == -1) {
+    return;
+  }
+
+  if (msg === MSG_SHOW) {
+    const { showIdx } = data;
+    window.currentIndex = showIdx;
+    console.log("received show image at index " + window.currentIndex);
+    if (window.currentIndex === -1) {
       console.log(data);
     } else {
-      showImageAtIndex(currentIndex);
+      showImageAtIndex(window.currentIndex);
     }
 
     //reset all
-    setOverlay(isHolding);
-    setOpacityForInnerRingText(currentIndex, 0.25);
-    setInnerRingText(currentIndex, "");
-  } else if (msg === MSG_NEED_DISPLAY) {
+    window.winningVoteIdx = null;
+    window.currVoteIndex = null;
+    setOverlay(window.isHolding);
+    setOpacityForInnerRingText(window.currentIndex, 0.25);
+    setInnerRingText(window.currentIndex, "");
+    showVotingIndicator({});
+    return;
+  }
+
+  if (msg === MSG_NEED_DISPLAY) {
     console.log("receive need to refresh");
     refreshScore();
-  } else if (msg === MSG_UPDATE_VOTING) {
-    const timestamp = val2;
-    if (timestamp > votingDataTimeStamp) {
-      votingDataTimeStamp = timestamp;
-      const votingData = val1;
+    return;
+  }
 
-      const listRingId = Object.keys(votingData);
-      const svg = document.getElementById("svg" + currentIndex);
-      const selector = `text[id^='ta-${currentIndex}']`;
-      const listText = svg.querySelectorAll(selector);
-
-      for (let i = 0; i < listText.length; i++) {
-        const id = listText[i].id;
-        const ringId = id.substring(id.lastIndexOf("-") + 1);
-
-        if (listRingId.includes(ringId)) {
-          const count = votingData[ringId];
-          setInnerRingText(`${currentIndex}-${ringId}`, count);
-        } else {
-          setInnerRingText(`${currentIndex}-${ringId}`, 0);
-        }
-      }
-
-      let mostVoteCount = 0;
-      let mostVoteRingId = 0;
-      for (let i = 0; i < listRingId.length; i++) {
-        const id = listRingId[i];
-        if (id == -1) {
-          continue;
-        }
-
-        const count = votingData[id];
-        if (count > mostVoteCount) {
-          mostVoteCount = count;
-          mostVoteRingId = id;
-        }
-      }
-      showInnerRing(currentIndex + "-" + mostVoteRingId);
+  if (msg === MSG_UPDATE_VOTING) {
+    const { countDic, timestamp } = data;
+    if (timestamp <= votingDataTimeStamp) {
+      return;
     }
-  } else if (msg === MSG_BEGIN_VOTING) {
-    cooldownEndTime = val1;
-    cooldownDuration = val2;
+
+    showVotingIndicator(countDic);
+
+    votingDataTimeStamp = timestamp;
+    const listRingId = Object.keys(countDic);
+    const svg = document.getElementById("svg" + window.currentIndex);
+    const selector = `text[id^='ta-${window.currentIndex}']`;
+    const listText = svg.querySelectorAll(selector);
+
+    for (let i = 0; i < listText.length; i++) {
+      const id = listText[i].id;
+      const ringId = id.substring(id.lastIndexOf("-") + 1);
+
+      setInnerRingText(
+        `${window.currentIndex}-${ringId}`,
+        listRingId.includes(ringId) ? countDic[ringId] : 0
+      );
+    }
+
+    let mostVoteCount = 0;
+    let mostVoteRingId = 0;
+    for (let i = 0; i < listRingId.length; i++) {
+      const id = listRingId[i];
+      if (id == -1) {
+        continue;
+      }
+
+      const count = countDic[id];
+      if (count > mostVoteCount) {
+        mostVoteCount = count;
+        mostVoteRingId = id;
+      }
+    }
+    showInnerRing(`${window.currentIndex}-${mostVoteRingId}`);
+    return;
+  }
+
+  if (msg === MSG_BEGIN_VOTING) {
+    const { endTime, duration } = data;
+    cooldownEndTime = endTime;
+    cooldownDuration = duration;
     cooldownStartTime = cooldownEndTime - cooldownDuration * 1000;
     const serverTime = getServerTime();
     setIndicatorCooldown(true);
@@ -231,9 +249,13 @@ function parseMessage(data) {
       hideAllCooldownCircles();
       setIndicatorCooldown(false);
     }
-  } else if (msg === MSG_BEGIN_HOLDING) {
-    holdingEndTime = val1;
-    holdingDuration = val2;
+    return;
+  }
+
+  if (msg === MSG_BEGIN_HOLDING) {
+    const { endTime, duration } = data;
+    holdingEndTime = endTime;
+    holdingDuration = duration;
     holdingStartTime = holdingEndTime - holdingDuration * 1000;
 
     const serverTime = getServerTime();
@@ -246,7 +268,7 @@ function parseMessage(data) {
       }
 
       holdingTimer = setInterval(holdingCallback, 100);
-      isHolding = true;
+      window.isHolding = true;
     } else {
       // nothing we can do here. just wait for next signal
       if (holdingEndTime == 0) {
@@ -254,47 +276,66 @@ function parseMessage(data) {
           setIndicatorHold(false);
           clearInterval(holdingTimer);
           holdingTimer = null;
-          isHolding = false;
+          window.isHolding = false;
         }
 
         hideAllCooldownCircles();
-        setIndicatorHold(holdingDuration == 0 ? false : true);
+        setIndicatorHold(holdingDuration !== 0);
       } else {
         hideAllCooldownCircles();
         setIndicatorHold(false);
       }
     }
-  } else if (msg === MSG_CHECK_HOLD) {
-    console.log("check hold");
-    setCheckHold(val1);
-    setIndicatorHold(val1);
-  } else if (msg === MSG_PAUSE) {
-    setCheckPause(val1);
-    showImageAtIndex(val1 ? -1 : val2);
-  } else if (msg === MSG_FINISH) {
+    return;
+  }
+
+  if (msg === MSG_CHECK_HOLD) {
+    const { isHold } = data;
+    setCheckHold(isHold);
+    setIndicatorHold(isHold);
+    return;
+  }
+
+  if (msg === MSG_PAUSE) {
+    const { isPause, showIdx } = data;
+    setCheckPause(isPause);
+    showImageAtIndex(isPause ? -1 : showIdx);
+    return;
+  }
+
+  if (msg === MSG_FINISH) {
     window.location.href = "/finish";
-  } else if (msg === MSG_SELECT_HISTORY) {
-    updateSelectHistory(val1, val2);
-  } else if (msg === MSG_SHOW_NUMBER_CONNECTION) {
-    updateNumberOfConnection(val1, val2);
+    return;
+  }
+
+  if (msg === MSG_SELECT_HISTORY) {
+    const { history, selectedIdx } = data;
+    updateSelectHistory(history, selectedIdx);
+    return;
+  }
+
+  if (msg === MSG_SHOW_NUMBER_CONNECTION) {
+    const { playerCount, riderCount } = data;
+    updateNumberOfConnection(playerCount, riderCount);
+    return;
   }
 }
 
 function updateNumberOfConnection(numPlayer, numRider) {
   const player = document.getElementById("spanplayer");
   const rider = document.getElementById("spanrider");
-  player.innerHTML = "" + numPlayer;
-  rider.innerHTML = "" + numRider;
+  player.innerHTML = `${numPlayer}`;
+  rider.innerHTML = `${numRider}`;
 }
 
-function updateSelectHistory(data, index) {
+function updateSelectHistory(historyData, selectedIdx) {
   const select = document.getElementById("history");
   let content = "";
-  for (let i = 0; i < data.length; i++) {
-    content += `<option value="${i}">${data[i]}</option>`;
+  for (let i = 0; i < historyData.length; i++) {
+    content += `<option value="${i}">${historyData[i]}</option>`;
   }
   select.innerHTML = content;
-  select.selectedIndex = index;
+  select.selectedIndex = selectedIdx;
 }
 
 function setCheckHold(value) {
@@ -308,23 +349,23 @@ function setCheckPause(value) {
 }
 
 function sendPause(check) {
-  sendToServer(MSG_PAUSE, { val: check.checked });
+  sendToServer(MSG_PAUSE, { isPause: check.checked });
 }
 
 function sendFinish() {
   const r = confirm("Are you sure you want to end ?");
 
   if (r) {
-    sendToServer(MSG_FINISH, { val: 0 });
+    sendToServer(MSG_FINISH);
   }
 }
 
 function sendHold(check) {
-  sendToServer(MSG_CHECK_HOLD, { val: check.checked });
+  sendToServer(MSG_CHECK_HOLD, { isHold: check.checked });
 }
 
 function sendHistory(select) {
-  sendToServer(MSG_SELECT_HISTORY, { val: select.selectedIndex });
+  sendToServer(MSG_SELECT_HISTORY, { selectedIdx: select.selectedIndex });
 }
 
 function holdingCallback() {
@@ -340,7 +381,7 @@ function holdingCallback() {
     setIndicatorHold(false);
     clearInterval(holdingTimer);
     holdingTimer = null;
-    isHolding = false;
+    window.isHolding = false;
   }
 }
 
@@ -370,6 +411,7 @@ function hideAllCooldownCircles() {
 
 function showImageAtIndex(index) {
   const listImg = getListSvg();
+
   for (let i = 0; i < listImg.length; i++) {
     const id = parseInt(listImg[i].id.substr(3));
     if (id == index) {
@@ -437,26 +479,6 @@ function setHoldingTimeTo(second) {
   }
 }
 
-function tapOn(nextId) {
-  // Don't allow tap when in SESSION_MODES.PLAY mode
-  if (
-    window.sessionInstance?.mode === window.SESSION_MODES.PLAY ||
-    isHolding ||
-    !staffCode
-  ) {
-    return;
-  }
-
-  const currFrame = window.sessionInstance.getCurrentPlayingFrame();
-  const frameVotingDur = currFrame.frameElement.getAttribute("voting");
-
-  const nextSvgFile = window.listFiles[nextId];
-  const nextSvgEle = document.querySelector(`[file="${nextSvgFile}"]`);
-  const nextFrameHoldingDur = nextSvgEle?.getAttribute("holding");
-  highlightInnerRingText(`${currentIndex}-${nextId}`);
-  sendToServer(MSG_TAP, { val: nextId, frameVotingDur, nextFrameHoldingDur });
-}
-
 function getListSvg() {
   return document.querySelectorAll("#MainContent svg[id]");
 }
@@ -522,7 +544,7 @@ function highlightInnerRingText(index) {
   const array = index.split("-");
   const svgIndex = array[0];
   const svg = document.getElementById("svg" + svgIndex);
-  const selector = "text[id^='ta-" + svgIndex + "']";
+  const selector = `text[id^='ta-${svgIndex}']`;
   const listText = svg.querySelectorAll(selector);
 
   for (let i = 0; i < listText.length; i++) {
@@ -554,7 +576,7 @@ function setIndicatorHold(value) {
 
 function setOverlay(value) {
   if (value) {
-    const svg = document.getElementById("svg" + currentIndex);
+    const svg = document.getElementById("svg" + window.currentIndex);
     const fileName = svg.getAttribute("file");
     if (fileName.startsWith("PRE") || fileName.startsWith("START")) {
       const div = document.getElementById("divOverlay");
@@ -563,7 +585,7 @@ function setOverlay(value) {
       const div = document.getElementById("divOverlay");
       div.style.display = "none";
       const listDot = document.querySelectorAll(
-        `ellipse[id=dot${currentIndex}]`
+        `ellipse[id=dot${window.currentIndex}]`
       );
       for (let i = 0; i < listDot.length; i++) {
         listDot[i].style.fill = "rgb(0,0,0)";
@@ -572,7 +594,9 @@ function setOverlay(value) {
   } else {
     const div = document.getElementById("divOverlay");
     div.style.display = "none";
-    const listDot = document.querySelectorAll(`ellipse[id=dot${currentIndex}]`);
+    const listDot = document.querySelectorAll(
+      `ellipse[id=dot${window.currentIndex}]`
+    );
     for (let i = 0; i < listDot.length; i++) {
       const dot = listDot[i];
       const r = dot.getAttribute("r");
@@ -591,7 +615,7 @@ function refreshScore() {
       const html = this.responseText;
       document.getElementById("MainSVGContent").innerHTML = html;
 
-      sendToServer(MSG_NEED_DISPLAY, { val: 0 });
+      sendToServer(MSG_NEED_DISPLAY);
     }
   };
   xmlhttp.open("GET", "svgcontent.html", true);
