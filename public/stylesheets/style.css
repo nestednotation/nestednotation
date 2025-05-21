@@ -169,6 +169,7 @@ input[type="button"] {
   justify-content: end;
   align-items: center;
   height: 4vh;
+  margin-inline-start: auto;
 }
 
 .count-down-container {
