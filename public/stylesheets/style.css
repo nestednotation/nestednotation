@@ -603,7 +603,7 @@ body.ipad {
   left: 0px;
 }
 
-.play-mode .vote-indicator {
+.play-mode .vote-indicator:not(.winning) {
   display: none;
 }
 
@@ -634,43 +634,26 @@ body.ipad {
 }
 
 .vote-indicator.winning {
-  animation: winning-pulse infinite 4s;
+  animation: ease-in-out guide-mode-winning-pulse infinite 4s;
 }
 
-@keyframes winning-pulse {
-  0% {
-    box-shadow: 0 0 0 2vmin rgba(255, 164, 0, 0), 0 0 0 #ffa400;
-  }
-  5% {
-    box-shadow: 0 0 0 2vmin rgba(255, 164, 0, 0.05), 0 0 0 #ffa400;
-  }
-  20% {
-    box-shadow: 0 0 0 2vmin rgba(255, 164, 0, 1), 0 0 0 #ffa400;
-  }
-  32% {
-    box-shadow: 0 0 0 2vmin #ffa400, 0 0 1vmin 1vmin #ffa400;
-  }
-  42% {
-    box-shadow: 0 0 0 2vmin #ffa400, 0 0 2vmin 2vmin #ffa400;
-  }
-  50% {
-    box-shadow: 0 0 0 2vmin #ffa400, 0 0 4vmin 4vmin #ffa400;
-  }
-  58% {
-    box-shadow: 0 0 0 2vmin #ffa400, 0 0 2vmin 2vmin #ffa400;
-  }
-  68% {
-    box-shadow: 0 0 0 2vmin #ffa400, 0 0 0 0 #ffa400;
-  }
-  80% {
-    box-shadow: 0 0 0 2vmin #ffa400, 0 0 0 0 #ffa400;
-  }
-  95% {
-    box-shadow: 0 0 0 2vmin rgba(255, 164, 0, 0.05), 0 0 0 #ffa400;
-  }
-  100% {
-    box-shadow: 0 0 0 2vmin rgba(255, 164, 0, 0), 0 0 0 #ffa400;
-  }
+.play-mode .vote-indicator.winning {
+  background: radial-gradient(
+    circle,
+    rgba(255, 164, 0, 1) 0%,
+    rgba(255, 164, 0, 1) 10%,
+    rgba(255, 164, 0, 0.5) 55%,
+    rgb(255 255 255 / 0%) 70%
+  );
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: 0 0;
+  border: none;
+  width: 12vmin;
+  height: 12vmin;
+  overflow: hidden;
+  color: transparent;
+  animation: play-mode-winning-pulse infinite 5s;
 }
 
 .stay-btn {
@@ -686,9 +669,16 @@ body.ipad {
   cursor: pointer;
   margin-inline-end: auto;
 }
-.stay-btn.visible {
+
+.stay-btn.visible,
+.play-mode .stay-btn.winning {
   display: flex;
 }
+
+.play-mode .stay-btn.winning .stay-indicator {
+  display: none;
+}
+
 .stay-indicator {
   width: 6vmin;
   height: 6vmin;
@@ -700,12 +690,16 @@ body.ipad {
   justify-content: center;
 }
 
-.stay-indicator.voting {
+.stay-btn.voting .stay-indicator {
   border: 0.5vmin solid #ff7700;
   color: #ff7700;
 }
 
-.stay-indicator.current-vote {
+.stay-btn.winning .stay-indicator {
+  animation: stay-winning-pulse infinite 4s;
+}
+
+.stay-btn.current-vote .stay-indicator {
   background: #ff7700;
   color: #fff;
   box-shadow: 0 0 0 0 #ffa400, 0 0 0 0 #ffa400;
@@ -713,4 +707,58 @@ body.ipad {
 
 .play-mode .stay-btn {
   display: none;
+}
+
+@keyframes guide-mode-winning-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(255, 164, 0, 0), 0 0 0 0 #ffa400;
+  }
+  25% {
+    box-shadow: 0 0 0 2vmin #ffa400, 0 0 0 0 #ffa400;
+  }
+  50% {
+    box-shadow: 0 0 0 2vmin #ffa400, 0 0 4vmin 4vmin #ffa400;
+  }
+  75% {
+    box-shadow: 0 0 0 2vmin #ffa400, 0 0 0 0 #ffa400;
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(255, 164, 0, 0), 0 0 0 0 #ffa400;
+  }
+}
+
+@keyframes play-mode-winning-pulse {
+  0% {
+    background-size: 0 0;
+  }
+  10% {
+    background-size: 0.6vmin 0.6vmin;
+  }
+  50% {
+    background-size: 12vmin 12vmin;
+  }
+  90% {
+    background-size: 0.6vmin 0.6vmin;
+  }
+  100% {
+    background-size: 0 0;
+  }
+}
+
+@keyframes stay-winning-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(255, 164, 0, 0), 0 0 0 0 #ffa400;
+  }
+  25% {
+    box-shadow: 0 0 0 1vmin #ffa400, 0 0 0 0 #ffa400;
+  }
+  50% {
+    box-shadow: 0 0 0 1vmin #ffa400, 0 0 2vmin 2vmin #ffa400;
+  }
+  75% {
+    box-shadow: 0 0 0 1vmin #ffa400, 0 0 0 0 #ffa400;
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(255, 164, 0, 0), 0 0 0 0 #ffa400;
+  }
 }

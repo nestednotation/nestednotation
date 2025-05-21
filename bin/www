@@ -501,6 +501,7 @@ function messageHandle(conn, message) {
     }
 
     const { frameVotingDur, nextFrameHoldingDur } = messageData;
+    session.nextFrameHoldingDur = nextFrameHoldingDur;
     if (
       frameVotingDur === "0" ||
       frameVotingDur === "0%" ||
@@ -524,7 +525,6 @@ function messageHandle(conn, message) {
         nextFrameHoldingDur
       );
       if (customHoldDur > 0) {
-        session.nextFrameHoldingDur = nextFrameHoldingDur;
         startHoldingForSessionWithDelay(session, 0);
       }
       return;
@@ -533,7 +533,6 @@ function messageHandle(conn, message) {
     //change vote of client to new value
     if (!session.isStandby) {
       if (!session.isVoting) {
-        session.nextFrameHoldingDur = nextFrameHoldingDur;
         startVotingForSessionWithDelay(session, 100, frameVotingDur);
       }
 

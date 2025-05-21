@@ -1,3 +1,23 @@
+document.addEventListener("DOMContentLoaded", () => {
+  const style = document.createElement("style");
+  style.textContent = `
+      .vote-indicator {
+        transform: translate(-50%, -50%) scale(${votingSize ?? 100}%);
+      }
+      .stay-btn {
+        transform: scale(${votingSize ?? 100}%);
+        transform-origin: left;
+      }
+    `;
+  document.head.appendChild(style);
+});
+
+function getFrameHoldingDur(voteIdx) {
+  const nextSvgFile = window.listFiles[voteIdx];
+  const nextSvgEle = document.querySelector(`[file="${nextSvgFile}"]`);
+  return nextSvgEle?.getAttribute("holding");
+}
+
 function tapOn(nextVoteIdx) {
   // Don't allow tap when in SESSION_MODES.PLAY mode
   if (
@@ -11,9 +31,10 @@ function tapOn(nextVoteIdx) {
   const currFrame = window.sessionInstance.getCurrentPlayingFrame();
   const frameVotingDur = currFrame.frameElement.getAttribute("voting");
 
-  const nextSvgFile = window.listFiles[nextVoteIdx];
-  const nextSvgEle = document.querySelector(`[file="${nextSvgFile}"]`);
-  const nextFrameHoldingDur = nextSvgEle?.getAttribute("holding");
+  const nextFrameHoldingDur =
+    nextVoteIdx === "stay"
+      ? currFrame.frameElement.getAttribute("holding")
+      : getFrameHoldingDur(nextVoteIdx);
   highlightInnerRingText(`${window.currentIndex}-${nextVoteIdx}`);
 
   window.currVoteIndex = nextVoteIdx;
@@ -109,7 +130,7 @@ function injectVoteIndicator(voteIdx, voteCount) {
     left: left + width / 2,
   };
 
-  const indicatorBtn = document.createElement("button");
+  const indicatorBtn = document.createElement("div");
   indicatorBtn.classList.add("vote-indicator");
   indicatorBtn.setAttribute("vote-idx", voteIdx);
   indicatorBtn.style.top = indicatorPosition.top;
@@ -134,22 +155,22 @@ function updateStayButtonState(voteCount) {
   const indicatorEle = stayBtnEle.querySelector(".stay-indicator");
 
   if (voteCount > 0) {
-    indicatorEle.classList.add("voting");
+    stayBtnEle.classList.add("voting");
     indicatorEle.innerHTML = voteCount;
   } else {
-    indicatorEle.classList.remove("voting");
+    stayBtnEle.classList.remove("voting");
     indicatorEle.innerHTML = "";
   }
 
   if (winningVoteIdx === "stay") {
-    indicatorEle.classList.add("winning");
+    stayBtnEle.classList.add("winning");
   } else {
-    indicatorEle.classList.remove("winning");
+    stayBtnEle.classList.remove("winning");
   }
 
   if (currVoteIndex === "stay") {
-    indicatorEle.classList.add("current-vote");
+    stayBtnEle.classList.add("current-vote");
   } else {
-    indicatorEle.classList.remove("current-vote");
+    stayBtnEle.classList.remove("current-vote");
   }
 }
