@@ -70,7 +70,7 @@ html
           label(for="pause") &nbsp;pause
         div(id="divhistory", style="display: none;")
           select(id="history", onchange="sendHistory(this);")
-      button(class="stay-btn",id="stayBtn", onclick="tapOn('stay')")
+      button(class="stay-btn",id="stay", onclick="handleSelectLink(this)", data-file-idx="stay")
         | stay
         div(class="stay-indicator") 
         

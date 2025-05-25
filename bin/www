@@ -200,37 +200,38 @@ function countVoteForSession(session) {
   const listConn = wsServer.connections.filter(
     (conn) => conn.sessionId === session.id
   );
-  const voteData = listConn.map((o) => o.currentVoteTo);
+  const voteData = listConn.map((o) => o.currentVoteTo).filter((o) => o !== -1);
   const counts = {};
 
-  for (let i = 0; i < voteData.length; i++) {
-    const num = voteData[i];
-    if (typeof num !== "undefined" && num !== -1) {
-      counts[num] = counts[num] ? counts[num] + 1 : 1;
+  for (const frameIdx of voteData) {
+    if (counts[frameIdx] !== undefined) {
+      counts[frameIdx]++;
+    } else {
+      counts[frameIdx] = 1;
     }
   }
 
   const winningVoteCount = Math.max(...Object.values(counts));
-  const winningVoteIdxs = [];
-  for (const [voteIdx, voteCount] of Object.entries(counts)) {
+  const winningVoteIds = [];
+  for (const [voteId, voteCount] of Object.entries(counts)) {
     if (voteCount === winningVoteCount) {
-      winningVoteIdxs.push(voteIdx);
+      winningVoteIds.push(voteId);
     }
   }
 
   if (
-    session.currWinningIdx &&
-    winningVoteIdxs.includes(session.currWinningIdx) &&
-    session.previousWinningCount === winningVoteIdxs.length
+    session.currWinningId &&
+    winningVoteIds.includes(session.currWinningId) &&
+    session.previousWinningCount === winningVoteIds.length
   ) {
-    counts.winningVoteIdx = session.currWinningIdx;
+    counts.winningVoteId = session.currWinningId;
   } else {
-    const randomWinningIdx = Math.floor(Math.random() * winningVoteIdxs.length);
-    counts.winningVoteIdx = winningVoteIdxs[randomWinningIdx];
+    const randomWinningIdx = Math.floor(Math.random() * winningVoteIds.length);
+    counts.winningVoteId = winningVoteIds[randomWinningIdx];
   }
 
-  session.previousWinningCount = winningVoteIdxs.length;
-  session.currWinningIdx = counts.winningVoteIdx;
+  session.previousWinningCount = winningVoteIds.length;
+  session.currWinningId = counts.winningVoteId;
 
   return counts;
 }
@@ -317,9 +318,10 @@ function stopVotingForSession(session) {
   //stand by signal
   const votingData = countVoteForSession(session);
   const mostVoteRingId =
-    votingData.winningVoteIdx === "stay"
+    votingData.winningVoteId === "stay"
       ? session.currentIndex
-      : Number(votingData.winningVoteIdx);
+      : // ID should follow format: nextVoteId#currFileName#aEleIndex
+        Number(votingData.winningVoteId.split("#")[0]);
 
   session.setCurrentIndexTo(mostVoteRingId);
   //unlock
@@ -349,7 +351,6 @@ function stopVotingForSession(session) {
       m: MESSAGES.MSG_SHOW,
       showIdx: mostVoteRingId,
     });
-    session.winningVoteIdx = null;
   }
 }
 
@@ -490,25 +491,27 @@ function messageHandle(conn, message) {
   }
 
   if (msg === MESSAGES.MSG_TAP) {
-    const { selectedIdx } = messageData;
+    const { selectedId } = messageData;
     if (
       clientIndex !== session.currentIndex ||
       session.isHolding ||
       session.isPause ||
-      selectedIdx === -1
+      !Boolean(selectedId)
     ) {
       return;
     }
 
     const { frameVotingDur, nextFrameHoldingDur } = messageData;
     session.nextFrameHoldingDur = nextFrameHoldingDur;
+    // selectedId should have format: nextVoteId#currFileName#aEleIndex
+    const [nextFrameIndex] = selectedId.split("#");
     if (
       frameVotingDur === "0" ||
       frameVotingDur === "0%" ||
       frameVotingDur === "false" ||
       session.votingDuration === 0
     ) {
-      session.setCurrentIndexTo(selectedIdx);
+      session.setCurrentIndexTo(Number(nextFrameIndex));
       session.saveSessionStateToFile();
 
       sendToAllAdmins(session, 0, {
@@ -536,7 +539,7 @@ function messageHandle(conn, message) {
         startVotingForSessionWithDelay(session, 100, frameVotingDur);
       }
 
-      conn.currentVoteTo = selectedIdx;
+      conn.currentVoteTo = selectedId;
       sendUpdateVotingToClient(conn, session);
     }
     return;
@@ -643,7 +646,7 @@ db.adminPassword = "g3tn3st3d";
 
 const wsPort = process.env.WS_PORT || 8080;
 const serverIp = process.env.SERVER_IP;
-const wsPath = `wss://${serverIp}`;
+const wsPath = `ws://192.168.0.2:2382`;
 
 console.log(`Websocket is running on port ${wsPort}`);
 console.log(`Websocket path is ${wsPath}`);

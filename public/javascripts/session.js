@@ -171,8 +171,8 @@ function parseMessage(data) {
     }
 
     //reset all
-    window.winningVoteIdx = null;
-    window.currVoteIndex = null;
+    window.winningVoteId = null;
+    window.currVoteId = null;
     setOverlay(window.isHolding);
     setOpacityForInnerRingText(window.currentIndex, 0.25);
     setInnerRingText(window.currentIndex, "");

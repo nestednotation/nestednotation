@@ -619,7 +619,8 @@ body.ipad {
   font-size: 4vmin;
   background: #fff;
   cursor: pointer;
-  font-family: "Roboto";
+  font-family: "Roboto", "SF Pro Text", "Helvetica Neue", "Helvetica", "Arial",
+    sans-serif;
   position: fixed;
   top: 0;
   left: 0;

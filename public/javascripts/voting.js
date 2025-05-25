@@ -18,7 +18,7 @@ function getFrameHoldingDur(voteIdx) {
   return nextSvgEle?.getAttribute("holding");
 }
 
-function tapOn(nextVoteIdx) {
+function handleSelectLink(aElement) {
   // Don't allow tap when in SESSION_MODES.PLAY mode
   if (
     window.sessionInstance?.mode === window.SESSION_MODES.PLAY ||
@@ -27,6 +27,10 @@ function tapOn(nextVoteIdx) {
   ) {
     return;
   }
+
+  // element ID should follow format: nextVoteId#currFileName#aEleIndex
+  const [nextId] = aElement.id.split("#");
+  const nextVoteIdx = nextId === "stay" ? "stay" : Number(nextId);
 
   const currFrame = window.sessionInstance.getCurrentPlayingFrame();
   const frameVotingDur = currFrame.frameElement.getAttribute("voting");
@@ -37,10 +41,10 @@ function tapOn(nextVoteIdx) {
       : getFrameHoldingDur(nextVoteIdx);
   highlightInnerRingText(`${window.currentIndex}-${nextVoteIdx}`);
 
-  window.currVoteIndex = nextVoteIdx;
+  window.currVoteId = aElement.id;
 
   sendToServer(MSG_TAP, {
-    selectedIdx: nextVoteIdx,
+    selectedId: aElement.id,
     frameVotingDur,
     nextFrameHoldingDur,
   });
@@ -49,35 +53,31 @@ function tapOn(nextVoteIdx) {
 window.votingIndicatorMap = new Map();
 
 function showVotingIndicator(voteDic) {
-  window.winningVoteIdx =
-    voteDic.winningVoteIdx && voteDic.winningVoteIdx === "stay"
-      ? voteDic.winningVoteIdx
-      : Number(voteDic.winningVoteIdx);
-  const { votingIndicatorMap, currVoteIndex, winningVoteIdx } = window;
+  window.winningVoteId = voteDic.winningVoteId;
+  const { votingIndicatorMap, currVoteId, winningVoteId } = window;
 
   const removedWinningDic = { ...voteDic };
-  delete removedWinningDic.winningVoteIdx;
+  delete removedWinningDic.winningVoteId;
 
   const dicEntries = Object.entries(removedWinningDic);
   if (dicEntries.length > 0) {
-    document.getElementById("stayBtn").classList.add("visible");
+    document.getElementById("stay").classList.add("visible");
   } else {
-    document.getElementById("stayBtn").classList.remove("visible");
+    document.getElementById("stay").classList.remove("visible");
   }
 
-  for (const [voteIdx, voteCount] of dicEntries) {
-    const parseVoteIdx = voteIdx === "stay" ? voteIdx : Number(voteIdx);
-    if (votingIndicatorMap.has(parseVoteIdx)) {
-      const indicatorEle = votingIndicatorMap.get(parseVoteIdx);
+  for (const [voteId, voteCount] of dicEntries) {
+    if (votingIndicatorMap.has(voteId)) {
+      const indicatorEle = votingIndicatorMap.get(voteId);
       indicatorEle.innerHTML = voteCount;
 
-      if (parseVoteIdx === winningVoteIdx) {
+      if (voteId === winningVoteId) {
         indicatorEle.classList.add("winning");
       } else {
         indicatorEle.classList.remove("winning");
       }
 
-      if (currVoteIndex === parseVoteIdx) {
+      if (currVoteId === voteId) {
         indicatorEle.classList.add("current-vote");
       } else {
         indicatorEle.classList.remove("current-vote");
@@ -85,36 +85,33 @@ function showVotingIndicator(voteDic) {
       continue;
     }
 
-    if (parseVoteIdx === "stay") {
+    if (voteId === "stay") {
       updateStayButtonState(voteCount);
       continue;
     }
 
-    injectVoteIndicator(parseVoteIdx, voteCount);
+    const injectedIndicator = injectVoteIndicator(voteId, voteCount);
+    votingIndicatorMap.set(voteId, injectedIndicator);
   }
 
-  if (!removedWinningDic["stay"]) {
+  if (!Object.hasOwn(removedWinningDic, "stay")) {
     updateStayButtonState(0);
   }
 
   // Remove all voting indicator element that not in dic
-  for (const [voteIdx, indicatorEle] of votingIndicatorMap.entries()) {
-    if (Object.hasOwn(removedWinningDic, voteIdx)) {
+  for (const [voteId, indicatorEle] of votingIndicatorMap.entries()) {
+    if (Object.hasOwn(removedWinningDic, voteId)) {
       continue;
     }
 
     indicatorEle.remove();
-    votingIndicatorMap.delete(voteIdx);
+    votingIndicatorMap.delete(voteId);
   }
 }
 
-function injectVoteIndicator(voteIdx, voteCount) {
-  const { votingIndicatorMap, currVoteIndex, sessionInstance, winningVoteIdx } =
-    window;
-  const currFrame = sessionInstance.getCurrentPlayingFrame();
-  const containerElement = currFrame.frameElement.querySelector(
-    `a[href="javascript:tapOn(${voteIdx});"]`
-  );
+function injectVoteIndicator(voteId, voteCount) {
+  const { currVoteId, winningVoteId } = window;
+  const containerElement = document.getElementById(voteId);
   if (!containerElement) {
     console.error("Not found element for clicked link");
     return;
@@ -132,26 +129,25 @@ function injectVoteIndicator(voteIdx, voteCount) {
 
   const indicatorBtn = document.createElement("div");
   indicatorBtn.classList.add("vote-indicator");
-  indicatorBtn.setAttribute("vote-idx", voteIdx);
   indicatorBtn.style.top = indicatorPosition.top;
   indicatorBtn.style.left = indicatorPosition.left;
   indicatorBtn.innerHTML = voteCount;
 
-  if (currVoteIndex === voteIdx) {
+  if (voteId === currVoteId) {
     indicatorBtn.classList.add("current-vote");
   }
 
-  if (voteIdx === winningVoteIdx) {
+  if (voteId === winningVoteId) {
     indicatorBtn.classList.add("winning");
   }
 
   document.getElementById("votingContainer").appendChild(indicatorBtn);
-  votingIndicatorMap.set(voteIdx, indicatorBtn);
+  return indicatorBtn;
 }
 
 function updateStayButtonState(voteCount) {
-  const { winningVoteIdx, currVoteIndex } = window;
-  const stayBtnEle = document.getElementById("stayBtn");
+  const { winningVoteId, currVoteId } = window;
+  const stayBtnEle = document.getElementById("stay");
   const indicatorEle = stayBtnEle.querySelector(".stay-indicator");
 
   if (voteCount > 0) {
@@ -162,13 +158,13 @@ function updateStayButtonState(voteCount) {
     indicatorEle.innerHTML = "";
   }
 
-  if (winningVoteIdx === "stay") {
+  if (winningVoteId === "stay") {
     stayBtnEle.classList.add("winning");
   } else {
     stayBtnEle.classList.remove("winning");
   }
 
-  if (currVoteIndex === "stay") {
+  if (currVoteId === "stay") {
     stayBtnEle.classList.add("current-vote");
   } else {
     stayBtnEle.classList.remove("current-vote");

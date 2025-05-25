@@ -324,12 +324,17 @@ class BMSession {
         this.listMultiChooseImages.push(svgIndex);
       }
 
-      listA.forEach((a) => {
+      listA.forEach((a, idx) => {
         const matchedHref = HREF_REGX.exec(a)?.[0];
         const aIndex = this.listFilesInLowerCase.indexOf(
           matchedHref?.toLowerCase()
         );
-        let newA = a.replace(LINK_REGEX, `href="javascript:tapOn(${aIndex});"`);
+        let newA = a
+          .replace(
+            "<a",
+            `<a id="${aIndex}#${filename}#${idx}" data-next-file-idx="${aIndex}" `
+          )
+          .replace(LINK_REGEX, `onclick="handleSelectLink(this)"`);
         svg = svg.replace(a, newA);
 
         if (filename.startsWith("PRE")) {
@@ -552,6 +557,7 @@ class BMSessionTable {
       newSession.patchState(
         JSON.parse(fs.readFileSync(`${SERVER_STATE_DIR}/${file.name}`))
       );
+      newSession.buildSVGContent();
 
       this.data.push(newSession);
     }
