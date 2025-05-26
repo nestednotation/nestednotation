@@ -162,8 +162,7 @@ input[type="button"] {
 }
 
 .user-control-container {
-  width: 0px;
-  flex-wrap: nowrap;
+  flex-wrap: wrap-reverse;
   display: flex;
   column-gap: max(1%, 16px);
   justify-content: end;
@@ -174,7 +173,7 @@ input[type="button"] {
 
 .count-down-container {
   display: none;
-  gap: 3.5%;
+  gap: 0.5vh;
   height: 35%;
   justify-content: end;
 }
@@ -581,6 +580,7 @@ body.ipad {
   padding-inline: 20px;
   margin-inline: auto;
   max-width: 500px;
+  min-width: 0;
 }
 
 .return-btn {
@@ -658,12 +658,12 @@ body.ipad {
 }
 
 .stay-btn {
-  font-size: 2.7vmin;
+  font-size: 2vh;
   color: #000;
   display: none;
   align-items: center;
   justify-content: center;
-  gap: 1vmin;
+  gap: 1vh;
   flex-wrap: nowrap;
   background: none;
   border: none;
@@ -681,18 +681,18 @@ body.ipad {
 }
 
 .stay-indicator {
-  width: 6vmin;
-  height: 6vmin;
-  font-size: 2.4vmin;
+  height: 3.9vh;
+  width: 3.9vh;
   border-radius: 10000px;
-  border: 0.5vmin solid #000;
+  border: 3px solid #000;
   display: flex;
   align-items: center;
   justify-content: center;
+  font-size: 1.6vh;
 }
 
 .stay-btn.voting .stay-indicator {
-  border: 0.5vmin solid #ff7700;
+  border: 3px solid #ff7700;
   color: #ff7700;
 }
 
@@ -740,19 +740,12 @@ body.ipad {
 }
 
 @keyframes stay-winning-pulse {
-  0% {
-    box-shadow: 0 0 0 0 rgba(255, 164, 0, 0), 0 0 0 0 #ffa400;
-  }
-  25% {
-    box-shadow: 0 0 0 1vmin #ffa400, 0 0 0 0 #ffa400;
-  }
-  50% {
-    box-shadow: 0 0 0 1vmin #ffa400, 0 0 2vmin 2vmin #ffa400;
-  }
-  75% {
-    box-shadow: 0 0 0 1vmin #ffa400, 0 0 0 0 #ffa400;
-  }
+  0%,
   100% {
     box-shadow: 0 0 0 0 rgba(255, 164, 0, 0), 0 0 0 0 #ffa400;
+  }
+
+  50% {
+    box-shadow: 0 0 0 0.8vh #ffa400, 0 0 1.6vh 1.6vh #ffa400;
   }
 }
