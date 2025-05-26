@@ -4,10 +4,6 @@ document.addEventListener("DOMContentLoaded", () => {
       .vote-indicator {
         transform: translate(-50%, -50%) scale(${votingSize ?? 100}%);
       }
-      .stay-btn {
-        transform: scale(${votingSize ?? 100}%);
-        transform-origin: left;
-      }
     `;
   document.head.appendChild(style);
 });
@@ -51,6 +47,14 @@ function handleSelectLink(aElement) {
 }
 
 window.votingIndicatorMap = new Map();
+
+function clearVotingIndicator() {
+  // Remove all voting indicator
+  for (const [voteId, indicatorEle] of window.votingIndicatorMap.entries()) {
+    indicatorEle.remove();
+    window.votingIndicatorMap.delete(voteId);
+  }
+}
 
 function showVotingIndicator(voteDic) {
   window.winningVoteId = voteDic.winningVoteId;

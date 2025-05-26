@@ -173,10 +173,9 @@ function parseMessage(data) {
     //reset all
     window.winningVoteId = null;
     window.currVoteId = null;
-    setOverlay(window.isHolding);
     setOpacityForInnerRingText(window.currentIndex, 0.25);
     setInnerRingText(window.currentIndex, "");
-    showVotingIndicator({});
+    clearVotingIndicator();
     return;
   }
 
@@ -571,40 +570,6 @@ function setIndicatorHold(value) {
   }
 
   document.body.classList.toggle("holding", value);
-  setOverlay(value);
-}
-
-function setOverlay(value) {
-  if (value) {
-    const svg = document.getElementById("svg" + window.currentIndex);
-    const fileName = svg.getAttribute("file");
-    if (fileName.startsWith("PRE") || fileName.startsWith("START")) {
-      const div = document.getElementById("divOverlay");
-      div.style.display = "inline";
-    } else {
-      const div = document.getElementById("divOverlay");
-      div.style.display = "none";
-      const listDot = document.querySelectorAll(
-        `ellipse[id=dot${window.currentIndex}]`
-      );
-      for (let i = 0; i < listDot.length; i++) {
-        listDot[i].style.fill = "rgb(0,0,0)";
-      }
-    }
-  } else {
-    const div = document.getElementById("divOverlay");
-    div.style.display = "none";
-    const listDot = document.querySelectorAll(
-      `ellipse[id=dot${window.currentIndex}]`
-    );
-    for (let i = 0; i < listDot.length; i++) {
-      const dot = listDot[i];
-      const r = dot.getAttribute("r");
-      const g = dot.getAttribute("g");
-      const b = dot.getAttribute("b");
-      listDot[i].style.fill = `rgb(${r},${g},${b})`;
-    }
-  }
 }
 
 function refreshScore() {
