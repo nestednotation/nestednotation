@@ -4,10 +4,6 @@ document.addEventListener("DOMContentLoaded", () => {
       .vote-indicator {
         transform: translate(-50%, -50%) scale(${votingSize ?? 100}%);
       }
-      .stay-btn {
-        transform: scale(${votingSize ?? 100}%);
-        transform-origin: left;
-      }
     `;
   document.head.appendChild(style);
 });
