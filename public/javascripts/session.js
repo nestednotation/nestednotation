@@ -175,7 +175,7 @@ function parseMessage(data) {
     window.currVoteId = null;
     setOpacityForInnerRingText(window.currentIndex, 0.25);
     setInnerRingText(window.currentIndex, "");
-    showVotingIndicator({});
+    clearVotingIndicator();
     return;
   }
 

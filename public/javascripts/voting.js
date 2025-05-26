@@ -48,6 +48,14 @@ function handleSelectLink(aElement) {
 
 window.votingIndicatorMap = new Map();
 
+function clearVotingIndicator() {
+  // Remove all voting indicator
+  for (const [voteId, indicatorEle] of window.votingIndicatorMap.entries()) {
+    indicatorEle.remove();
+    window.votingIndicatorMap.delete(voteId);
+  }
+}
+
 function showVotingIndicator(voteDic) {
   window.winningVoteId = voteDic.winningVoteId;
   const { votingIndicatorMap, currVoteId, winningVoteId } = window;
