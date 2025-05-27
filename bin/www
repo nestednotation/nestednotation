@@ -269,6 +269,8 @@ function startVotingForSessionWithDelay(session, timeDelay, customDur) {
       session.votingTimeStamp += session.synTimeInterval * 1000;
 
       if (session.didSendStopVoting) {
+        clearInterval(session.votingTimer);
+        session.votingTimer = null;
         return;
       }
 
@@ -650,7 +652,7 @@ db.adminPassword = "g3tn3st3d";
 
 const wsPort = process.env.WS_PORT || 8080;
 const serverIp = process.env.SERVER_IP;
-const wsPath = `wss://${serverIp}`;
+const wsPath = `ws://192.168.0.2:2382`;
 
 console.log(`Websocket is running on port ${wsPort}`);
 console.log(`Websocket path is ${wsPath}`);
