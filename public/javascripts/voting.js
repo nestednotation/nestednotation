@@ -35,7 +35,6 @@ function handleSelectLink(aElement) {
     nextVoteIdx === "stay"
       ? currFrame.frameElement.getAttribute("holding")
       : getFrameHoldingDur(nextVoteIdx);
-  highlightInnerRingText(`${window.currentIndex}-${nextVoteIdx}`);
 
   window.currVoteId = aElement.id;
 
