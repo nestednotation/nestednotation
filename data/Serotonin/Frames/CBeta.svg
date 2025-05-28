@@ -1884,7 +1884,7 @@
             <g id="bandsounder-3" sound="CBeta Phrase 3 bandsounder" autoplay="false" serif:id="bandsounder 3" transform="matrix(0.901379,0,0,0.578616,-16795.9,-9079.11)">
                 <path d="M20798,18785.7L20798,19008.3C20798,19034.6 20784.3,19056 20767.4,19056L19885.6,19056C19868.7,19056 19855,19034.6 19855,19008.3L19855,18785.7C19855,18759.4 19868.7,18738 19885.6,18738L20767.4,18738C20784.3,18738 20798,18759.4 20798,18785.7Z" style="fill:rgb(26,96,55);fill-opacity:0.1;stroke:black;stroke-opacity:0.1;stroke-width:2.75px;stroke-linecap:round;"/>
             </g>
-            <g id="bandsounder-2" sound="Cbeta Phrase 2 bandsounder" autoplay="false" serif:id="bandsounder 2" transform="matrix(1.772,0,0,1.76415,-35121.1,-30998.7)">
+            <g id="bandsounder-2" sound="CBeta Phrase 2 bandsounder" autoplay="false" serif:id="bandsounder 2" transform="matrix(1.772,0,0,1.76415,-35121.1,-30998.7)">
                 <path d="M20798,18760.3L20798,19033.7C20798,19046 20788.1,19056 20775.8,19056L19877.2,19056C19864.9,19056 19855,19046 19855,19033.7L19855,18760.3C19855,18748 19864.9,18738 19877.2,18738L20775.8,18738C20788.1,18738 20798,18748 20798,18760.3Z" style="fill:rgb(26,96,55);fill-opacity:0.1;stroke:black;stroke-opacity:0.1;stroke-width:1.18px;stroke-linecap:round;"/>
             </g>
         </g>
