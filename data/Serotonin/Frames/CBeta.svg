@@ -1878,7 +1878,7 @@
                     </g>
                 </g>
             </g>
-            <g id="bandsounder-1" sound="Cbeta Phrase 1 bandsounder" serif:id="bandsounder 1" transform="matrix(0.932131,0,0,0.578616,-18413.5,-9079.11)">
+            <g id="bandsounder-1" sound="CBeta Phrase 1 bandsounder" serif:id="bandsounder 1" transform="matrix(0.932131,0,0,0.578616,-18413.5,-9079.11)">
                 <path d="M20798,18785.7L20798,19008.3C20798,19034.6 20784.7,19056 20768.4,19056L19884.6,19056C19868.3,19056 19855,19034.6 19855,19008.3L19855,18785.7C19855,18759.4 19868.3,18738 19884.6,18738L20768.4,18738C20784.7,18738 20798,18759.4 20798,18785.7Z" style="fill:rgb(26,96,55);fill-opacity:0.1;stroke:black;stroke-opacity:0.1;stroke-width:2.69px;stroke-linecap:round;"/>
             </g>
             <g id="bandsounder-3" sound="CBeta Phrase 3 bandsounder" autoplay="false" serif:id="bandsounder 3" transform="matrix(0.901379,0,0,0.578616,-16795.9,-9079.11)">
