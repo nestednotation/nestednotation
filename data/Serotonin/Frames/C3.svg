@@ -1812,7 +1812,7 @@
                 <g id="pulser-8-f-Db-Bb-Gb-Eb" sound="C3 Phrase 8 bandsounder" autoplay="false" serif:id="pulser 8 f Db Bb Gb Eb" transform="matrix(0.371156,0,0,1.27044,-5757.3,-21574.5)">
                     <path d="M20798,18779.3L20798,19014.7C20798,19037.5 20734.6,19056 20656.5,19056L19996.5,19056C19918.4,19056 19855,19037.5 19855,19014.7L19855,18779.3C19855,18756.5 19918.4,18738 19996.5,18738L20656.5,18738C20734.6,18738 20798,18756.5 20798,18779.3Z" style="fill:rgb(26,96,55);fill-opacity:0.1;stroke:black;stroke-opacity:0.1;stroke-width:2.23px;stroke-linecap:round;"/>
                 </g>
-                <g id="pulser-7-f-Db-Bb-Gb"sound="C3 Phrase 7 bandsounder" autoplay="false"  serif:id="pulser 7 f Db Bb Gb" transform="matrix(0.355842,0,0,1.27044,-5842.81,-21574.5)">
+                <g id="pulser-7-f-Db-Bb-Gb" sound="C3 Phrase 7 bandsounder" autoplay="false"  serif:id="pulser 7 f Db Bb Gb" transform="matrix(0.355842,0,0,1.27044,-5842.81,-21574.5)">
                     <path d="M20798,18777.6L20798,19016.4C20798,19038.2 20734.6,19056 20656.5,19056L19996.5,19056C19918.4,19056 19855,19038.2 19855,19016.4L19855,18777.6C19855,18755.8 19918.4,18738 19996.5,18738L20656.5,18738C20734.6,18738 20798,18755.8 20798,18777.6Z" style="fill:rgb(59,92,55);fill-opacity:0.1;stroke:black;stroke-opacity:0.1;stroke-width:2.23px;stroke-linecap:round;"/>
                 </g>
                 <g id="pulser-6-f-Db-Bb" sound="C3 Phrase 6 bandsounder" autoplay="false" serif:id="pulser 6 f Db Bb" transform="matrix(0.337222,0,0,1.14465,-5856.54,-19217.5)">

@@ -91,7 +91,7 @@
                 <g id="_9" sound="Mid-A" autoplay="false" serif:id="9" transform="matrix(-1.39762,2.4207,-2.45799,-1.41909,2589.3,-50.0857)">
                     <ellipse cx="766" cy="526.5" rx="33" ry="32.5" style="fill:rgb(0,158,255);stroke:white;stroke-width:8.52px;stroke-linecap:round;"/>
                 </g>
-                <g id="_0" sound="Mid-C" autoplay="false" sound="Mid-A" autoplay="false" serif:id="0" transform="matrix(-1.39762,2.4207,-2.45799,-1.41909,3138.34,-603.96)">
+                <g id="_0" sound="Mid-C" autoplay="false" serif:id="0" transform="matrix(-1.39762,2.4207,-2.45799,-1.41909,3138.34,-603.96)">
                     <ellipse cx="766" cy="526.5" rx="33" ry="32.5" style="fill:rgb(0,158,255);stroke:white;stroke-width:8.52px;stroke-linecap:round;"/>
                 </g>
             </g>

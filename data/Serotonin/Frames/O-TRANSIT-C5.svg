@@ -96,13 +96,13 @@
                 <g id="_72" sound="Low-G" autoplay="false" serif:id="7" transform="matrix(-1.39762,2.4207,-2.45799,-1.41909,2868.72,413.119)">
                     <ellipse cx="766" cy="526.5" rx="33" ry="32.5" style="fill:rgb(76,70,125);stroke:white;stroke-width:8.52px;stroke-linecap:round;"/>
                 </g>
-                <g id="_5" sound="Mid-F" autoplay="false"serif:id="5" transform="matrix(-1.39762,2.4207,-2.45799,-1.41909,3411.9,417.908)">
+                <g id="_5" sound="Mid-F" autoplay="false" serif:id="5" transform="matrix(-1.39762,2.4207,-2.45799,-1.41909,3411.9,417.908)">
                     <ellipse cx="766" cy="526.5" rx="33" ry="32.5" style="fill:rgb(76,70,125);stroke:white;stroke-width:8.52px;stroke-linecap:round;"/>
                 </g>
-                <g id="_2" sound="Mid-D" autoplay="false"serif:id="2" transform="matrix(-1.39762,2.4207,-2.45799,-1.41909,3610.1,-328.083)">
+                <g id="_2" sound="Mid-D" autoplay="false" serif:id="2" transform="matrix(-1.39762,2.4207,-2.45799,-1.41909,3610.1,-328.083)">
                     <ellipse cx="766" cy="526.5" rx="33" ry="32.5" style="fill:rgb(76,70,125);stroke:white;stroke-width:8.52px;stroke-linecap:round;"/>
                 </g>
-                <g id="_0" sound="Mid-C" autoplay="false"serif:id="0" transform="matrix(-1.39762,2.4207,-2.45799,-1.41909,3138.34,-603.96)">
+                <g id="_0" sound="Mid-C" autoplay="false" serif:id="0" transform="matrix(-1.39762,2.4207,-2.45799,-1.41909,3138.34,-603.96)">
                     <ellipse cx="766" cy="526.5" rx="33" ry="32.5" style="fill:rgb(76,70,125);stroke:white;stroke-width:8.52px;stroke-linecap:round;"/>
                 </g>
             </g>
