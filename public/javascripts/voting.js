@@ -49,6 +49,9 @@ function handleSelectLink(aElement) {
 window.votingIndicatorMap = new Map();
 
 function clearVotingIndicator() {
+  // Remove stay voting
+  updateStayButtonState(0);
+
   // Remove all voting indicator
   for (const [voteId, indicatorEle] of window.votingIndicatorMap.entries()) {
     indicatorEle.remove();
