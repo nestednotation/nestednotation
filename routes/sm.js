@@ -108,10 +108,12 @@ router.get("/", function (req, res) {
 
           const hold = parseInt(holdDur);
           const vote = parseInt(voteDur);
+          const size = parseInt(votingSize);
           session.patchState(
             {
               holdDuration: hold >= 0 ? hold : session.holdDuration,
               votingDuration: vote >= 0 ? vote : session.votingDuration,
+              votingSize: size >= 0 ? size : session.votingSize,
             },
             true
           );
