@@ -173,8 +173,6 @@ function parseMessage(data) {
     //reset all
     window.winningVoteId = null;
     window.currVoteId = null;
-    setOpacityForInnerRingText(window.currentIndex, 0.25);
-    setInnerRingText(window.currentIndex, "");
     clearVotingIndicator();
     return;
   }
@@ -194,36 +192,6 @@ function parseMessage(data) {
     showVotingIndicator(countDic);
 
     votingDataTimeStamp = timestamp;
-    const listRingId = Object.keys(countDic);
-    const svg = document.getElementById("svg" + window.currentIndex);
-    const selector = `text[id^='ta-${window.currentIndex}']`;
-    const listText = svg.querySelectorAll(selector);
-
-    for (let i = 0; i < listText.length; i++) {
-      const id = listText[i].id;
-      const ringId = id.substring(id.lastIndexOf("-") + 1);
-
-      setInnerRingText(
-        `${window.currentIndex}-${ringId}`,
-        listRingId.includes(ringId) ? countDic[ringId] : 0
-      );
-    }
-
-    let mostVoteCount = 0;
-    let mostVoteRingId = 0;
-    for (let i = 0; i < listRingId.length; i++) {
-      const id = listRingId[i];
-      if (id == -1) {
-        continue;
-      }
-
-      const count = countDic[id];
-      if (count > mostVoteCount) {
-        mostVoteCount = count;
-        mostVoteRingId = id;
-      }
-    }
-    showInnerRing(`${window.currentIndex}-${mostVoteRingId}`);
     return;
   }
 
@@ -413,20 +381,7 @@ function showImageAtIndex(index) {
 
   for (let i = 0; i < listImg.length; i++) {
     const id = parseInt(listImg[i].id.substr(3));
-    if (id == index) {
-      listImg[i].setAttribute("class", "");
-
-      const listEllipse = listImg[i].querySelectorAll("ellipse[id]");
-      for (let j = 0; j < listEllipse.length; j++) {
-        let ellipseId = listEllipse[j].id;
-
-        if (/^\d+-\d+$/.test(ellipseId)) {
-          listEllipse[j].setAttribute("class", "hidden");
-        }
-      }
-    } else {
-      listImg[i].setAttribute("class", "hidden");
-    }
+    listImg[i].setAttribute("class", id === index ? "" : "hidden");
   }
 
   const updateView = new CustomEvent("update-view", {
@@ -488,68 +443,6 @@ function getCoundownCircleList() {
     listCircle.push(document.getElementById("circle_" + i));
   }
   return listCircle;
-}
-
-function showInnerRing(index) {
-  const array = index.split("-");
-  const svgIndex = array[0];
-  const svg = document.getElementById("svg" + svgIndex);
-  const listEllipse = svg.querySelectorAll("ellipse[id]");
-  for (let i = 0; i < listEllipse.length; i++) {
-    let id = listEllipse[i].id;
-    if (/^\d+-\d+$/.test(id)) {
-      listEllipse[i].setAttribute("class", id == index ? "" : "hidden");
-    }
-  }
-}
-
-function setInnerRingText(index, text) {
-  index = index + "";
-  text = text + "";
-  if (text.length <= 3) {
-    const X = [-212.19, -232.023, -251.04];
-    const Y = [-231.138, -230.697, -230.787];
-    const array = index.split("-");
-    const svgIndex = array[0];
-    const svg = document.getElementById("svg" + svgIndex);
-    const selector = `text[id^='ta-${index}']`;
-    const listText = svg.querySelectorAll(selector);
-
-    for (let i = 0; i < listText.length; i++) {
-      listText[i].innerHTML = text == "0" ? "" : text;
-
-      if (text.length > 0 && text.length <= 3) {
-        listText[i].setAttribute("x", X[text.length - 1]);
-        listText[i].setAttribute("y", Y[text.length - 1]);
-      }
-    }
-  }
-}
-
-function setOpacityForInnerRingText(index, value) {
-  index = index + "";
-  const array = index.split("-");
-  const svgIndex = array[0];
-  const svg = document.getElementById("svg" + svgIndex);
-  const selector = `text[id^='ta-${index}']`;
-  const listText = svg.querySelectorAll(selector);
-
-  for (let i = 0; i < listText.length; i++) {
-    listText[i].style.opacity = value;
-  }
-}
-
-function highlightInnerRingText(index) {
-  const array = index.split("-");
-  const svgIndex = array[0];
-  const svg = document.getElementById("svg" + svgIndex);
-  const selector = `text[id^='ta-${svgIndex}']`;
-  const listText = svg.querySelectorAll(selector);
-
-  for (let i = 0; i < listText.length; i++) {
-    const id = listText[i].id;
-    listText[i].style.opacity = id === "ta-" + index ? 1.0 : 0.25;
-  }
 }
 
 function setIndicatorCooldown(value) {
