@@ -51,6 +51,7 @@ window.votingIndicatorMap = new Map();
 function clearVotingIndicator() {
   // Remove stay voting
   updateStayButtonState(0);
+  document.getElementById("stay").classList.remove("visible");
 
   // Remove all voting indicator
   for (const [voteId, indicatorEle] of window.votingIndicatorMap.entries()) {

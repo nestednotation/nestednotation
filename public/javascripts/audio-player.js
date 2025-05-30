@@ -27,7 +27,7 @@ const getSoundLink = (soundName) => {
 
   const fileName = SOUND_FILE_LIST[soundName];
   if (!fileName) {
-    alert(`Sound file not found for ${soundName}`);
+    console.error(`Sound file not found for ${soundName}`);
   }
 
   return `/audio/${scoreSlug}/${fileName}`;
@@ -142,11 +142,13 @@ class Note {
   initialSounds() {
     const soundNames = this.domElement.getAttribute("sound")?.split(",");
     if (!soundNames) {
-      alert("[sound] attribute shouldn't be empty!");
+      console.error("[sound] attribute shouldn't be empty!");
       return;
     }
 
-    this.id = soundNames.sort().join("|");
+    soundNames.sort();
+
+    this.id = soundNames.join("|");
     this.soundNames = soundNames;
 
     const nodeVolumns = this.domElement
@@ -246,7 +248,7 @@ class Note {
     });
   }
 
-  fadeInFrom(fromVolumes, fadeDuration = 1000) {
+  fadeInFrom(fromVolumes, { fadeDuration = 1000, seekTimestamp }) {
     this.loadNoteSounds();
 
     const finalVolumes =
@@ -265,8 +267,17 @@ class Note {
         sound.volume(),
         fadeDuration
       );
+
+      if (seekTimestamp && seekTimestamp[idx]) {
+        sound.seek(seekTimestamp[idx]);
+      }
+
       sound.play();
     }
+  }
+
+  getCurrTimestamp() {
+    return this.soundInstances.map((s) => s.seek());
   }
 
   onNoteClicked(e) {
@@ -441,8 +452,11 @@ class AudioSession {
     for (const [noteId, note] of Object.entries(nextSoundData)) {
       if (continueNotes[noteId]) {
         const prevNote = continueNotes[noteId];
-        note.fadeInFrom(prevNote.volumes, fadeDuration);
-        prevNote.fadeStop(fadeDuration);
+        note.fadeInFrom(prevNote.volumes, {
+          fadeDuration,
+          seekTimestamp: prevNote.getCurrTimestamp(),
+        });
+        prevNote.stop();
       } else {
         note.soundNames.forEach((sn) => this.markSoundAsLoading(sn));
         note.loadNoteSounds();
