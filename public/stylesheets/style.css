@@ -575,7 +575,8 @@ body.ipad {
   overflow: hidden;
 }
 
-#qr-container img {
+#qr-container img,
+#qr-container canvas {
   width: 100%;
   padding-inline: 20px;
   margin-inline: auto;
