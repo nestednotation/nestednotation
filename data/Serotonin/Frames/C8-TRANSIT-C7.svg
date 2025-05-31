@@ -1127,13 +1127,13 @@
                     </g>
                 </g>
             </g>
-            <g id="Bandsounder-1" serif:id="Bandsounder 1" transform="matrix(1.78165,0,0,0.713836,-35199.2,-11648.9)">
+            <g id="Bandsounder-1" sound="C8 Phrase 1 bandsounder" autoplay="false" serif:id="Bandsounder 1" transform="matrix(1.78165,0,0,0.713836,-35199.2,-11648.9)">
                 <path d="M20798,18785.7L20798,19008.3C20798,19034.6 20789.4,19056 20778.9,19056L19874.1,19056C19863.6,19056 19855,19034.6 19855,19008.3L19855,18785.7C19855,18759.4 19863.6,18738 19874.1,18738L20778.9,18738C20789.4,18738 20798,18759.4 20798,18785.7Z" style="fill:rgb(167,29,56);fill-opacity:0.07;stroke:black;stroke-opacity:0.07;stroke-width:1.54px;stroke-linecap:round;"/>
             </g>
-            <g id="Bandsounder-3" serif:id="Bandsounder 3" transform="matrix(0.455483,0,0,0.650943,-8318.62,-9705.38)">
+            <g id="Bandsounder-3" sound="C8 Phrase 1 bandsounder" autoplay="false" serif:id="Bandsounder 3" transform="matrix(0.455483,0,0,0.650943,-8318.62,-9705.38)">
                 <path d="M20798,18763.4L20798,19030.6C20798,19044.6 20781.7,19056 20761.6,19056L19891.4,19056C19871.3,19056 19855,19044.6 19855,19030.6L19855,18763.4C19855,18749.4 19871.3,18738 19891.4,18738L20761.6,18738C20781.7,18738 20798,18749.4 20798,18763.4Z" style="fill:rgb(167,29,56);fill-opacity:0.07;stroke:black;stroke-opacity:0.07;stroke-width:3.71px;stroke-linecap:round;"/>
             </g>
-            <g id="Bandsounder-2" serif:id="Bandsounder 2" transform="matrix(0.407167,0,0,1.47799,-7777.26,-25465.5)">
+            <g id="Bandsounder-2" sound="C8 Phrase 1 bandsounder" autoplay="false" serif:id="Bandsounder 2" transform="matrix(0.407167,0,0,1.47799,-7777.26,-25465.5)">
                 <path d="M20821.3,18897C20821.3,18897 20798,18895.6 20798,18905.1C20798,18905.7 20798,19035.2 20798,19035.2C20798,19046.7 20764.2,19056 20722.6,19056L19930.4,19056C19888.8,19056 19855,19046.7 19855,19035.2L19855,18758.8C19855,18757 19855.8,18755.3 19857.4,18753.6L19857.4,18626.7C19857.4,18600.4 19934.9,18579 20030.5,18579L23844.7,18579C23940.2,18579 24017.8,18600.4 24017.8,18626.7L24017.8,18849.3C24017.8,18875.6 23940.2,18897 23844.7,18897L20821.3,18897Z" style="fill:rgb(167,29,56);fill-opacity:0.07;stroke:black;stroke-opacity:0.07;stroke-width:1.92px;stroke-linecap:round;"/>
             </g>
         </g>
