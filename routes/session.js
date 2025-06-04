@@ -1,11 +1,17 @@
 const express = require("express");
 const router = express.Router();
+
 const utils = require("../utils");
+const { FORM_MESSAGES } = require("../constants");
 
 router.get("/", function (req, res) {
   const sessionName = req.query.s;
   if (sessionName == null || sessionName.length == 0) {
-    res.status(301).redirect("/?msg=1");
+    res
+      .status(301)
+      .redirect(
+        `/?msg=${encodeURIComponent(FORM_MESSAGES.INVALID_SESSION_DATA)}`
+      );
     return;
   }
 
@@ -14,18 +20,22 @@ router.get("/", function (req, res) {
   const session = db.sessionTable.getBySessionName(sessionName);
   if (
     !session ||
-    (session.adminPassword != password &&
-      session.playerPassword != password &&
+    (session.adminPassword !== password &&
+      session.playerPassword !== password &&
       password.length != 0)
   ) {
-    res.status(301).redirect("/?msg=1");
+    res
+      .status(301)
+      .redirect(
+        `/?msg=${encodeURIComponent(FORM_MESSAGES.INVALID_SESSION_DATA)}`
+      );
     return;
   }
 
   const type =
-    session.adminPassword == password
+    session.adminPassword === password
       ? 1
-      : session.playerPassword == password
+      : session.playerPassword === password
       ? 2
       : 0;
 
@@ -52,14 +62,22 @@ router.get("/*", function (req, res) {
   const sessionId = path[1];
   const password = req.query.p;
   if (sessionId == null || password == null) {
-    res.status(301).redirect("/?msg=1");
+    res
+      .status(301)
+      .redirect(
+        `/?msg=${encodeURIComponent(FORM_MESSAGES.INVALID_SESSION_DATA)}`
+      );
     return;
   }
 
   const db = req.app.get("Database");
   const session = db.sessionTable.getById(sessionId);
   if (session == null) {
-    res.status(301).redirect("/?msg=1");
+    res
+      .status(301)
+      .redirect(
+        `/?msg=${encodeURIComponent(FORM_MESSAGES.INVALID_SESSION_DATA)}`
+      );
     return;
   }
 
@@ -90,11 +108,16 @@ router.get("/*", function (req, res) {
     isHtml5: JSON.stringify(session.isHtml5),
     sessionSvg: session.svgContent,
     scoreSlug: utils.slugify(session.folder),
-    soundList: session.soundList && JSON.stringify(session.soundList),
+    soundFileList: session.soundList && JSON.stringify(session.soundList),
     wsPath: db.wsPath,
     aboutNestedNotationSvg: db.aboutSvg,
     aboutScoreSvg: session.aboutSvg,
     scoreHasAbout: session.aboutSvg !== null,
+    votingSize: session.votingSize,
+    qrSharePath: `/session/${session.id}/?p=${encodeURIComponent(
+      session.playerPassword
+    )}&t=2`,
+    listFiles: JSON.stringify(session.listFiles),
   });
 });
 

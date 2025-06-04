@@ -162,9 +162,9 @@ input[type="button"] {
 }
 
 .user-control-container {
+  flex-wrap: wrap-reverse;
   display: flex;
   column-gap: max(1%, 16px);
-  flex-wrap: wrap;
   justify-content: end;
   align-items: center;
   height: 4vh;
@@ -173,7 +173,7 @@ input[type="button"] {
 
 .count-down-container {
   display: none;
-  gap: 3.5%;
+  gap: 0.5vh;
   height: 35%;
   justify-content: end;
 }
@@ -225,6 +225,7 @@ input[type="button"] {
 }
 
 .session-control-container {
+  width: 100%;
   display: flex;
   gap: 8px;
   align-items: center;
@@ -540,7 +541,16 @@ body.ipad {
   }
 }
 
-.about-containter {
+#divOverlay {
+  width: 100%;
+  height: 100%;
+  position: absolute;
+  background-color: white;
+  opacity: 0.5;
+  display: none;
+}
+
+.overlay-content-container {
   width: 100%;
   height: 100%;
   position: fixed;
@@ -553,16 +563,25 @@ body.ipad {
   flex-direction: column;
 }
 
-.about-containter.showing {
+.overlay-content-container.showing {
   transform: translateX(0);
 }
 
-.about-content {
+.overlay-content {
   flex: 1;
   display: flex;
   justify-content: center;
   align-items: center;
   overflow: hidden;
+}
+
+#qr-container img,
+#qr-container canvas {
+  width: 100%;
+  padding-inline: 20px;
+  margin-inline: auto;
+  max-width: 500px;
+  min-width: 0;
 }
 
 .return-btn {
@@ -573,4 +592,162 @@ body.ipad {
   font-family: Comfortaa;
   color: #000;
   cursor: pointer;
+}
+
+/* Voting */
+#votingContainer {
+  display: block;
+  width: 0;
+  height: 0;
+  position: fixed;
+  top: 0px;
+  left: 0px;
+}
+
+.play-mode .vote-indicator:not(.winning) {
+  display: none;
+}
+
+.vote-indicator {
+  width: 9vmin;
+  height: 9vmin;
+  border-radius: 100000px;
+  border: 0.5vmin solid #ff7700;
+  color: #ff7700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 4vmin;
+  background: #fff;
+  cursor: pointer;
+  font-family: "Roboto", "SF Pro Text", "Helvetica Neue", "Helvetica", "Arial",
+    sans-serif;
+  position: fixed;
+  top: 0;
+  left: 0;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+.vote-indicator.current-vote {
+  background: #ff7700;
+  color: #fff;
+  box-shadow: 0 0 0 0 #ffa400, 0 0 0 0 #ffa400;
+}
+
+.vote-indicator.winning {
+  animation: ease-in-out guide-mode-winning-pulse infinite 4s;
+}
+
+.play-mode .vote-indicator.winning {
+  background: radial-gradient(
+    circle,
+    rgba(255, 164, 0, 1) 0%,
+    rgba(255, 164, 0, 1) 10%,
+    rgba(255, 164, 0, 0.5) 55%,
+    rgb(255 255 255 / 0%) 70%
+  );
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: 0 0;
+  border: none;
+  width: 12vmin;
+  height: 12vmin;
+  overflow: hidden;
+  color: transparent;
+  animation: play-mode-winning-pulse infinite 5s;
+}
+
+.stay-btn {
+  font-size: 2vh;
+  color: #000;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  gap: 1vh;
+  flex-wrap: nowrap;
+  background: none;
+  border: none;
+  cursor: pointer;
+  margin-inline-end: auto;
+  padding-inline-start: 2vh;
+}
+
+.stay-btn.visible,
+.play-mode .stay-btn.winning {
+  display: flex;
+}
+
+.play-mode .stay-btn.winning .stay-indicator {
+  display: none;
+}
+
+.stay-indicator {
+  height: 3.9vh;
+  width: 3.9vh;
+  border-radius: 10000px;
+  border: 2px solid #000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.6vh;
+}
+
+.stay-btn.voting .stay-indicator {
+  border: 3px solid #ff7700;
+  color: #ff7700;
+}
+
+.stay-btn.winning .stay-indicator {
+  animation: stay-winning-pulse infinite 4s;
+}
+
+.stay-btn.current-vote .stay-indicator {
+  background: #ff7700;
+  color: #fff;
+  box-shadow: 0 0 0 0 #ffa400, 0 0 0 0 #ffa400;
+}
+
+.play-mode .stay-btn {
+  display: none;
+}
+
+@keyframes guide-mode-winning-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(255, 164, 0, 0), 0 0 0 0 rgba(255, 164, 0, 0);
+  }
+
+  50% {
+    box-shadow: 0 0 0 2vmin #ffa400, 0 0 4vmin 4vmin #ffa400;
+  }
+}
+
+@keyframes play-mode-winning-pulse {
+  0% {
+    background-size: 0 0;
+  }
+  10% {
+    background-size: 0.6vmin 0.6vmin;
+  }
+  50% {
+    background-size: 12vmin 12vmin;
+  }
+  90% {
+    background-size: 0.6vmin 0.6vmin;
+  }
+  100% {
+    background-size: 0 0;
+  }
+}
+
+@keyframes stay-winning-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(255, 164, 0, 0), 0 0 0 0 #ffa400;
+  }
+
+  50% {
+    box-shadow: 0 0 0 0.8vh #ffa400, 0 0 1.6vh 1.6vh #ffa400;
+  }
 }

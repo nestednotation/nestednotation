@@ -1,20 +1,26 @@
-var express = require("express");
-var router = express.Router();
-const { MESSAGES } = require("../constants");
+const express = require("express");
+const router = express.Router();
+
+const { MESSAGES, FORM_MESSAGES } = require("../constants");
 
 /* GET home page. */
-router.get("/", function (req, res, next) {
-  var db = req.app.get("Database");
-  var permission = req.cookies["root"];
-  var username = req.cookies["un"];
-  var password = req.cookies["upw"];
-  var checkExist = db.admin.getByName(username);
+router.get("/", function (req, res) {
+  const db = req.app.get("Database");
+  const permission = req.cookies["root"];
+  const username = req.cookies["un"];
+  const password = req.cookies["upw"];
+  const checkExist = db.admin.getByName(username);
+
   if (
     permission != "2" ||
     checkExist == null ||
     checkExist.password.trim() != password.trim()
   ) {
-    res.status(301).redirect("/root/?msg=3");
+    res
+      .status(301)
+      .redirect(
+        `/root/?msg=${encodeURIComponent(FORM_MESSAGES.INVALID_ADMIN_USER)}`
+      );
     return;
   }
 
@@ -25,6 +31,7 @@ router.get("/", function (req, res, next) {
     const folder = query.f;
     const holdDur = query.hd;
     const voteDur = query.vd;
+    const votingSize = query.votingSize;
     const command = query.c;
     const adminpassword = query.sp;
     const playerpassword = query.pp;
@@ -57,17 +64,19 @@ router.get("/", function (req, res, next) {
 
         const hold = parseInt(holdDur);
         const vote = parseInt(voteDur);
+        const size = parseInt(votingSize);
         session.patchState(
           {
             isHtml5,
             fadeDuration,
             holdDuration: hold >= 0 ? hold : session.holdDuration,
             votingDuration: vote >= 0 ? vote : session.votingDuration,
+            votingSize: size >= 0 ? size : session.votingSize,
           },
           true
         );
 
-        if (session.folder.trim() != folder) {
+        if (session.folder.trim() !== folder) {
           const listScore = db.getListScore();
           if (listScore.indexOf(folder) >= 0) {
             session.reloadScore(folder);
@@ -75,7 +84,11 @@ router.get("/", function (req, res, next) {
             session.saveSessionStateToFile();
 
             const sendToAllClients = req.app.get("sendToAllClients");
-            sendToAllClients(session, 0, MESSAGES.MSG_NEED_DISPLAY, 0, 0);
+            sendToAllClients(session, 0, {
+              m: MESSAGES.MSG_NEED_DISPLAY,
+              v1: 0,
+              v2: 0,
+            });
           }
         }
       } else if (command === "create-session") {
@@ -95,10 +108,12 @@ router.get("/", function (req, res, next) {
 
           const hold = parseInt(holdDur);
           const vote = parseInt(voteDur);
+          const size = parseInt(votingSize);
           session.patchState(
             {
               holdDuration: hold >= 0 ? hold : session.holdDuration,
               votingDuration: vote >= 0 ? vote : session.votingDuration,
+              votingSize: size >= 0 ? size : session.votingSize,
             },
             true
           );
@@ -111,13 +126,11 @@ router.get("/", function (req, res, next) {
           const sendToAllClientsWithDelay = req.app.get(
             "sendToAllClientsWithDelay"
           );
-          sendToAllClientsWithDelay(
-            session,
-            0,
-            MESSAGES.MSG_NEED_DISPLAY,
-            0,
-            0
-          );
+          sendToAllClientsWithDelay(session, 0, {
+            m: MESSAGES.MSG_NEED_DISPLAY,
+            v1: 0,
+            v2: 0,
+          });
         }
       }
     }
@@ -130,6 +143,7 @@ router.get("/", function (req, res, next) {
     (o) => o.ownerId == checkExist.id
   );
   const listScore = db.getListScore();
+
   res.render("sm", {
     title: "Nested notation",
     session: listSession,

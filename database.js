@@ -157,7 +157,7 @@ class BMSession {
   standbyDuration = 3;
   holdDuration = 0;
   votingDuration = 10;
-
+  votingSize = 100;
   hasSounds = false;
 
   checkScoreHasSounds(score) {
@@ -301,7 +301,6 @@ class BMSession {
       fileName.toLowerCase()
     );
 
-    this.listPreImages = [];
     this.listMultiChooseImages = [];
     this.svgContent = "";
 
@@ -317,10 +316,6 @@ class BMSession {
         `<svg id="svg${svgIndex}" class="hidden" file="${filename}" `
       );
 
-      if (filename.startsWith("PRE") || filename.startsWith("START")) {
-        this.listPreImages.push(svgIndex);
-      }
-
       const listA = svg.match(/<a.*?>/g);
       if (listA === null) {
         return;
@@ -329,12 +324,17 @@ class BMSession {
         this.listMultiChooseImages.push(svgIndex);
       }
 
-      listA.forEach((a) => {
+      listA.forEach((a, idx) => {
         const matchedHref = HREF_REGX.exec(a)?.[0];
         const aIndex = this.listFilesInLowerCase.indexOf(
           matchedHref?.toLowerCase()
         );
-        let newA = a.replace(LINK_REGEX, `href="javascript:tapOn(${aIndex});"`);
+        let newA = a
+          .replace(
+            "<a",
+            `<a id="${aIndex}#${filename}#${idx}" data-next-file-idx="${aIndex}" `
+          )
+          .replace(LINK_REGEX, `onclick="handleSelectLink(this)"`);
         svg = svg.replace(a, newA);
 
         if (filename.startsWith("PRE")) {
@@ -344,70 +344,6 @@ class BMSession {
         newA = newA.replace(" ", "\\s*");
         newA = newA.replace("(", "\\(");
         newA = newA.replace(")", "\\)");
-
-        let pattern = `${newA}.*?serif:id="Ring and Background".*?>.*?<ellipse.*?/>.*?(<ellipse.*?/>)`;
-        let ellipse = regexWithPattern(svg, new RegExp(pattern, "is"), 1);
-        if (ellipse != null) {
-          //add elipse
-          const cx = parseFloat(
-            regexWithPattern(ellipse, /<ellipse.*?cx="(.*?)"/is, 1)
-          );
-          const cy = parseFloat(
-            regexWithPattern(ellipse, /<ellipse.*?cy="(.*?)"/is, 1)
-          );
-          const rx =
-            parseFloat(
-              regexWithPattern(ellipse, /<ellipse.*?rx="(.*?)"/is, 1)
-            ) * 0.9126;
-          const ry =
-            parseFloat(
-              regexWithPattern(ellipse, /<ellipse.*?rx="(.*?)"/is, 1)
-            ) * 0.9126;
-          const style = regexWithPattern(
-            ellipse,
-            /<ellipse.*?style="(.*?)"/is,
-            1
-          );
-          const ellipseId = `${svgIndex}-${aIndex}`;
-          ellipse = regexWithPattern(svg, new RegExp(pattern, "is"), 0);
-
-          const newEllipse = `${ellipse}\r\n<ellipse id="${ellipseId}" class="hidden" cx="${cx}" cy="${cy}" rx="${rx}" ry="${ry}" style="${style}"></ellipse>`;
-          svg = svg.replace(ellipse, newEllipse);
-
-          //add text area
-          pattern = `${newA}(.*?serif:id="Ring and Background".*?)<g id="Notes`;
-          const midGap = regexWithPattern(svg, new RegExp(pattern, "is"), 1);
-          const textId = `ta-${svgIndex}-${aIndex}`;
-
-          const newTextArea = `${midGap}\r\n<g xmlns="http://www.w3.org/2000/svg" transform="matrix(-3.99305,0,0,-3.99305,0,0)">\r\n<text id="${textId}" x="-212.19" y="-231.138" style="font-family:'ArialMT', 'Arial', sans-serif; font-size: 72px; fill-opacity: 1.0;"></text>\r\n</g>\r\n`;
-          svg = svg.replace(midGap, newTextArea);
-        }
-
-        pattern = `${newA}.*?<g[^>]*?id="Notes.*?>(.*?</g>[^<]*?</g>)`;
-        const notesEllipse = regexWithPattern(
-          svg,
-          new RegExp(pattern, "is"),
-          1
-        );
-        if (notesEllipse === null) {
-          return;
-        }
-
-        const listEllipse = this.regexFull(notesEllipse, "<ellipse[^>]*?>");
-        if (listEllipse === null) {
-          return;
-        }
-
-        for (let i = 0; i < listEllipse.length; i++) {
-          const oldEllipse = listEllipse[i];
-          const part = oldEllipse.match(
-            /(<ellipse[^>]*?)(style=".*?fill:rgb\((.*?),(.*?),(.*?)\).*?")([^>]*?>)/is
-          );
-          if (part != null) {
-            const newEllipse = `${part[1]}id="dot${svgIndex}" r="${part[3]}" g="${part[4]}" b="${part[5]}" ${part[2]}${part[6]}`;
-            svg = svg.replace(oldEllipse, newEllipse);
-          }
-        }
       });
 
       this.svgContent += `${svg}\n`;
@@ -557,6 +493,7 @@ class BMSessionTable {
       newSession.patchState(
         JSON.parse(fs.readFileSync(`${SERVER_STATE_DIR}/${file.name}`))
       );
+      newSession.buildSVGContent();
 
       this.data.push(newSession);
     }

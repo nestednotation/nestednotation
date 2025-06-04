@@ -22,10 +22,12 @@ function refreshSession() {
 }
 
 function toggleSideMenu(e) {
-  e.stopPropagation();
+  if (e) {
+    e.stopPropagation();
 
-  if (e.target !== e.currentTarget) {
-    return;
+    if (e.target !== e.currentTarget) {
+      return;
+    }
   }
 
   const sideMenu = document.getElementById("side-menu-container");
@@ -64,18 +66,13 @@ function showAboutNestedNotationPage() {
   aboutNestedNotationPage.classList.add("showing");
 }
 
-function closeSideMenu() {
-  const aboutNestedNotationPage = document.getElementById(
-    "about-nested-notation"
+function closeOverlay() {
+  const openingOverlay = document.querySelector(
+    ".overlay-content-container.showing"
   );
-  const aboutChordPage = document.getElementById("about-score");
+  openingOverlay.classList.remove("showing");
 
-  aboutNestedNotationPage.classList.remove("showing");
-  aboutChordPage.classList.remove("showing");
-
-  const sideMenu = document.getElementById("side-menu-container");
-  sideMenu.dataset.show = "false";
-  setTimeout(() => (sideMenu.style.display = "none"), 200);
+  toggleSideMenu();
 }
 
 function getDefaultScoreTitle() {
@@ -112,4 +109,22 @@ function onChangeAboutChordPage(selectedPage) {
       svgEl.classList.add("hidden");
     }
   });
+}
+
+function showQRShare() {
+  const aboutNestedNotationPage = document.getElementById("qr-code");
+  aboutNestedNotationPage.classList.add("showing");
+
+  const qrContainer = aboutNestedNotationPage.querySelector("#qr-container");
+  // Render QR Code if not rendered yet
+  if (!qrContainer.innerHTML) {
+    new QRCode(qrContainer, {
+      text: `${window.location.origin}${window.qrSharePath}`,
+      width: 500,
+      height: 500,
+      colorDark: "#000",
+      colorLight: "#fff",
+      correctLevel: QRCode.CorrectLevel.H,
+    });
+  }
 }

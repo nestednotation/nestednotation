@@ -1,7 +1,7 @@
 extends base
 
 block script
-  script(src='javascripts/index.js')
+  script(src='javascripts/map-backend-error.js')
 block content
   h3. 
     Running Sessions:
@@ -58,6 +58,11 @@ block content
               label(for="fadeDuration") &nbsp;fade duration(ms)&nbsp;
             td
               input(type="number" name="fadeDuration", value=d.fadeDuration, min=0)
+          tr
+            td
+              label(for="votingSize") &nbsp;voting size (%)&nbsp;
+            td
+              input(type="number" name="votingSize",  value=d.votingSize, min=1)
           tr
             td
               label(for="isHtml5") &nbsp;html5&nbsp;
@@ -137,6 +142,11 @@ block content
           label(for="fadeDuration") &nbsp;fade duration(ms)&nbsp;
         td
           input(type="number" name="fadeDuration", value=1000, min=0)
+      tr
+        td
+          label(for="votingSize") &nbsp;voting size (%)&nbsp;
+        td
+          input(type="number" name="votingSize", value=100, min=1)
       tr
         td
           label(for="isHtml5") &nbsp;html5&nbsp;
