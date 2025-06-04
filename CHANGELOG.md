@@ -1,5 +1,29 @@
 # Changelog
 
+## [1.2.0](https://github.com/nestednotation/nestednotation/compare/v1.1.0...v1.2.0) (2025-06-04)
+
+
+### Features
+
+* add animation for winning vote, support voting size ([2773535](https://github.com/nestednotation/nestednotation/commit/2773535b9a0b627cb4590bdb0c98db9277d77f3d))
+* implement voting logic partially ([#30](https://github.com/nestednotation/nestednotation/issues/30)) ([76d7ebd](https://github.com/nestednotation/nestednotation/commit/76d7ebd104ae9f14a889a28117aaed55778b4c56))
+* remove highlight ring logic ([#32](https://github.com/nestednotation/nestednotation/issues/32)) ([811b2b4](https://github.com/nestednotation/nestednotation/commit/811b2b4d47ee6d21a77ab120a434aae0afc89cd1))
+
+
+### Bug Fixes
+
+* fix bug voting interval did not clear after done voting ([1403aa0](https://github.com/nestednotation/nestednotation/commit/1403aa02a6810f80781f9342b4cc37a2486542e9))
+* fix incorrect wspath ([3057ab6](https://github.com/nestednotation/nestednotation/commit/3057ab6339079a8fe76f57a7d9da218903b17689))
+* fix stay btn persist ([346292d](https://github.com/nestednotation/nestednotation/commit/346292db4e91ec742504d1009f3c106cccc3d724))
+* fix stay btn persist, fix sound restart when continue between frames, minor change to stay btn css ([338fc6e](https://github.com/nestednotation/nestednotation/commit/338fc6efa6c8e89f505e50f632698e55183fa032))
+* fix voting indicator remains after voting stopped ([fe5fbcc](https://github.com/nestednotation/nestednotation/commit/fe5fbcc00ad1aeeee67ca0e212bec3832dba026b))
+* fix voting size not working when create session ([797f701](https://github.com/nestednotation/nestednotation/commit/797f7017e617daaab846e9f5e31c9143e33ba909))
+* hotfix missing navbar ([e927968](https://github.com/nestednotation/nestednotation/commit/e927968a7f86ec2dd0381d2b450ad4ab399f6655))
+* incorrect wsPath ([47ed83f](https://github.com/nestednotation/nestednotation/commit/47ed83f8ce6cff300ad67e88f8636d1cecc4e467))
+* qr code render incorrect on android ([3bb927b](https://github.com/nestednotation/nestednotation/commit/3bb927b281fa5dadbfeab5b475361cd7956a45b8))
+* track voting based on href element ID instead of vote index, fix font error for vote indicator ([f63debb](https://github.com/nestednotation/nestednotation/commit/f63debbcf067bd02478cb4cdafd4669ad9409cef))
+* update new guide mode winning animation to smoother one ([bc744c6](https://github.com/nestednotation/nestednotation/commit/bc744c61c9724b953eb196e5e811abfa1b4a8964))
+
 ## [1.1.0](https://github.com/nestednotation/nestednotation/compare/v1.0.0...v1.1.0) (2025-03-20)
 
 
