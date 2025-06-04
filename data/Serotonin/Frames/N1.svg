@@ -971,13 +971,13 @@
                     </g>
                 </g>
             </g>
-            <g id="N1-Phrase-1-bandsounder" sound="N1 Phrase 1 bandsounder" serif:id="N1 Phrase 1 bandsounder" transform="matrix(0.472959,0,0,0.372862,-9330.59,-4565.67)">
+            <g id="N1-Phrase-1-bandsounder" sound="N1 Phrase 1 bandsounder" autoplay="false" serif:id="N1 Phrase 1 bandsounder" transform="matrix(0.472959,0,0,0.372862,-9330.59,-4565.67)">
                 <path d="M20798,18760.3L20798,19033.7C20798,19046 20790.1,19056 20780.5,19056L19872.5,19056C19862.9,19056 19855,19046 19855,19033.7L19855,18760.3C19855,18748 19862.9,18738 19872.5,18738L20780.5,18738C20790.1,18738 20798,18748 20798,18760.3Z" style="fill:rgb(255,176,46);fill-opacity:0.1;stroke:rgb(251,174,46);stroke-opacity:0.1;stroke-width:4.89px;stroke-linecap:round;"/>
             </g>
             <g id="N1-Phrase-3-bandsounder" sound="N1 Phrase 3 bandsounder" autoplay="false" serif:id="N1 Phrase 3 bandsounder" transform="matrix(0.755656,0,0,0.430769,-13725.6,-5650.73)">
                 <path d="M20798,18760.3L20798,19033.7C20798,19046 20792.3,19056 20785.3,19056L19867.7,19056C19860.7,19056 19855,19046 19855,19033.7L19855,18760.3C19855,18748 19860.7,18738 19867.7,18738L20785.3,18738C20792.3,18738 20798,18748 20798,18760.3Z" style="fill:rgb(255,176,46);fill-opacity:0.1;stroke:rgb(251,174,46);stroke-opacity:0.1;stroke-width:3.39px;stroke-linecap:round;"/>
             </g>
-            <g id="N1-Phrase-2-bandsounder" sound="N1 Phrase 2 bandsounder" autoplay="false" serif:id="N1 Phrase 2 bandsounder" transform="matrix(1.66702,0,0,0.402516,-32961.7,-5268.34)">
+            <g id="N1-Phrase-2-bandsounder" sound="N1 Phrase 2 bandsounder" serif:id="N1 Phrase 2 bandsounder" transform="matrix(1.66702,0,0,0.402516,-32961.7,-5268.34)">
                 <path d="M20085.6,19082C20085.4,19051 20081.2,19056 20081.2,19056L19866.5,19056C19860.2,19056 19855,19034.6 19855,19008.3L19855,18785.7C19855,18759.4 19860.2,18738 19866.5,18738L20081.9,18738C20081.9,18738 20085.4,18740.5 20085.6,18719C20085.7,18714.1 20085.6,18705.8 20085.6,18705.8L20085.6,18055C20085.6,18011 20094.2,17975.3 20104.9,17975.3L20510.3,17975.3C20520.9,17975.3 20529.5,18011 20529.5,18055L20529.5,18707.6C20529.5,18707.6 20528.7,18740.5 20535.5,18738C20536.1,18737.8 20539.9,18738 20539.9,18738L20786.5,18738C20792.8,18738 20798,18759.4 20798,18785.7L20798,19008.3C20798,19034.6 20792.8,19056 20786.5,19056L20535.5,19056C20535.5,19056 20529.3,19051 20529.5,19078.4C20529.6,19083 20529.5,19092.1 20529.5,19092.1L20529.5,19490.5C20529.5,19534.5 20520.9,19570.3 20510.3,19570.3L20104.9,19570.3C20094.2,19570.3 20085.6,19534.5 20085.6,19490.5L20085.6,19103.2C20085.6,19103.2 20085.7,19089.6 20085.6,19082Z" style="fill:rgb(251,174,46);fill-opacity:0.1;stroke:rgb(251,174,46);stroke-opacity:0.1;stroke-width:1.72px;stroke-linecap:round;"/>
             </g>
             <g id="solos-bandsounder" sound="N1 Solo bandsounder" autoplay="false" serif:id="solos bandsounder" transform="matrix(0.386002,0,0,1.28553,-6108.07,-22297.4)">

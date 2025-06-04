@@ -230,9 +230,6 @@
                             <g id="_111" serif:id="11" transform="matrix(1.07151,-1.85591,1.88446,1.08799,-851.373,2241.13)">
                                 <ellipse cx="766" cy="526.5" rx="33" ry="32.5" style="fill:rgb(128,128,128);stroke:white;stroke-width:11.11px;stroke-linecap:round;"/>
                             </g>
-                            <g transform="matrix(-3.99306,0,0,-3.99306,5691.25,6256.16)">
-                                <path d="M974.243,1397.13C960.025,1310.98 1030.41,1184.25 1166.77,1207.09" style="fill:none;stroke:rgb(204,204,204);stroke-width:4.17px;stroke-linecap:round;"/>
-                            </g>
                             <g>
                                 <g id="_92" serif:id="9" transform="matrix(1.07151,-1.85591,1.88446,1.08799,-641.245,1872.23)">
                                     <ellipse cx="766" cy="526.5" rx="33" ry="32.5" style="fill:rgb(26,96,55);stroke:white;stroke-width:11.11px;stroke-linecap:round;"/>
@@ -325,6 +322,7 @@
                 <g id="Curves">
                     <path d="M974.243,1397.13C408.112,678.284 507.3,475.395 692.426,415.477" style="fill:none;stroke:rgb(204,204,204);stroke-width:4.17px;stroke-linecap:round;"/>
                     <path d="M345.231,1095.16C700.808,1026.98 992.974,811.871 878.292,571.145C1377.04,1028.08 1449.86,1237.09 1345.56,1352.98" style="fill:none;stroke:black;stroke-width:4.17px;stroke-linecap:round;"/>
+                    <path d="M974.243,1397.13C960.025,1310.98 1030.41,1184.25 1166.77,1207.09" style="fill:none;stroke:rgb(204,204,204);stroke-width:4.17px;stroke-linecap:round;"/>
                     <path d="M298.34,1154.49C618.971,1647.96 944.178,1772.6 1086.66,1614.8" style="fill:none;stroke:black;stroke-width:4.17px;stroke-linecap:round;"/>
                 </g>
             </g>
