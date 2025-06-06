@@ -315,6 +315,12 @@ function startVotingForSessionWithDelay(session, timeDelay, customDur) {
 }
 
 function stopVotingForSession(session) {
+  // Clear the voting timer immediately to stop sending MSG_UPDATE_VOTING
+  if (session.votingTimer) {
+    clearInterval(session.votingTimer);
+    session.votingTimer = null;
+  }
+
   session.isStandby = true;
   session.isVoting = false;
   if (session.holdDuration > 0) {

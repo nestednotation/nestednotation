@@ -179,6 +179,7 @@ function parseMessage(data) {
 
   if (msg === MSG_NEED_DISPLAY) {
     console.log("receive need to refresh");
+    clearVotingIndicator();
     refreshScore();
     return;
   }
