@@ -54,7 +54,7 @@ function clearVotingIndicator() {
 
   // Remove all voting indicator
   for (const [voteId, indicatorEle] of window.votingIndicatorMap.entries()) {
-    indicatorEle.remove();
+    indicatorEle?.remove();
     window.votingIndicatorMap.delete(voteId);
   }
   window.votingIndicatorMap.clear();
@@ -113,7 +113,7 @@ function showVotingIndicator(voteDic) {
       continue;
     }
 
-    indicatorEle.remove();
+    indicatorEle?.remove();
     votingIndicatorMap.delete(voteId);
   }
 }
