@@ -78,6 +78,10 @@ function showVotingIndicator(voteDic) {
   for (const [voteId, voteCount] of dicEntries) {
     if (votingIndicatorMap.has(voteId)) {
       const indicatorEle = votingIndicatorMap.get(voteId);
+      if (!indicatorEle) {
+        continue;
+      }
+
       indicatorEle.innerHTML = voteCount;
 
       if (voteId === winningVoteId) {
@@ -100,7 +104,9 @@ function showVotingIndicator(voteDic) {
     }
 
     const injectedIndicator = injectVoteIndicator(voteId, voteCount);
-    votingIndicatorMap.set(voteId, injectedIndicator);
+    if (injectedIndicator) {
+      votingIndicatorMap.set(voteId, injectedIndicator);
+    }
   }
 
   if (!Object.hasOwn(removedWinningDic, "stay")) {
