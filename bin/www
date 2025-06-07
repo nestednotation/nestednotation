@@ -321,8 +321,11 @@ function stopVotingForSession(session) {
     session.votingTimer = null;
   }
 
-  session.isStandby = true;
+  // Additional safety: ensure voting state is properly reset
   session.isVoting = false;
+  session.didSendStopVoting = true;
+
+  session.isStandby = true;
   if (session.holdDuration > 0) {
     session.isHolding = true;
   }
@@ -334,6 +337,13 @@ function stopVotingForSession(session) {
       ? session.currentIndex
       : // ID should follow format: nextVoteId#currFileName#aEleIndex
         Number(votingData.winningVoteId.split("#")[0]);
+
+  // Reset all client votes
+  wsServer.connections.forEach((conn) => {
+    if (conn.sessionId === session.id) {
+      conn.currentVoteTo = -1;
+    }
+  });
 
   session.setCurrentIndexTo(mostVoteRingId);
   //unlock

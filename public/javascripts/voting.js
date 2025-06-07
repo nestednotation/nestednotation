@@ -57,6 +57,8 @@ function clearVotingIndicator() {
     indicatorEle.remove();
     window.votingIndicatorMap.delete(voteId);
   }
+  window.votingIndicatorMap.clear();
+  document.getElementById("votingContainer").innerHTML = "";
 }
 
 function showVotingIndicator(voteDic) {

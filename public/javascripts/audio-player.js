@@ -471,6 +471,11 @@ class AudioSession {
     if (!this.guideLock) {
       this.mode = SESSION_MODES.PLAY;
     }
+
+    // Clear voting indicators when changing frames
+    if (window.clearVotingIndicator) {
+      window.clearVotingIndicator();
+    }
   }
 
   getPlayingNotes() {
