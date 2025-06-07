@@ -336,7 +336,7 @@ function stopVotingForSession(session) {
     votingData.winningVoteId === "stay"
       ? session.currentIndex
       : // ID should follow format: nextVoteId#currFileName#aEleIndex
-        Number(votingData.winningVoteId.split("#")[0]);
+        Number(votingData.winningVoteId?.split("#")[0] ?? session.currentIndex);
 
   // Reset all client votes
   wsServer.connections.forEach((conn) => {
