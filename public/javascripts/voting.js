@@ -129,7 +129,7 @@ function injectVoteIndicator(voteId, voteCount) {
   const containerElement = document.getElementById(voteId);
   if (!containerElement) {
     console.error("Not found element for clicked link");
-    return;
+    return null;
   }
 
   const voteMagnet = containerElement.querySelector(".votemagnet");
