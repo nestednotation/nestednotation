@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
+<svg width="100%" height="100%" viewBox="0 0 406 529" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" xml:space="preserve" xmlns:serif="http://www.serif.com/" style="fill-rule:evenodd;clip-rule:evenodd;stroke-linejoin:bevel;">
+  <rect id="L1-7" x="0.232" y="0.039" width="405.12" height="528" style="fill:none;"/>
+  <clipPath id="_clip1">
+    <rect x="0.232" y="0.039" width="405.12" height="528"/>
+  </clipPath>
+  <g clip-path="url(#_clip1)">
+	  <a href="L1-8.svg">
+    <circle cx="364.84" cy="491.079" r="17.4" style="fill:#47c6ff;"/>
+	  </a>
+	  <a href="L3-3.svg">
+    <circle id="Link-to-L3-3" serif:id="Link to L3-3" cx="40.744" cy="491.079" r="17.4" style="fill:#ff9447;"/>
+	  </a>
+    <path d="M0.232,213.639l405.12,0" style="fill:none;fill-rule:nonzero;stroke:#000;stroke-width:3.12px;"/>
+    <path d="M0.232,238.839l405.12,0" style="fill:none;fill-rule:nonzero;stroke:#000;stroke-width:3.12px;"/>
+    <path d="M0.232,264.039l405.12,0" style="fill:none;fill-rule:nonzero;stroke:#000;stroke-width:3.12px;"/>
+    <path d="M0.232,289.239l405.12,0" style="fill:none;fill-rule:nonzero;stroke:#000;stroke-width:3.12px;"/>
+    <path d="M0.232,314.439l405.12,0" style="fill:none;fill-rule:nonzero;stroke:#000;stroke-width:3.12px;"/>
+    <path d="M214.55,280.766c-0.094,-0.095 -0.299,-0.3 -0.598,-0.693l-11.592,-14.317c-0.11,-0.11 -0.205,-0.41 -0.205,-0.614c0,-0.3 0.095,-0.693 0.205,-0.898l10.269,-15.53c0.11,-0.205 0.205,-0.504 0.205,-0.709l-0,-0.897c-0,-0.3 -0.095,-0.615 -0.3,-0.804l-16.332,-22.081c-0,0 -0.394,-0.614 -1.008,-0.614c-0.3,-0 -0.504,-0 -0.804,0.315c-0.409,0.299 -0.504,0.693 -0.504,1.008c0,0.598 0.3,1.102 0.3,1.102l7.67,10.49c0.189,0.299 0.299,0.693 0.299,1.197c0,0.409 -0.11,0.913 -0.299,1.212l-10.19,15.53c-0.095,0.205 -0.205,0.599 -0.205,0.803l-0,0.914c-0,0.299 0.11,0.598 0.315,0.803l11.277,14.018c-0.394,-0.111 -1.307,-0.315 -2.52,-0.315c-5.135,-0 -9.167,4.236 -9.167,9.387c0,1.401 0.3,2.819 1.103,3.921c2.126,3.229 9.686,12.805 9.686,12.805c0,0 0.504,0.614 1.213,0.614c0.189,0 0.394,0 0.598,-0.204c0.504,-0.41 0.709,-0.804 0.709,-1.213c0,-0.41 -0.205,-0.709 -0.299,-0.914c-0.315,-0.504 -3.528,-6.347 -3.528,-6.347c-0,0 -0.709,-1.417 -0.709,-3.229c0,-3.228 2.41,-5.843 5.639,-5.843c1.307,0 2.425,0.41 3.228,0.914l3.938,2.52c-0,-0 0.394,0.189 0.803,0.189c0.394,-0 0.709,-0.095 1.008,-0.504c0.205,-0.3 0.299,-0.599 0.299,-0.898c0,-0.299 -0.094,-0.504 -0.299,-0.803l-0.205,-0.315" style="fill-rule:nonzero;"/>
+  </g>
+</svg>
