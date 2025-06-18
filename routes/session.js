@@ -107,7 +107,6 @@ router.get("/*", function (req, res) {
     fadeDuration: JSON.stringify(session.fadeDuration),
     isHtml5: JSON.stringify(session.isHtml5),
     sessionSvg: session.svgContent,
-    scoreSlug: utils.slugify(session.folder),
     soundFileList: session.soundList && JSON.stringify(session.soundList),
     wsPath: db.wsPath,
     aboutNestedNotationSvg: db.aboutSvg,

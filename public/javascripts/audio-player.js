@@ -15,7 +15,7 @@ const removeFileExt = (fileName) => {
 // But I cache the list just in case the score using different file ext like .mp3
 let SOUND_FILE_LIST = null;
 const getSoundLink = (soundName) => {
-  const { scoreSlug, soundFileList } = window;
+  const { scoreTitle, soundFileList } = window;
 
   if (!SOUND_FILE_LIST) {
     SOUND_FILE_LIST = soundFileList.reduce((acc, soundFile) => {
@@ -30,7 +30,9 @@ const getSoundLink = (soundName) => {
     console.error(`Sound file not found for ${soundName}`);
   }
 
-  return `/audio/${scoreSlug}/${fileName}`;
+  return `/data/${encodeURIComponent(scoreTitle)}/Sounds/${encodeURIComponent(
+    fileName
+  )}`;
 };
 
 // Log all mismatch sounds found in the session

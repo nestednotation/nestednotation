@@ -9,7 +9,7 @@ const testPrefixFile = prefixDir + "/account/admin.dat";
 if (!fs.existsSync(testPrefixFile)) {
   prefixDir = "..";
 }
-const DATA_DIR = `${prefixDir}/data`;
+const DATA_DIR = `${prefixDir}/public/data`;
 
 const SERVER_STATE_DIR = `${prefixDir}/server_state`;
 if (!fs.existsSync(SERVER_STATE_DIR)) {
