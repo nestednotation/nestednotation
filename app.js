@@ -11,9 +11,10 @@ var finishRouter = require("./routes/finish");
 var setupRouter = require("./routes/setup");
 var adminRouter = require("./routes/admin");
 var smRouter = require("./routes/sm");
-
 var app = express();
 console.log("App is starting...");
+
+app.use(require("express-status-monitor")());
 
 // view engine setup
 app.set("views", path.join(__dirname, "views"));
