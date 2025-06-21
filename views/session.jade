@@ -22,12 +22,11 @@ html
     
   body(class="play-mode session-page")
     script.
+      const search = new URLSearchParams(window.location.search);
       window.soundFileList= JSON.parse('!{soundFileList}');
       window.listFiles = JSON.parse('!{listFiles}');
-      window.staffCode = '#{staffCode}';
+      window.staffCode = search.get('p');
       window.sessionId = '#{sessionId}';
-      window.hostAddress = '#{hostAddress}';
-      window.wsPort = '#{webSocketPort}';
       window.wsPath = '#{wsPath}'
 
       window.qrSharePath = '#{qrSharePath}';
@@ -97,7 +96,6 @@ html
       div(id="divOverlay")
       div(id="MainSVGContent")
         | !{sessionSvg}
-        | !{audio}
       svg(id="svg-1", width="100%", height="100%", viewBox="0 0 1801 1801", version="1.1", xmlns="http://www.w3.org/2000/svg", xmlns:xlink="http://www.w3.org/1999/xlink", xml:space="preserve", xmlns:serif="http://www.serif.com/", style="fill-rule:evenodd;clip-rule:evenodd;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:1.5;")
         g
           rect(x="0.7", y="0.9", width="1800", height="1800", style="fill:none;")

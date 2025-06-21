@@ -1,6 +1,8 @@
 const { MESSAGES, ABOUT_DATA_DIR } = require("./constants");
 const fs = require("fs");
 
+const jade = require("jade");
+
 const HREF_REGX = /(?<=href=")(.*?)(?=")/;
 const LINK_REGEX = /((xlink:href)|(href))="(.*?)"/;
 
@@ -10,6 +12,7 @@ if (!fs.existsSync(testPrefixFile)) {
   prefixDir = "..";
 }
 const DATA_DIR = `${prefixDir}/public/data`;
+const TEMPLATE_DIR = `${prefixDir}/views`;
 
 const SERVER_STATE_DIR = `${prefixDir}/server_state`;
 if (!fs.existsSync(SERVER_STATE_DIR)) {
@@ -57,6 +60,9 @@ const buildAboutSvg = (contentDir, svgIdSuffix) => {
   );
   return svgContent;
 };
+
+let hostAddress = null;
+const aboutNestedNotationSvg = buildAboutSvg(ABOUT_DATA_DIR, "-about-nn");
 
 class BMAdmin {
   constructor(id, name, password, isActive) {
@@ -179,11 +185,6 @@ class BMSession {
     if (saveToFile) {
       this.saveSessionStateToFile();
     }
-
-    this.aboutSvg = buildAboutSvg(
-      `${this.folder}/Documentation`,
-      "-about-score"
-    );
   }
 
   // this use listFiles generate from buildSVGContent. So run it after that method
@@ -225,8 +226,6 @@ class BMSession {
     );
 
     this.setCurrentIndexTo(this.listFiles.indexOf(startedFile));
-
-    this.aboutSvg = buildAboutSvg(`${folder}/Documentation`, "-about-score");
   }
 
   reloadScore(folderName) {
@@ -349,6 +348,52 @@ class BMSession {
       this.svgContent += `${svg}\n`;
     });
 
+    this.aboutSvg = buildAboutSvg(
+      `${this.folder}/Documentation`,
+      "-about-score"
+    );
+
+    const serverIp = process.env.SERVER_IP;
+    const wsPath = `wss://${serverIp}`;
+
+    const data = fs.readFileSync(`${TEMPLATE_DIR}/session.jade`, "utf8");
+    const fn = jade.compile(data);
+    const html = fn({
+      title: `Session: ${this.folder}`,
+      sessionId: this.id,
+      noSleepDuration: 60,
+      scoreTitle: this.folder,
+
+      msgPing: MESSAGES.MSG_PING,
+      msgTap: MESSAGES.MSG_TAP,
+      msgShow: MESSAGES.MSG_SHOW,
+      msgNeedDisplay: MESSAGES.MSG_NEED_DISPLAY,
+      msgUpdateVoting: MESSAGES.MSG_UPDATE_VOTING,
+      msgBeginVoting: MESSAGES.MSG_BEGIN_VOTING,
+      msgBeginStandby: MESSAGES.MSG_BEGIN_STANDBY,
+      msgCheckHold: MESSAGES.MSG_CHECK_HOLD,
+      msgBeginHolding: MESSAGES.MSG_BEGIN_HOLDING,
+      msgFinish: MESSAGES.MSG_FINISH,
+      msgPause: MESSAGES.MSG_PAUSE,
+      msgSelectHistory: MESSAGES.MSG_SELECT_HISTORY,
+      msgShowNumberConnection: MESSAGES.MSG_SHOW_NUMBER_CONNECTION,
+
+      fadeDuration: JSON.stringify(this.fadeDuration),
+      isHtml5: JSON.stringify(this.isHtml5),
+      sessionSvg: this.svgContent,
+      soundFileList: this.soundList && JSON.stringify(this.soundList),
+      wsPath: wsPath,
+      aboutNestedNotationSvg: aboutNestedNotationSvg,
+      aboutScoreSvg: this.aboutSvg,
+      scoreHasAbout: this.aboutSvg !== null,
+      votingSize: this.votingSize,
+      qrSharePath: `/session/${this.id}/?p=${encodeURIComponent(
+        this.playerPassword
+      )}&t=2`,
+      listFiles: JSON.stringify(this.listFiles),
+    });
+
+    this.htmlContent = html;
     console.log(
       `Finish building svg content... for ${this.folder} with ID ${this.id}`
     );
@@ -504,6 +549,7 @@ class BMDatabase {
   aboutSvg = "";
 
   constructor({ hostaddress }) {
+    hostAddress = hostaddress;
     this.admin = new BMAdminTable();
     this.sessionTable = new BMSessionTable();
     this.shouldAutoRedirect = false;
@@ -529,7 +575,7 @@ class BMDatabase {
     this.MSG_SELECT_HISTORY = MESSAGES.MSG_SELECT_HISTORY;
     this.MSG_SHOW_NUMBER_CONNECTION = MESSAGES.MSG_SHOW_NUMBER_CONNECTION;
 
-    this.aboutSvg = buildAboutSvg(ABOUT_DATA_DIR, "-about-nn");
+    this.aboutSvg = aboutNestedNotationSvg;
   }
 
   dumpToFile(path) {

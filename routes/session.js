@@ -1,7 +1,6 @@
 const express = require("express");
 const router = express.Router();
-
-const utils = require("../utils");
+const { Readable } = require("stream");
 const { FORM_MESSAGES } = require("../constants");
 
 router.get("/", function (req, res) {
@@ -81,43 +80,8 @@ router.get("/*", function (req, res) {
     return;
   }
 
-  res.render("session", {
-    title: `Session: ${session.folder}`,
-    staffCode: password,
-    sessionId: sessionId,
-    hostAddress: db.hostAddress,
-    webSocketPort: db.wsPort,
-    noSleepDuration: 60,
-    scoreTitle: session.folder,
-
-    msgPing: db.MSG_PING,
-    msgTap: db.MSG_TAP,
-    msgShow: db.MSG_SHOW,
-    msgNeedDisplay: db.MSG_NEED_DISPLAY,
-    msgUpdateVoting: db.MSG_UPDATE_VOTING,
-    msgBeginVoting: db.MSG_BEGIN_VOTING,
-    msgBeginStandby: db.MSG_BEGIN_STANDBY,
-    msgCheckHold: db.MSG_CHECK_HOLD,
-    msgBeginHolding: db.MSG_BEGIN_HOLDING,
-    msgFinish: db.MSG_FINISH,
-    msgPause: db.MSG_PAUSE,
-    msgSelectHistory: db.MSG_SELECT_HISTORY,
-    msgShowNumberConnection: db.MSG_SHOW_NUMBER_CONNECTION,
-
-    fadeDuration: JSON.stringify(session.fadeDuration),
-    isHtml5: JSON.stringify(session.isHtml5),
-    sessionSvg: session.svgContent,
-    soundFileList: session.soundList && JSON.stringify(session.soundList),
-    wsPath: db.wsPath,
-    aboutNestedNotationSvg: db.aboutSvg,
-    aboutScoreSvg: session.aboutSvg,
-    scoreHasAbout: session.aboutSvg !== null,
-    votingSize: session.votingSize,
-    qrSharePath: `/session/${session.id}/?p=${encodeURIComponent(
-      session.playerPassword
-    )}&t=2`,
-    listFiles: JSON.stringify(session.listFiles),
-  });
+  const stream = Readable.from(session.htmlContent);
+  stream.pipe(res);
 });
 
 module.exports = router;
