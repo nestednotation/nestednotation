@@ -220,7 +220,7 @@ input[type="button"] {
   opacity: 1;
 }
 
-.guide-mode.holding svg {
+.guide-mode.holding #MainContent svg {
   filter: grayscale(100%);
 }
 
@@ -484,7 +484,7 @@ body.ipad {
   display: none;
 }
 
-.loading-sound.play-mode svg {
+.loading-sound.play-mode #MainContent svg {
   pointer-events: none;
   filter: grayscale(100%);
 }

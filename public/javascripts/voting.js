@@ -8,6 +8,22 @@ document.addEventListener("DOMContentLoaded", () => {
   document.head.appendChild(style);
 });
 
+const debounce = (func, delay) => {
+  let timeout;
+  return (...args) => {
+    clearTimeout(timeout);
+    timeout = setTimeout(() => func(...args), delay);
+  };
+};
+
+window.addEventListener(
+  "resize",
+  debounce(() => {
+    clearVotingIndicator();
+    window.countDic && showVotingIndicator(window.countDic);
+  }, 200)
+);
+
 function getFrameHoldingDur(voteIdx) {
   const nextSvgFile = window.listFiles[voteIdx];
   const nextSvgEle = document.querySelector(`[file="${nextSvgFile}"]`);
@@ -137,6 +153,7 @@ function injectVoteIndicator(voteId, voteCount) {
   const { top, left, width, height } = voteMagnet
     ? voteMagnet.getBoundingClientRect()
     : containerElement.getBoundingClientRect();
+
   const indicatorPosition = {
     top: top + height / 2,
     left: left + width / 2,

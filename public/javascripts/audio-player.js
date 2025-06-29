@@ -132,6 +132,10 @@ class Note {
     }
   }
 
+  get isPlaying() {
+    return this._playingCount > 0;
+  }
+
   constructor(frameInstance, svgSoundNode) {
     this.frameInstance = frameInstance;
 
@@ -317,7 +321,7 @@ class Frame {
 
   playAllAutoplayNotes() {
     this.notes.forEach((e) => {
-      e.isAutoplay && e.play();
+      e.isAutoplay && !e.isPlaying && e.play();
     });
   }
 
