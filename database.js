@@ -28,6 +28,39 @@ const regexWithPattern = (str, pattern, groupId) => {
   return match[groupId];
 };
 
+const buildAboutSvgAsync = async (contentDir, svgIdSuffix) => {
+  const dir = `${DATA_DIR}/${contentDir}`;
+  if (!fs.existsSync(dir)) {
+    console.log(`${dir} not found`);
+    return null;
+  }
+
+  let fileList = await fs.promises.readdir(dir);
+  if (fileList.length <= 0) {
+    console.log(`No data in ${dir} folder`);
+    return null;
+  }
+
+  let svgContent = "";
+
+  for (const filename of fileList) {
+    const filePath = `${dir}/${filename}`;
+    const content = await fs.promises.readFile(filePath, "utf8");
+    let svg = regexWithPattern(content, /<svg.*?<\/svg>/is, 0);
+    svg = svg.replace(
+      "<svg",
+      `<svg id="${filename}${svgIdSuffix}" class="hidden" file="${filename}" `
+    );
+
+    svgContent += `${svg}\n`;
+  }
+
+  console.log(
+    `Finish building about/document svg content... for ${contentDir}`
+  );
+  return svgContent;
+};
+
 const buildAboutSvg = (contentDir, svgIdSuffix) => {
   const dir = `${DATA_DIR}/${contentDir}`;
   if (!fs.existsSync(dir)) {
@@ -177,18 +210,18 @@ class BMSession {
     return fileList.includes("Sounds") && fileList.includes("Frames");
   }
 
-  patchState(stateData, saveToFile = false) {
+  async patchState(stateData, saveToFile = false) {
     for (const [key, val] of Object.entries(stateData)) {
       this[key] = val;
     }
 
     if (saveToFile) {
-      this.saveSessionStateToFile();
+      await this.saveSessionStateToFile();
     }
   }
 
   // this use listFiles generate from buildSVGContent. So run it after that method
-  initState(
+  async initState(
     id,
     adminId,
     folder,
@@ -210,9 +243,9 @@ class BMSession {
     this.folder = folder;
 
     this.hasSounds = this.checkScoreHasSounds(folder);
-    this.soundList = this.hasSounds ? this.getSoundList(folder) : [];
+    this.soundList = this.hasSounds ? await this.getSoundList(folder) : [];
 
-    this.buildSVGContent();
+    await this.buildSVGContent();
 
     if (this.listFiles.length <= 0) {
       return;
@@ -228,13 +261,13 @@ class BMSession {
     this.setCurrentIndexTo(this.listFiles.indexOf(startedFile));
   }
 
-  reloadScore(folderName) {
+  async reloadScore(folderName) {
     this.folder = folderName;
     this.hasSounds = this.checkScoreHasSounds(folderName);
 
-    this.soundList = this.hasSounds ? this.getSoundList(folderName) : [];
+    this.soundList = this.hasSounds ? await this.getSoundList(folderName) : [];
 
-    this.buildSVGContent();
+    await this.buildSVGContent();
 
     if (this.listFiles.length <= 0) {
       return;
@@ -274,16 +307,16 @@ class BMSession {
     this.historyIndex = this.history.length - 1;
   }
 
-  getSoundList(folder) {
+  async getSoundList(folder) {
     const dir = `${DATA_DIR}/${folder}/Sounds`;
     if (!fs.existsSync(dir)) {
       return [];
     }
 
-    return fs.readdirSync(dir);
+    return await fs.promises.readdir(dir);
   }
 
-  buildSVGContent() {
+  async buildSVGContent() {
     const dir = this.hasSounds
       ? `${DATA_DIR}/${this.folder}/Frames`
       : `${DATA_DIR}/${this.folder}`;
@@ -291,7 +324,7 @@ class BMSession {
       return;
     }
 
-    this.listFiles = fs.readdirSync(dir);
+    this.listFiles = await fs.promises.readdir(dir);
     if (this.listFiles.length <= 0) {
       return;
     }
@@ -301,11 +334,10 @@ class BMSession {
     );
 
     this.listMultiChooseImages = [];
-    this.svgContent = "";
 
-    this.listFiles.forEach((filename) => {
+    for (const filename of this.listFiles) {
       const filePath = `${dir}/${filename}`;
-      const content = fs.readFileSync(filePath, "utf8");
+      const content = await fs.promises.readFile(filePath, "utf8");
       let svg = regexWithPattern(content, /<svg.*?<\/svg>/is, 0);
       const svgIndex = this.listFilesInLowerCase.indexOf(
         filename.toLowerCase()
@@ -319,6 +351,7 @@ class BMSession {
       if (listA === null) {
         return;
       }
+
       if (listA.length > 1 && !filename.startsWith("PRE")) {
         this.listMultiChooseImages.push(svgIndex);
       }
@@ -345,18 +378,32 @@ class BMSession {
         newA = newA.replace(")", "\\)");
       });
 
-      this.svgContent += `${svg}\n`;
-    });
+      await fs.promises.appendFile(
+        `${SERVER_STATE_DIR}/${this.id}.content.svg`,
+        svg
+      );
+    }
 
-    this.aboutSvg = buildAboutSvg(
+    const aboutSvg = await buildAboutSvgAsync(
       `${this.folder}/Documentation`,
       "-about-score"
     );
 
+    if (aboutSvg) {
+      await fs.promises.writeFile(
+        `${SERVER_STATE_DIR}/${this.id}.about.svg`,
+        aboutSvg
+      );
+    }
+
     const serverIp = process.env.SERVER_IP;
     const wsPath = `wss://${serverIp}`;
 
-    const data = fs.readFileSync(`${TEMPLATE_DIR}/session.jade`, "utf8");
+    const data = await fs.promises.readFile(
+      `${TEMPLATE_DIR}/session.jade`,
+      "utf8"
+    );
+
     const fn = jade.compile(data);
     const html = fn({
       title: `Session: ${this.folder}`,
@@ -380,12 +427,15 @@ class BMSession {
 
       fadeDuration: JSON.stringify(this.fadeDuration),
       isHtml5: JSON.stringify(this.isHtml5),
-      sessionSvg: this.svgContent,
+      sessionSvg: await fs.promises.readFile(
+        `${SERVER_STATE_DIR}/${this.id}.content.svg`,
+        "utf8"
+      ),
       soundFileList: this.soundList && JSON.stringify(this.soundList),
       wsPath: wsPath,
       aboutNestedNotationSvg: aboutNestedNotationSvg,
-      aboutScoreSvg: this.aboutSvg,
-      scoreHasAbout: this.aboutSvg !== null,
+      aboutScoreSvg: aboutSvg,
+      scoreHasAbout: aboutSvg !== null,
       votingSize: this.votingSize,
       qrSharePath: `/session/${this.id}/?p=${encodeURIComponent(
         this.playerPassword
@@ -393,7 +443,8 @@ class BMSession {
       listFiles: JSON.stringify(this.listFiles),
     });
 
-    this.htmlContent = html;
+    await fs.promises.writeFile(`${SERVER_STATE_DIR}/${this.id}.html`, html);
+
     console.log(
       `Finish building svg content... for ${this.folder} with ID ${this.id}`
     );
@@ -434,7 +485,7 @@ class BMSession {
     }
   }
 
-  saveSessionStateToFile() {
+  async saveSessionStateToFile() {
     if (this.isSessionDeleted) {
       return;
     }
@@ -446,22 +497,36 @@ class BMSession {
     clonedData.isVoting = false;
 
     const stateFilePath = `${SERVER_STATE_DIR}/${this.id}.json`;
-    fs.writeFileSync(stateFilePath, JSON.stringify(clonedData));
+    await fs.promises.writeFile(stateFilePath, JSON.stringify(clonedData));
 
     console.log(
       `Write session ${this.sessionName} state to file: ${stateFilePath}`
     );
   }
 
-  deleteStateFile() {
+  async deleteStateFile() {
     const stateFilePath = `${SERVER_STATE_DIR}/${this.id}.json`;
     if (fs.existsSync(stateFilePath)) {
-      fs.rmSync(stateFilePath);
+      await fs.promises.rm(stateFilePath);
+    }
+    const htmlFilePath = `${SERVER_STATE_DIR}/${this.id}.html`;
+    if (fs.existsSync(htmlFilePath)) {
+      await fs.promises.rm(htmlFilePath);
+    }
+
+    const svgFilePath = `${SERVER_STATE_DIR}/${this.id}.content.svg`;
+    if (fs.existsSync(svgFilePath)) {
+      await fs.promises.rm(svgFilePath);
+    }
+
+    const aboutSvgFilePath = `${SERVER_STATE_DIR}/${this.id}.about.svg`;
+    if (fs.existsSync(aboutSvgFilePath)) {
+      await fs.promises.rm(aboutSvgFilePath);
     }
 
     this.isSessionDeleted = true;
     console.log(
-      `Deleted session ${this.sessionName} state file: ${stateFilePath}`
+      `Deleted session ${this.sessionName} state files: ${stateFilePath}, ${htmlFilePath}, ${svgFilePath}`
     );
   }
 }
@@ -473,7 +538,7 @@ class BMSessionTable {
     this.loadStoredSessionStates();
   }
 
-  add(
+  async add(
     sessionId,
     adminId,
     folder,
@@ -491,7 +556,7 @@ class BMSessionTable {
     }
 
     const session = new BMSession();
-    session.initState(
+    await session.initState(
       sessionId,
       adminId,
       folder,
@@ -501,7 +566,7 @@ class BMSessionTable {
       isHtml5,
       fadeDuration
     );
-    session.saveSessionStateToFile();
+    await session.saveSessionStateToFile();
 
     this.data.push(session);
     return session;
@@ -528,17 +593,22 @@ class BMSessionTable {
     console.log(`Session ${session.sessionName} stopped...`);
   }
 
-  loadStoredSessionStates() {
-    const sessionStateFiles = fs.readdirSync(SERVER_STATE_DIR, {
+  async loadStoredSessionStates() {
+    const sessionStateFiles = await fs.promises.readdir(SERVER_STATE_DIR, {
       withFileTypes: true,
     });
 
     for (const file of sessionStateFiles) {
+      if (file.name.endsWith(".html") || file.name.endsWith(".svg")) {
+        continue;
+      }
+
       const newSession = new BMSession();
-      newSession.patchState(
-        JSON.parse(fs.readFileSync(`${SERVER_STATE_DIR}/${file.name}`))
+      const state = JSON.parse(
+        await fs.promises.readFile(`${SERVER_STATE_DIR}/${file.name}`, "utf8")
       );
-      newSession.buildSVGContent();
+      await newSession.patchState(state);
+      await newSession.buildSVGContent();
 
       this.data.push(newSession);
     }

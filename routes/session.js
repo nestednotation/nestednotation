@@ -1,7 +1,14 @@
 const express = require("express");
 const router = express.Router();
-const { Readable } = require("stream");
 const { FORM_MESSAGES } = require("../constants");
+const fs = require("fs");
+
+let prefixDir = ".";
+const testPrefixFile = prefixDir + "/account/admin.dat";
+if (!fs.existsSync(testPrefixFile)) {
+  prefixDir = "..";
+}
+const SERVER_STATE_DIR = `${prefixDir}/server_state`;
 
 router.get("/", function (req, res) {
   const sessionName = req.query.s;
@@ -51,9 +58,10 @@ router.get("/*", function (req, res) {
   if (req.path.endsWith("svgcontent.html")) {
     const path = req.path.match("/(.*?)/.*$");
     const sessionId = path[1];
-    const db = req.app.get("Database");
-    const session = db.sessionTable.getById(sessionId);
-    res.send(session.svgContent);
+    const stream = fs.createReadStream(
+      `${SERVER_STATE_DIR}/${sessionId}.content.svg`
+    );
+    stream.pipe(res);
     return;
   }
 
@@ -80,7 +88,7 @@ router.get("/*", function (req, res) {
     return;
   }
 
-  const stream = Readable.from(session.htmlContent);
+  const stream = fs.createReadStream(`${SERVER_STATE_DIR}/${sessionId}.html`);
   stream.pipe(res);
 });
 

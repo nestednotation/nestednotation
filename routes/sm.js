@@ -4,7 +4,7 @@ const router = express.Router();
 const { MESSAGES, FORM_MESSAGES } = require("../constants");
 
 /* GET home page. */
-router.get("/", function (req, res) {
+router.get("/", async function (req, res) {
   const db = req.app.get("Database");
   const permission = req.cookies["root"];
   const username = req.cookies["un"];
@@ -65,7 +65,7 @@ router.get("/", function (req, res) {
         const hold = parseInt(holdDur);
         const vote = parseInt(voteDur);
         const size = parseInt(votingSize);
-        session.patchState(
+        await session.patchState(
           {
             isHtml5,
             fadeDuration,
@@ -79,9 +79,9 @@ router.get("/", function (req, res) {
         if (session.folder.trim() !== folder) {
           const listScore = db.getListScore();
           if (listScore.indexOf(folder) >= 0) {
-            session.reloadScore(folder);
+            await session.reloadScore(folder);
             session.clearAllTimer();
-            session.saveSessionStateToFile();
+            await session.saveSessionStateToFile();
 
             const sendToAllClients = req.app.get("sendToAllClients");
             sendToAllClients(session, 0, {
@@ -95,7 +95,7 @@ router.get("/", function (req, res) {
         const listScore = db.getListScore();
         if (listScore.indexOf(folder) >= 0) {
           const admin = db.admin.getByName(username);
-          const session = db.sessionTable.add(
+          const session = await db.sessionTable.add(
             Date.now().toString(),
             admin.id,
             folder,
@@ -109,7 +109,7 @@ router.get("/", function (req, res) {
           const hold = parseInt(holdDur);
           const vote = parseInt(voteDur);
           const size = parseInt(votingSize);
-          session.patchState(
+          await session.patchState(
             {
               holdDuration: hold >= 0 ? hold : session.holdDuration,
               votingDuration: vote >= 0 ? vote : session.votingDuration,

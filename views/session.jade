@@ -136,6 +136,8 @@ html
       button(class="change-mode-btn", type="button", onclick="toggleSessionMode('PLAY')") play
       button(class="change-mode-btn", type="button", onclick="toggleSessionMode('GUIDE')") guide
 
+    div(id="votingContainer", style="display: none;"  )
+
     div(id="side-menu-container", data-show="false", onclick="toggleSideMenu(event)", class="side-menu-container", style="display: none;")
       div(class="side-menu-title") 
         button(onclick="showAboutChordPage()", class="score-title") 
@@ -178,4 +180,4 @@ html
           img(src="/svg/close-icon.svg")
       div(id="qr-container", class="overlay-content")
 
-    div(id="votingContainer")
+    
