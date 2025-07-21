@@ -335,6 +335,11 @@ class BMSession {
 
     this.listMultiChooseImages = [];
 
+    const svgFilePath = `${SERVER_STATE_DIR}/${this.id}.content.svg`;
+    if (fs.existsSync(svgFilePath)) {
+      await fs.promises.rm(svgFilePath);
+    }
+
     for (const filename of this.listFiles) {
       const filePath = `${dir}/${filename}`;
       const content = await fs.promises.readFile(filePath, "utf8");
@@ -399,12 +404,12 @@ class BMSession {
     const serverIp = process.env.SERVER_IP;
     const wsPath = `wss://${serverIp}`;
 
-    const data = await fs.promises.readFile(
+    const sessionTemplate = await fs.promises.readFile(
       `${TEMPLATE_DIR}/session.jade`,
       "utf8"
     );
 
-    const fn = jade.compile(data);
+    const fn = jade.compile(sessionTemplate);
     const html = fn({
       title: `Session: ${this.folder}`,
       sessionId: this.id,

@@ -1,21 +1,25 @@
 // Detect iPad device and add class to body
-UAParser()
-  .withFeatureCheck()
-  .withClientHints()
-  .then((uaRes) => {
-    const { device } = uaRes;
 
-    if (
-      device.model === "iPad" ||
-      (device.vendor === "Apple" && device.type === "tablet")
-    ) {
-      // have to setTimeout due to if it, document.body will not exists
-      setTimeout(() => {
-        document.body.classList.add("ipad");
-      });
-    }
-  })
-  .catch((e) => console.error(e));
+try {
+  UAParser()
+    .withFeatureCheck()
+    .withClientHints()
+    .then((uaRes) => {
+      const { device } = uaRes;
+
+      if (
+        device.model === "iPad" ||
+        (device.vendor === "Apple" && device.type === "tablet")
+      ) {
+        // have to setTimeout due to if it, document.body will not exists
+        setTimeout(() => {
+          document.body.classList.add("ipad");
+        });
+      }
+    });
+} catch (e) {
+  console.error(e);
+}
 
 function refreshSession() {
   window.location.reload();
