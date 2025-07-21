@@ -18,6 +18,9 @@ const TEMPLATE_DIR = `${prefixDir}/views`;
 const SERVER_STATE_DIR = `${prefixDir}/server_state`;
 if (!fs.existsSync(SERVER_STATE_DIR)) {
   fs.mkdirSync(SERVER_STATE_DIR);
+} else {
+  fs.rmSync(SERVER_STATE_DIR, { recursive: true, force: true });
+  fs.mkdirSync(SERVER_STATE_DIR);
 }
 
 const regexWithPattern = (str, pattern, groupId) => {
@@ -97,6 +100,10 @@ const buildAboutSvg = (contentDir, svgIdSuffix) => {
 
 let hostAddress = null;
 const aboutNestedNotationSvg = buildAboutSvg(ABOUT_DATA_DIR, "-about-nn");
+
+const serverIp = process.env.SERVER_IP;
+const wsPath = `wss://${serverIp}`;
+console.log(`Websocket path is ${wsPath}`);
 
 class BMAdmin {
   constructor(id, name, password, isActive) {
@@ -406,9 +413,6 @@ class BMSession {
       );
     }
 
-    const serverIp = process.env.SERVER_IP;
-    const wsPath = `wss://${serverIp}`;
-
     const sessionTemplate = await fs.promises.readFile(
       `${TEMPLATE_DIR}/session.jade`,
       "utf8"
@@ -639,7 +643,6 @@ class BMDatabase {
     this.adminUsername = "admin";
     this.adminPassword = "g3tn3st3d";
 
-    this.wsPort = process.env.WS_PORT;
     this.hostAddress = hostaddress;
     this.MSG_PING = MESSAGES.MSG_PING;
     this.MSG_TAP = MESSAGES.MSG_TAP;

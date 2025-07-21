@@ -129,6 +129,9 @@ function onListening() {
  */
 const httpServerForSocket = http.createServer();
 httpServerForSocket.listen(process.env.WS_PORT);
+
+console.log(`Websocket is running on port ${process.env.WS_PORT}`);
+
 const wsServer = new WebSocketServer({
   httpServer: httpServerForSocket,
 });
@@ -666,13 +669,6 @@ const db = new BMDatabase({ hostaddress });
 db.adminUsername = "admin";
 db.adminPassword = "g3tn3st3d";
 
-const wsPort = process.env.WS_PORT || 8080;
-const serverIp = process.env.SERVER_IP;
-const wsPath = `wss://${serverIp}`;
-
-console.log(`Websocket is running on port ${wsPort}`);
-console.log(`Websocket path is ${wsPath}`);
-
 /**
  * Admin data
  */
@@ -724,7 +720,6 @@ const displayName = "mcknight";
 const adminPass = "managerpassword";
 const playerPass = "mcknight";
 const sessionId = `${ownerId}-serotonin-v2`;
-db.wsPath = wsPath;
 
 if (!db.sessionTable.getById(sessionId)) {
   const init = async () => {
