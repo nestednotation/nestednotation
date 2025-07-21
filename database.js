@@ -18,9 +18,6 @@ const TEMPLATE_DIR = `${prefixDir}/views`;
 const SERVER_STATE_DIR = `${prefixDir}/server_state`;
 if (!fs.existsSync(SERVER_STATE_DIR)) {
   fs.mkdirSync(SERVER_STATE_DIR);
-} else {
-  fs.rmSync(SERVER_STATE_DIR, { recursive: true, force: true });
-  fs.mkdirSync(SERVER_STATE_DIR);
 }
 
 const regexWithPattern = (str, pattern, groupId) => {
