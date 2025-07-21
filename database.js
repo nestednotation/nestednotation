@@ -3,6 +3,7 @@ const fs = require("fs");
 
 const jade = require("jade");
 
+const IGNORE_STATE_KEYS = ["svgContent", "htmlContent"];
 const HREF_REGX = /(?<=href=")(.*?)(?=")/;
 const LINK_REGEX = /((xlink:href)|(href))="(.*?)"/;
 
@@ -212,6 +213,10 @@ class BMSession {
 
   async patchState(stateData, saveToFile = false) {
     for (const [key, val] of Object.entries(stateData)) {
+      if (IGNORE_STATE_KEYS.includes(key)) {
+        continue;
+      }
+
       this[key] = val;
     }
 
