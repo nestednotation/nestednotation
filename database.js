@@ -545,10 +545,6 @@ class BMSession {
 class BMSessionTable {
   data = [];
 
-  constructor() {
-    this.loadStoredSessionStates();
-  }
-
   async add(
     sessionId,
     adminId,
@@ -633,6 +629,8 @@ class BMDatabase {
     hostAddress = hostaddress;
     this.admin = new BMAdminTable();
     this.sessionTable = new BMSessionTable();
+    this.init();
+
     this.shouldAutoRedirect = false;
     this.autoRedirectSession = "";
     this.autoRedirectPassword = "";
@@ -656,6 +654,31 @@ class BMDatabase {
     this.MSG_SHOW_NUMBER_CONNECTION = MESSAGES.MSG_SHOW_NUMBER_CONNECTION;
 
     this.aboutSvg = aboutNestedNotationSvg;
+  }
+
+  async init() {
+    await this.sessionTable.loadStoredSessionStates();
+
+    //new session
+    const kip = this.admin.getByName("kip");
+    const ownerId = kip.id;
+    const folderName = "Serotonin-v2";
+    const displayName = "mcknight";
+    const adminPass = "managerpassword";
+    const playerPass = "mcknight";
+    const sessionId = `${ownerId}-serotonin-v2`;
+
+    if (!this.sessionTable.getById(sessionId)) {
+      const session = await this.sessionTable.add(
+        sessionId,
+        ownerId,
+        folderName,
+        displayName,
+        adminPass,
+        playerPass
+      );
+      await session.patchState({ votingDuration: 0, holdDuration: 0 }, true);
+    }
   }
 
   dumpToFile(path) {

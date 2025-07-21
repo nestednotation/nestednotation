@@ -712,31 +712,6 @@ if (fs.existsSync(configDataFile)) {
   db.dumpToFile(configDataFile);
 }
 
-//new session
-const kip = db.admin.getByName("kip");
-const ownerId = kip.id;
-const folderName = "Serotonin-v2";
-const displayName = "mcknight";
-const adminPass = "managerpassword";
-const playerPass = "mcknight";
-const sessionId = `${ownerId}-serotonin-v2`;
-
-if (!db.sessionTable.getById(sessionId)) {
-  const init = async () => {
-    const session = await db.sessionTable.add(
-      sessionId,
-      ownerId,
-      folderName,
-      displayName,
-      adminPass,
-      playerPass
-    );
-    await session.patchState({ votingDuration: 0, holdDuration: 0 }, true);
-  };
-
-  init();
-}
-
 app.set("Database", db);
 app.set("sendToAllClients", sendToAllClients);
 app.set("sendToAllClientsWithDelay", sendToAllClientsWithDelay);
