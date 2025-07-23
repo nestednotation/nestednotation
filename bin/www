@@ -222,6 +222,7 @@ function countVoteForSession(session) {
     }
   }
 
+  // Select random winning note in case 2 or more notes have the same vote count
   if (
     session.currWinningId &&
     winningVoteIds.includes(session.currWinningId) &&
@@ -636,7 +637,7 @@ async function messageHandle(conn, message) {
   }
 
   if (msg === MESSAGES.MSG_FINISH) {
-    db.sessionTable.forceSessionStop(session);
+    await db.sessionTable.forceSessionStop(session);
     sendToAllClientsWithDelay(session, 100, {
       m: MESSAGES.MSG_FINISH,
     });

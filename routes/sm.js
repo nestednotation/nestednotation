@@ -121,7 +121,7 @@ router.get("/", async function (req, res) {
       } else if (command === "stop-session") {
         const session = db.sessionTable.getById(sessionId);
         if (session != null) {
-          db.sessionTable.forceSessionStop(session);
+          await db.sessionTable.forceSessionStop(session);
 
           const sendToAllClientsWithDelay = req.app.get(
             "sendToAllClientsWithDelay"

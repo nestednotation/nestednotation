@@ -334,6 +334,7 @@ class BMSession {
     }
 
     this.listFiles = await fs.promises.readdir(dir);
+
     if (this.listFiles.length <= 0) {
       return;
     }
@@ -579,10 +580,10 @@ class BMSessionTable {
     return session;
   }
 
-  remove(session) {
+  async remove(session) {
     this.data.splice(this.data.indexOf(session), 1);
 
-    session.deleteStateFile();
+    await session.deleteStateFile();
   }
 
   getById(id) {
@@ -593,10 +594,10 @@ class BMSessionTable {
     return this.data.find((e) => e.sessionName.trim() === name);
   }
 
-  forceSessionStop(session) {
+  async forceSessionStop(session) {
     session.clearAllTimer();
 
-    this.remove(session);
+    await this.remove(session);
     console.log(`Session ${session.sessionName} stopped...`);
   }
 

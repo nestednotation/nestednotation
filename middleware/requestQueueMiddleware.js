@@ -1,7 +1,7 @@
 const RequestQueue = require("../utils/requestQueue");
 
 // Create a request queue instance with max 5 concurrent requests and 60 second timeout
-const requestQueue = new RequestQueue(5, 60000);
+const requestQueue = new RequestQueue(5, 120000);
 
 function requestQueueMiddleware(req, res, next) {
   const requestHandler = () => {
