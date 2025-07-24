@@ -42,6 +42,11 @@ function handleSelectLink(aElement) {
 
   // element ID should follow format: nextVoteId#currFileName#aEleIndex
   const [nextId] = aElement.id.split("#");
+
+  if (!nextId) {
+    return;
+  }
+
   const nextVoteIdx = nextId === "stay" ? "stay" : Number(nextId);
 
   const currFrame = window.sessionInstance.getCurrentPlayingFrame();
@@ -66,7 +71,7 @@ window.votingIndicatorMap = new Map();
 function clearVotingIndicator() {
   // Remove stay voting
   updateStayButtonState(0);
-  document.getElementById("stay").classList.remove("visible");
+  document.getElementById("stay")?.classList.remove("visible");
 
   // Remove all voting indicator
   for (const [voteId, indicatorEle] of window.votingIndicatorMap.entries()) {
@@ -74,7 +79,10 @@ function clearVotingIndicator() {
     window.votingIndicatorMap.delete(voteId);
   }
   window.votingIndicatorMap.clear();
-  document.getElementById("votingContainer").innerHTML = "";
+  const votingContainer = document.getElementById("votingContainer");
+  if (votingContainer) {
+    votingContainer.innerHTML = "";
+  }
 }
 
 function showVotingIndicator(voteDic) {

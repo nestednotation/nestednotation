@@ -7,6 +7,8 @@ if (!fs.existsSync(testPrefixFile)) {
 }
 const SERVER_STATE_DIR = `${prefixDir}/server_state`;
 
+const EXPIRED_TIME = 1000 * 120;
+
 class SessionCache {
   cache = new Map();
 
@@ -20,21 +22,21 @@ class SessionCache {
         }
       }
       console.log("SessionCache size:", this.cache.size);
-    }, 1000 * 60);
+    }, EXPIRED_TIME);
   }
 
   async get(sessionId) {
     if (this.cache.has(sessionId)) {
       console.log("cache reset", sessionId);
       const cachedData = this.cache.get(sessionId);
-      cachedData.expiresAt = Date.now() + 1000 * 60;
+      cachedData.expiresAt = Date.now() + EXPIRED_TIME;
       this.cache.set(sessionId, cachedData);
       return cachedData.data;
     }
 
     const filePath = `${SERVER_STATE_DIR}/${sessionId}.html`;
     const data = await fs.promises.readFile(filePath, "utf8");
-    this.cache.set(sessionId, { data, expiresAt: Date.now() + 1000 * 60 });
+    this.cache.set(sessionId, { data, expiresAt: Date.now() + EXPIRED_TIME });
     console.log("cache stored", sessionId);
     return data;
   }
