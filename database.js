@@ -99,7 +99,7 @@ let hostAddress = null;
 const aboutNestedNotationSvg = buildAboutSvg(ABOUT_DATA_DIR, "-about-nn");
 
 const serverIp = process.env.SERVER_IP;
-const wsPath = `wss://${serverIp}`;
+const wsPath = `ws://192.168.0.2:2382`;
 console.log(`Websocket path is ${wsPath}`);
 
 class BMAdmin {

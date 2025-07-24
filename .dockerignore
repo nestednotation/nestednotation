@@ -1,0 +1,49 @@
+# Node modules (will be installed via npm ci)
+node_modules
+npm-debug.log*
+
+# Git files
+.git
+.gitignore
+
+# Docker files
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# Environment files (will be mounted as volumes)
+.env*
+!.env.production
+
+# Logs
+logs
+*.log
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# IDE files
+.vscode
+.idea
+*.swp
+*.swo
+
+# Temporary files
+tmp/
+temp/
+
+# Coverage reports
+coverage/
+
+# Documentation (optional - remove if you want docs in container)
+README.md
+LICENSE
+
+# Account data (will be mounted as volume)
+account/ 
