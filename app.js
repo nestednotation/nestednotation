@@ -13,7 +13,7 @@ var smRouter = require("./routes/sm");
 var app = express();
 console.log("App is starting...");
 
-app.use(require("express-status-monitor")());
+// app.use(require("express-status-monitor")());
 
 // view engine setup
 app.set("views", path.join(__dirname, "views"));
