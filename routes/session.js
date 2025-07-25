@@ -95,18 +95,21 @@ router.get("/*", async function (req, res) {
     return;
   }
 
-  if (cachedSessionId === sessionId) {
-    const stream = Readable.from(cachedSessionData);
-    stream.pipe(res);
-    return;
-  }
-
-  const filePath = `${SERVER_STATE_DIR}/${sessionId}.html`;
-  const data = await fs.promises.readFile(filePath, "utf8");
-  cachedSessionId = sessionId;
-  cachedSessionData = data;
-  const stream = Readable.from(data);
+  const stream = fs.createReadStream(`${SERVER_STATE_DIR}/${sessionId}.html`);
   stream.pipe(res);
+
+  // if (cachedSessionId === sessionId) {
+  //   const stream = Readable.from(cachedSessionData);
+  //   stream.pipe(res);
+  //   return;
+  // }
+
+  // const filePath = `${SERVER_STATE_DIR}/${sessionId}.html`;
+  // const data = await fs.promises.readFile(filePath, "utf8");
+  // cachedSessionId = sessionId;
+  // cachedSessionData = data;
+  // const stream = Readable.from(data);
+  // stream.pipe(res);
 });
 
 module.exports = router;
