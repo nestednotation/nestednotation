@@ -31,14 +31,21 @@ class SessionCache {
       const cachedData = this.cache.get(sessionId);
       cachedData.expiresAt = Date.now() + EXPIRED_TIME;
       this.cache.set(sessionId, cachedData);
-      return cachedData.data;
+      return await cachedData.promise;
     }
 
     const filePath = `${SERVER_STATE_DIR}/${sessionId}.html`;
-    const data = await fs.promises.readFile(filePath, "utf8");
-    this.cache.set(sessionId, { data, expiresAt: Date.now() + EXPIRED_TIME });
+    const promise = this.cache.has(sessionId)
+      ? this.cache.get(sessionId).promise
+      : fs.promises.readFile(filePath, "utf8");
+
+    this.cache.set(sessionId, {
+      expiresAt: Date.now() + EXPIRED_TIME,
+      promise,
+    });
+
     console.log("cache stored", sessionId);
-    return data;
+    return await promise;
   }
 }
 
