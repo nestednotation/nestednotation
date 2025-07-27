@@ -4,8 +4,11 @@ const { FORM_MESSAGES } = require("../constants");
 const fs = require("fs");
 const { Readable } = require("stream");
 
-const SessionCache = require("../utils/sessionCache");
-const cache = new SessionCache();
+const apicache = require("apicache");
+
+const cache = apicache.middleware;
+// const SessionCache = require("../utils/sessionCache");
+// const cache = new SessionCache();
 
 let prefixDir = ".";
 const testPrefixFile = prefixDir + "/account/admin.dat";
@@ -58,7 +61,7 @@ router.get("/", function (req, res) {
     );
 });
 
-router.get("/*", async function (req, res) {
+router.get("/*", cache("120 minutes"), async function (req, res) {
   if (req.path.endsWith("svgcontent.html")) {
     const path = req.path.match("/(.*?)/.*$");
     const sessionId = path[1];
@@ -100,9 +103,10 @@ router.get("/*", async function (req, res) {
       );
     return;
   }
-
-  const stream = Readable.from(await cache.get(sessionId));
-  stream.pipe(res);
+  const data = fs.readFileSync(`${SERVER_STATE_DIR}/${sessionId}.html`, {
+    encoding: "utf-8",
+  });
+  res.send(data);
 });
 
 module.exports = router;
