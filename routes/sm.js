@@ -2,6 +2,7 @@ const express = require("express");
 const router = express.Router();
 
 const { MESSAGES, FORM_MESSAGES } = require("../constants");
+const { apicache } = require("../utils/sessionCache");
 
 /* GET home page. */
 router.get("/", async function (req, res) {
@@ -90,7 +91,10 @@ router.get("/", async function (req, res) {
               v2: 0,
             });
           }
+        } else {
+          await session.buildSVGContent();
         }
+        apicache.clear();
       } else if (command === "create-session") {
         const listScore = db.getListScore();
         if (listScore.indexOf(folder) >= 0) {
