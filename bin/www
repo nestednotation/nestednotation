@@ -203,7 +203,9 @@ function countVoteForSession(session) {
   const listConn = wsServer.connections.filter(
     (conn) => conn.sessionId === session.id
   );
-  const voteData = listConn.map((o) => o.currentVoteTo).filter((o) => o !== -1);
+  const voteData = listConn
+    .map((o) => o.currentVoteTo)
+    .filter((o) => o !== -1 || o !== null || o !== undefined);
   const counts = {};
 
   for (const frameIdx of voteData) {
