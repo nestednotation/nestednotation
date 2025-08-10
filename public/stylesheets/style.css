@@ -661,7 +661,7 @@ body.ipad {
 .stay-btn {
   font-size: 2vh;
   color: #000;
-  display: none;
+  display: flex;
   align-items: center;
   justify-content: center;
   gap: 1vh;
@@ -671,15 +671,19 @@ body.ipad {
   cursor: pointer;
   margin-inline-end: auto;
   padding-inline-start: 2vh;
+  opacity: 0;
+  pointer-events: none;
 }
 
 .stay-btn.visible,
 .play-mode .stay-btn.winning {
-  display: flex;
+  opacity: 1;
+  pointer-events: auto;
 }
 
 .play-mode .stay-btn.winning .stay-indicator {
-  display: none;
+  opacity: 0;
+  pointer-events: none;
 }
 
 .stay-indicator {
@@ -709,7 +713,8 @@ body.ipad {
 }
 
 .play-mode .stay-btn {
-  display: none;
+  opacity: 0;
+  pointer-events: none;
 }
 
 @keyframes guide-mode-winning-pulse {
