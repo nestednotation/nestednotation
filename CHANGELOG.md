@@ -1,5 +1,45 @@
 # Changelog
 
+## [1.3.0](https://github.com/nestednotation/nestednotation/compare/v1.2.0...v1.3.0) (2025-09-26)
+
+
+### Features
+
+* add apicache ([b6cef84](https://github.com/nestednotation/nestednotation/commit/b6cef846ed8150555439e7fed044ac789cbd4c17))
+* add express monitor (will remove later) ([1b6d4a1](https://github.com/nestednotation/nestednotation/commit/1b6d4a1a5ea0ccb2081e7348228e13eed3093009))
+* add request queue back ([282ef5a](https://github.com/nestednotation/nestednotation/commit/282ef5ae2f37158845388d6dde4b39cafb221d48))
+* add request queue middleware (max 10 concurrent request, 30s timeout) ([8bb5c94](https://github.com/nestednotation/nestednotation/commit/8bb5c94e49c31ca92eb6e7a41af509bedb08ffe9))
+* add session cache to session page, temporary cache session HTML to memory then remove it after 1 minutes if unused ([920d20e](https://github.com/nestednotation/nestednotation/commit/920d20ea3a3d0028fbedc6ea7d8e5f5a686977d1))
+* apply simple cache ([6a68b27](https://github.com/nestednotation/nestednotation/commit/6a68b2724f6f367b3410e14f1bd8d6e1c93fd167))
+* audio load directly from public server as static file instead of through /audio api ([5e595ab](https://github.com/nestednotation/nestednotation/commit/5e595ab3c79d16b69f2087161d51cc307c39dedd))
+* cache promise instead of cached result ([85e4d91](https://github.com/nestednotation/nestednotation/commit/85e4d91a609bbce41f05d6a2420a6be855dfbcf6))
+* fix duplicate initial serotonin-v2 ([118ea53](https://github.com/nestednotation/nestednotation/commit/118ea53a487248696d01dcb8fd443cc4ea4664d7))
+* ignore old svgContent and htmlContent ([fe3d7cf](https://github.com/nestednotation/nestednotation/commit/fe3d7cfd90a02a67a724ece96f6c6e5f131cab69))
+* invalid cache once update the session meta data ([19836a0](https://github.com/nestednotation/nestednotation/commit/19836a0c0dfdac79b61bcdb212b962ec14c3c136))
+* move data file nested in public folder to serve audio files directly ([8a878f4](https://github.com/nestednotation/nestednotation/commit/8a878f425dec5463795e8e17fd4290687e52f64f))
+* optimize initialize process for session when server start or create new session ([3df5ae3](https://github.com/nestednotation/nestednotation/commit/3df5ae3875831d8ad4efc1607db75869d3e664bd))
+* reduce request queue to 5 and increase timeout to 60s ([f9fd38a](https://github.com/nestednotation/nestednotation/commit/f9fd38a3ba0161acc093ce208c658325980513d7))
+* remove queue ([441940f](https://github.com/nestednotation/nestednotation/commit/441940fe9e1b5606b3b17bb5459d6e2278f46d3c))
+* remove status tracking ([7092675](https://github.com/nestednotation/nestednotation/commit/70926758b99680ffb753b68b2243e2adb92190ed))
+* temp remove server_state data ([5d67586](https://github.com/nestednotation/nestednotation/commit/5d67586012d7256eca97d9152b1ea29cfb1f7875))
+* undo remove session_state ([2ef40e3](https://github.com/nestednotation/nestednotation/commit/2ef40e3557347c44037d9d1e0e0a7e87c7c22633))
+
+
+### Bug Fixes
+
+* fallback winning vote to currentIndex in case winningVoteId doesn't exists ([0d53c78](https://github.com/nestednotation/nestednotation/commit/0d53c78fc57fab9b283bc26b4f3a5096f6443152))
+* fix bug voting indicator persist ([bc61f30](https://github.com/nestednotation/nestednotation/commit/bc61f305c02076c64cfdd1aae635bc1ee172e6a6))
+* fix null vote ([feb04c1](https://github.com/nestednotation/nestednotation/commit/feb04c1d89fb3d41e0334ee516eb4e4346ad1887))
+* fix voting indicator persist ([547a0d8](https://github.com/nestednotation/nestednotation/commit/547a0d8d93639124f64ab34684d5c1b2adccb3db))
+* fix voting indicator persist ([23c434e](https://github.com/nestednotation/nestednotation/commit/23c434e52632bc8d9534ed5c20f7548eebc8921d))
+* fix voting indicator persists ([1407a1b](https://github.com/nestednotation/nestednotation/commit/1407a1b4a37c2c18b5d0c4a7e9befd04ebe34202))
+* increase expired time and fix voting container undefined upon load page ([df7dd61](https://github.com/nestednotation/nestednotation/commit/df7dd614ba81146a62c5c6120b5465475fea148f))
+* next UAParser in try/catch to prevent typecheck error, voting indicator container hidden ([b3a6bda](https://github.com/nestednotation/nestednotation/commit/b3a6bda3ca934bd55c2c7598171f2ceb02e10c8f))
+* null vote ([05b90e2](https://github.com/nestednotation/nestednotation/commit/05b90e290c2f92e69424426b6ddf1a48f43658bb))
+* redraw voting on resize window, grayscale maincontent only, autoplay duplicate ([38793aa](https://github.com/nestednotation/nestednotation/commit/38793aafd8af8cc9b4cfb9d77a13b9debdb7bffc))
+* stay-btn on visible resize svg ([e2091ea](https://github.com/nestednotation/nestednotation/commit/e2091ea73346ef359d78d34f26e76397e38c17d0))
+* voting indicator persist ([786d36a](https://github.com/nestednotation/nestednotation/commit/786d36a59c6b27a4fb94e2cc7e9c7f0164b9fc78))
+
 ## [1.2.0](https://github.com/nestednotation/nestednotation/compare/v1.1.0...v1.2.0) (2025-06-04)
 
 
