@@ -129,6 +129,9 @@ function onListening() {
  */
 const httpServerForSocket = http.createServer();
 httpServerForSocket.listen(process.env.WS_PORT);
+
+console.log(`Websocket is running on port ${process.env.WS_PORT}`);
+
 const wsServer = new WebSocketServer({
   httpServer: httpServerForSocket,
 });
@@ -196,11 +199,22 @@ function sendUpdateVotingToClient(conn, session) {
   });
 }
 
+const isValidVote = (vote) => {
+  return (
+    vote !== -1 &&
+    vote !== null &&
+    vote !== undefined &&
+    vote !== "-1" &&
+    vote !== "null" &&
+    vote !== "undefined"
+  );
+};
+
 function countVoteForSession(session) {
   const listConn = wsServer.connections.filter(
     (conn) => conn.sessionId === session.id
   );
-  const voteData = listConn.map((o) => o.currentVoteTo).filter((o) => o !== -1);
+  const voteData = listConn.map((o) => o.currentVoteTo).filter(isValidVote);
   const counts = {};
 
   for (const frameIdx of voteData) {
@@ -219,6 +233,7 @@ function countVoteForSession(session) {
     }
   }
 
+  // Select random winning note in case 2 or more notes have the same vote count
   if (
     session.currWinningId &&
     winningVoteIds.includes(session.currWinningId) &&
@@ -250,7 +265,7 @@ const parseCustomDur = (defaultDur, customDur) => {
   }
 };
 
-function startVotingForSessionWithDelay(session, timeDelay, customDur) {
+async function startVotingForSessionWithDelay(session, timeDelay, customDur) {
   const sessionId = session.id;
   session.currentVotingDuration = customDur
     ? parseCustomDur(session.votingDuration, customDur)
@@ -265,7 +280,7 @@ function startVotingForSessionWithDelay(session, timeDelay, customDur) {
   session.votingTimeStamp = 0;
   session.didSendStopVoting = false;
   session.votingTimer = setInterval(
-    (session) => {
+    async (session) => {
       session.votingTimeStamp += session.synTimeInterval * 1000;
 
       if (session.didSendStopVoting) {
@@ -286,7 +301,7 @@ function startVotingForSessionWithDelay(session, timeDelay, customDur) {
         !session.didSendStopVoting &&
         session.votingTimeStamp >= (session.currentVotingDuration - 1) * 1000
       ) {
-        stopVotingForSession(session);
+        await stopVotingForSession(session);
         session.didSendStopVoting = true;
       }
 
@@ -299,7 +314,7 @@ function startVotingForSessionWithDelay(session, timeDelay, customDur) {
     session
   );
 
-  session.saveSessionStateToFile();
+  await session.saveSessionStateToFile();
 
   wsServer.connections.forEach((conn) => {
     if (conn.sessionId === sessionId) {
@@ -314,9 +329,18 @@ function startVotingForSessionWithDelay(session, timeDelay, customDur) {
   });
 }
 
-function stopVotingForSession(session) {
-  session.isStandby = true;
+async function stopVotingForSession(session) {
+  // Clear the voting timer immediately to stop sending MSG_UPDATE_VOTING
+  if (session.votingTimer) {
+    clearInterval(session.votingTimer);
+    session.votingTimer = null;
+  }
+
+  // Additional safety: ensure voting state is properly reset
   session.isVoting = false;
+  session.didSendStopVoting = true;
+
+  session.isStandby = true;
   if (session.holdDuration > 0) {
     session.isHolding = true;
   }
@@ -327,23 +351,30 @@ function stopVotingForSession(session) {
     votingData.winningVoteId === "stay"
       ? session.currentIndex
       : // ID should follow format: nextVoteId#currFileName#aEleIndex
-        Number(votingData.winningVoteId.split("#")[0]);
+        Number(votingData.winningVoteId?.split("#")[0] ?? session.currentIndex);
+
+  // Reset all client votes
+  wsServer.connections.forEach((conn) => {
+    if (conn.sessionId === session.id) {
+      conn.currentVoteTo = -1;
+    }
+  });
 
   session.setCurrentIndexTo(mostVoteRingId);
   //unlock
   session.standbyTimer = setTimeout(
-    (session) => {
+    async (session) => {
       session.isStandby = false;
       if (session.holdDuration > 0) {
-        startHoldingForSessionWithDelay(session, 0);
+        await startHoldingForSessionWithDelay(session, 0);
       }
       session.standbyTimer = null;
-      session.saveSessionStateToFile();
+      await session.saveSessionStateToFile();
     },
     1000,
     session
   );
-  session.saveSessionStateToFile();
+  await session.saveSessionStateToFile();
 
   sendToAllAdmins(session, 0, {
     m: MESSAGES.MSG_SELECT_HISTORY,
@@ -360,7 +391,7 @@ function stopVotingForSession(session) {
   }
 }
 
-function startHoldingForSessionWithDelay(session, delay) {
+async function startHoldingForSessionWithDelay(session, delay) {
   session.isHolding = true;
   //holding cooldown
   session.currentHoldingDuration = session.nextFrameHoldingDur
@@ -373,19 +404,19 @@ function startHoldingForSessionWithDelay(session, delay) {
 
   //unlock
   session.holdingTimer = setTimeout(
-    (session) => {
+    async (session) => {
       session.isHolding = false;
       sendToAllAdmins(session, 0, {
         m: MESSAGES.MSG_CHECK_HOLD,
         isHold: session.isHolding,
       });
       session.holdingTimer = null;
-      session.saveSessionStateToFile();
+      await session.saveSessionStateToFile();
     },
     session.currentHoldingDuration * 1000,
     session
   );
-  session.saveSessionStateToFile();
+  await session.saveSessionStateToFile();
 
   sendToAllAdmins(session, 0, {
     m: MESSAGES.MSG_CHECK_HOLD,
@@ -398,23 +429,23 @@ function startHoldingForSessionWithDelay(session, delay) {
   });
 }
 
-function jumpScoreForSession(session, value) {
+async function jumpScoreForSession(session, value) {
   if (session.isHolding && session.holdingTimer != null) {
-    cancelHoldingTimer(session, 1);
+    await cancelHoldingTimer(session, 1);
   }
   if (session.standbyTimer) {
     clearTimeout(session.standbyTimer);
-    session.patchState({ standbyTimer: null }, true);
+    await session.patchState({ standbyTimer: null }, true);
   }
   if (session.isVoting && session.votingTimer != null) {
-    cancelVotingTimer(session);
+    await cancelVotingTimer(session);
   }
   //---------
   const filename = session.history[value];
   const index = session.listFilesInLowerCase.indexOf(filename.toLowerCase());
   session.historyIndex = value;
   session.setCurrentIndexTo(index);
-  session.saveSessionStateToFile();
+  await session.saveSessionStateToFile();
 
   sendToAllAdmins(session, 0, {
     m: MESSAGES.MSG_SELECT_HISTORY,
@@ -430,9 +461,9 @@ function jumpScoreForSession(session, value) {
   }
 }
 
-function cancelHoldingTimer(session, onOff) {
+async function cancelHoldingTimer(session, onOff) {
   clearTimeout(session.holdingTimer);
-  session.patchState({ holdingTimer: null }, true);
+  await session.patchState({ holdingTimer: null }, true);
   sendToAllClients(session, 0, {
     m: MESSAGES.MSG_BEGIN_HOLDING,
     endTime: 0,
@@ -440,9 +471,9 @@ function cancelHoldingTimer(session, onOff) {
   });
 }
 
-function cancelVotingTimer(session) {
+async function cancelVotingTimer(session) {
   clearInterval(session.votingTimer);
-  session.patchState({ votingTimer: null }, true);
+  await session.patchState({ votingTimer: null }, true);
   sendToAllClients(session, 0, {
     m: MESSAGES.MSG_BEGIN_VOTING,
     endTime: 0,
@@ -465,7 +496,7 @@ function updateNumberOfConnectionForSession(session) {
   });
 }
 
-function messageHandle(conn, message) {
+async function messageHandle(conn, message) {
   const messageData = JSON.parse(message.utf8Data);
   const sessionId = messageData.sid;
   const clientIndex = messageData.cid;
@@ -518,7 +549,7 @@ function messageHandle(conn, message) {
       session.votingDuration === 0
     ) {
       session.setCurrentIndexTo(Number(nextFrameIndex));
-      session.saveSessionStateToFile();
+      await session.saveSessionStateToFile();
 
       sendToAllAdmins(session, 0, {
         m: MESSAGES.MSG_SELECT_HISTORY,
@@ -534,7 +565,7 @@ function messageHandle(conn, message) {
         nextFrameHoldingDur
       );
       if (customHoldDur > 0) {
-        startHoldingForSessionWithDelay(session, 0);
+        await startHoldingForSessionWithDelay(session, 0);
       }
       return;
     }
@@ -542,7 +573,7 @@ function messageHandle(conn, message) {
     //change vote of client to new value
     if (!session.isStandby) {
       if (!session.isVoting) {
-        startVotingForSessionWithDelay(session, 100, frameVotingDur);
+        await startVotingForSessionWithDelay(session, 100, frameVotingDur);
       }
 
       conn.currentVoteTo = selectedId;
@@ -604,11 +635,11 @@ function messageHandle(conn, message) {
 
   if (msg === MESSAGES.MSG_CHECK_HOLD) {
     if (session.isHolding && session.holdingTimer != null) {
-      cancelHoldingTimer(session, 0);
+      await cancelHoldingTimer(session, 0);
     }
 
     const { isHold } = messageData;
-    session.patchState({ isHolding: isHold }, true);
+    await session.patchState({ isHolding: isHold }, true);
     sendToAllClients(session, 0, {
       m: MESSAGES.MSG_CHECK_HOLD,
       isHold,
@@ -617,7 +648,7 @@ function messageHandle(conn, message) {
   }
 
   if (msg === MESSAGES.MSG_FINISH) {
-    db.sessionTable.forceSessionStop(session);
+    await db.sessionTable.forceSessionStop(session);
     sendToAllClientsWithDelay(session, 100, {
       m: MESSAGES.MSG_FINISH,
     });
@@ -626,7 +657,7 @@ function messageHandle(conn, message) {
 
   if (msg === MESSAGES.MSG_PAUSE) {
     const { isPause } = messageData;
-    session.patchState({ isPause }, true);
+    await session.patchState({ isPause }, true);
     sendToAllClients(session, 0, {
       m: MESSAGES.MSG_PAUSE,
       isPause,
@@ -637,7 +668,7 @@ function messageHandle(conn, message) {
 
   if (msg === MESSAGES.MSG_SELECT_HISTORY) {
     const { selectedIdx } = messageData;
-    jumpScoreForSession(session, selectedIdx);
+    await jumpScoreForSession(session, selectedIdx);
     return;
   }
 }
@@ -649,13 +680,6 @@ function messageHandle(conn, message) {
 const db = new BMDatabase({ hostaddress });
 db.adminUsername = "admin";
 db.adminPassword = "g3tn3st3d";
-
-const wsPort = process.env.WS_PORT || 8080;
-const serverIp = process.env.SERVER_IP;
-const wsPath = `wss://${serverIp}`;
-
-console.log(`Websocket is running on port ${wsPort}`);
-console.log(`Websocket path is ${wsPath}`);
 
 /**
  * Admin data
@@ -698,28 +722,6 @@ if (fs.existsSync(configDataFile)) {
   db.autoRedirectSession = "";
   db.autoRedirectPassword = "";
   db.dumpToFile(configDataFile);
-}
-
-//new session
-const kip = db.admin.getByName("kip");
-const ownerId = kip.id;
-const folderName = "Serotonin-v2";
-const displayName = "mcknight";
-const adminPass = "managerpassword";
-const playerPass = "mcknight";
-const sessionId = `${ownerId}-serotonin-v2`;
-db.wsPath = wsPath;
-
-if (!db.sessionTable.getById(sessionId)) {
-  const session = db.sessionTable.add(
-    sessionId,
-    ownerId,
-    folderName,
-    displayName,
-    adminPass,
-    playerPass
-  );
-  session.patchState({ votingDuration: 0, holdDuration: 0 }, true);
 }
 
 app.set("Database", db);

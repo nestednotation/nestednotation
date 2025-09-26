@@ -15,7 +15,7 @@ const removeFileExt = (fileName) => {
 // But I cache the list just in case the score using different file ext like .mp3
 let SOUND_FILE_LIST = null;
 const getSoundLink = (soundName) => {
-  const { scoreSlug, soundFileList } = window;
+  const { scoreTitle, soundFileList } = window;
 
   if (!SOUND_FILE_LIST) {
     SOUND_FILE_LIST = soundFileList.reduce((acc, soundFile) => {
@@ -30,7 +30,9 @@ const getSoundLink = (soundName) => {
     console.error(`Sound file not found for ${soundName}`);
   }
 
-  return `/audio/${scoreSlug}/${fileName}`;
+  return `/data/${encodeURIComponent(scoreTitle)}/Sounds/${encodeURIComponent(
+    fileName
+  )}`;
 };
 
 // Log all mismatch sounds found in the session
@@ -128,6 +130,10 @@ class Note {
     if (this._playingCount === 0) {
       this.domElement.dataset.playing = false;
     }
+  }
+
+  get isPlaying() {
+    return this._playingCount > 0;
   }
 
   constructor(frameInstance, svgSoundNode) {
@@ -315,7 +321,7 @@ class Frame {
 
   playAllAutoplayNotes() {
     this.notes.forEach((e) => {
-      e.isAutoplay && e.play();
+      e.isAutoplay && !e.isPlaying && e.play();
     });
   }
 
@@ -470,6 +476,11 @@ class AudioSession {
     // Switch back to play mode after changing frame if not in guide lock
     if (!this.guideLock) {
       this.mode = SESSION_MODES.PLAY;
+    }
+
+    // Clear voting indicators when changing frames
+    if (window.clearVotingIndicator) {
+      window.clearVotingIndicator();
     }
   }
 

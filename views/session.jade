@@ -22,13 +22,11 @@ html
     
   body(class="play-mode session-page")
     script.
+      const search = new URLSearchParams(window.location.search);
       window.soundFileList= JSON.parse('!{soundFileList}');
       window.listFiles = JSON.parse('!{listFiles}');
-      window.scoreSlug = '#{scoreSlug}';
-      window.staffCode = '#{staffCode}';
+      window.staffCode = search.get('p');
       window.sessionId = '#{sessionId}';
-      window.hostAddress = '#{hostAddress}';
-      window.wsPort = '#{webSocketPort}';
       window.wsPath = '#{wsPath}'
 
       window.qrSharePath = '#{qrSharePath}';
@@ -36,6 +34,7 @@ html
       window.isHtml5 = JSON.parse('!{isHtml5}');
       window.fadeDuration = JSON.parse('!{fadeDuration}')
       window.scoreHasAbout = JSON.parse('!{scoreHasAbout}');
+      window.scoreTitle = '#{scoreTitle}';
 
       window.CONST_NO_SLEEP_DURATION = #{noSleepDuration};
       window.MSG_PING = #{msgPing};
@@ -97,7 +96,6 @@ html
       div(id="divOverlay")
       div(id="MainSVGContent")
         | !{sessionSvg}
-        | !{audio}
       svg(id="svg-1", width="100%", height="100%", viewBox="0 0 1801 1801", version="1.1", xmlns="http://www.w3.org/2000/svg", xmlns:xlink="http://www.w3.org/1999/xlink", xml:space="preserve", xmlns:serif="http://www.serif.com/", style="fill-rule:evenodd;clip-rule:evenodd;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:1.5;")
         g
           rect(x="0.7", y="0.9", width="1800", height="1800", style="fill:none;")
@@ -116,8 +114,6 @@ html
                   path(d="M0.338,0.005C0.284,0.005 0.236,-0.007 0.195,-0.031C0.153,-0.054 0.12,-0.087 0.097,-0.129C0.073,-0.171 0.061,-0.219 0.061,-0.273C0.061,-0.328 0.072,-0.376 0.095,-0.418C0.117,-0.459 0.148,-0.492 0.187,-0.516C0.226,-0.54 0.272,-0.552 0.323,-0.552C0.374,-0.552 0.418,-0.541 0.456,-0.518C0.493,-0.494 0.522,-0.463 0.543,-0.422C0.564,-0.381 0.574,-0.335 0.574,-0.283C0.574,-0.272 0.571,-0.264 0.564,-0.258C0.557,-0.251 0.549,-0.248 0.538,-0.248L0.113,-0.248L0.113,-0.312L0.546,-0.312L0.503,-0.281C0.504,-0.32 0.497,-0.354 0.482,-0.385C0.467,-0.416 0.447,-0.44 0.42,-0.457C0.393,-0.474 0.36,-0.483 0.323,-0.483C0.285,-0.483 0.252,-0.474 0.223,-0.456C0.194,-0.438 0.172,-0.413 0.157,-0.382C0.141,-0.35 0.133,-0.314 0.133,-0.273C0.133,-0.232 0.142,-0.196 0.16,-0.165C0.177,-0.134 0.201,-0.109 0.232,-0.091C0.263,-0.073 0.298,-0.064 0.338,-0.064C0.362,-0.064 0.386,-0.068 0.411,-0.077C0.435,-0.085 0.454,-0.095 0.469,-0.108C0.476,-0.114 0.485,-0.117 0.494,-0.118C0.503,-0.118 0.511,-0.115 0.518,-0.11C0.527,-0.102 0.531,-0.093 0.532,-0.084C0.532,-0.075 0.528,-0.067 0.52,-0.06C0.498,-0.041 0.47,-0.026 0.436,-0.014C0.402,-0.001 0.369,0.005 0.338,0.005Z", style="fill-rule:nonzero;")
               g(transform="matrix(64,0,0,64,204.416,0)")
                   path(d="M0.339,0.005C0.286,0.005 0.239,-0.007 0.197,-0.032C0.155,-0.056 0.122,-0.089 0.098,-0.131C0.073,-0.173 0.061,-0.221 0.061,-0.274C0.061,-0.327 0.073,-0.374 0.097,-0.416C0.12,-0.458 0.152,-0.491 0.193,-0.516C0.234,-0.54 0.28,-0.552 0.331,-0.552C0.376,-0.552 0.416,-0.543 0.452,-0.524C0.488,-0.505 0.517,-0.479 0.539,-0.448L0.539,-0.742C0.539,-0.754 0.543,-0.763 0.55,-0.771C0.557,-0.778 0.567,-0.781 0.578,-0.781C0.589,-0.781 0.599,-0.778 0.606,-0.771C0.613,-0.763 0.617,-0.754 0.617,-0.742L0.617,-0.27C0.616,-0.218 0.603,-0.171 0.579,-0.13C0.554,-0.088 0.521,-0.055 0.48,-0.031C0.438,-0.007 0.391,0.005 0.339,0.005ZM0.339,-0.065C0.378,-0.065 0.412,-0.074 0.443,-0.093C0.473,-0.111 0.497,-0.136 0.515,-0.167C0.532,-0.198 0.541,-0.234 0.541,-0.274C0.541,-0.313 0.532,-0.349 0.515,-0.381C0.497,-0.412 0.473,-0.437 0.443,-0.455C0.412,-0.473 0.378,-0.482 0.339,-0.482C0.301,-0.482 0.267,-0.473 0.236,-0.455C0.205,-0.437 0.181,-0.412 0.163,-0.381C0.145,-0.349 0.136,-0.313 0.136,-0.274C0.136,-0.234 0.145,-0.198 0.163,-0.167C0.181,-0.136 0.205,-0.111 0.236,-0.093C0.267,-0.074 0.301,-0.065 0.339,-0.065Z", style="fill-rule:nonzero;")
-    
-    div(id="votingContainer")
     
     div(id="tablefooter", class="session-status-container",  style="display: none;")
       span Player:
@@ -139,6 +135,8 @@ html
           img(src="/svg/guide-lock-icon.svg")
       button(class="change-mode-btn", type="button", onclick="toggleSessionMode('PLAY')") play
       button(class="change-mode-btn", type="button", onclick="toggleSessionMode('GUIDE')") guide
+
+    div(id="votingContainer")
 
     div(id="side-menu-container", data-show="false", onclick="toggleSideMenu(event)", class="side-menu-container", style="display: none;")
       div(class="side-menu-title") 
@@ -181,8 +179,5 @@ html
         button(class="close-btn", onclick="closeOverlay()", type="button", title="close side menu")
           img(src="/svg/close-icon.svg")
       div(id="qr-container", class="overlay-content")
-        
 
-
-
- 
+    

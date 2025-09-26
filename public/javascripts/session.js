@@ -174,11 +174,15 @@ function parseMessage(data) {
     window.winningVoteId = null;
     window.currVoteId = null;
     clearVotingIndicator();
+    window.countDic = null;
+
     return;
   }
 
   if (msg === MSG_NEED_DISPLAY) {
     console.log("receive need to refresh");
+    clearVotingIndicator();
+    window.countDic = null;
     refreshScore();
     return;
   }
@@ -190,7 +194,7 @@ function parseMessage(data) {
     }
 
     showVotingIndicator(countDic);
-
+    window.countDic = countDic;
     votingDataTimeStamp = timestamp;
     return;
   }

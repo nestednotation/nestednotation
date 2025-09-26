@@ -8,6 +8,22 @@ document.addEventListener("DOMContentLoaded", () => {
   document.head.appendChild(style);
 });
 
+const debounce = (func, delay) => {
+  let timeout;
+  return (...args) => {
+    clearTimeout(timeout);
+    timeout = setTimeout(() => func(...args), delay);
+  };
+};
+
+window.addEventListener(
+  "resize",
+  debounce(() => {
+    clearVotingIndicator();
+    window.countDic && showVotingIndicator(window.countDic);
+  }, 200)
+);
+
 function getFrameHoldingDur(voteIdx) {
   const nextSvgFile = window.listFiles[voteIdx];
   const nextSvgEle = document.querySelector(`[file="${nextSvgFile}"]`);
@@ -26,6 +42,11 @@ function handleSelectLink(aElement) {
 
   // element ID should follow format: nextVoteId#currFileName#aEleIndex
   const [nextId] = aElement.id.split("#");
+
+  if (!nextId) {
+    return;
+  }
+
   const nextVoteIdx = nextId === "stay" ? "stay" : Number(nextId);
 
   const currFrame = window.sessionInstance.getCurrentPlayingFrame();
@@ -50,12 +71,17 @@ window.votingIndicatorMap = new Map();
 function clearVotingIndicator() {
   // Remove stay voting
   updateStayButtonState(0);
-  document.getElementById("stay").classList.remove("visible");
+  document.getElementById("stay")?.classList.remove("visible");
 
   // Remove all voting indicator
   for (const [voteId, indicatorEle] of window.votingIndicatorMap.entries()) {
-    indicatorEle.remove();
+    indicatorEle?.remove();
     window.votingIndicatorMap.delete(voteId);
+  }
+  window.votingIndicatorMap.clear();
+  const votingContainer = document.getElementById("votingContainer");
+  if (votingContainer) {
+    votingContainer.innerHTML = "";
   }
 }
 
@@ -76,6 +102,10 @@ function showVotingIndicator(voteDic) {
   for (const [voteId, voteCount] of dicEntries) {
     if (votingIndicatorMap.has(voteId)) {
       const indicatorEle = votingIndicatorMap.get(voteId);
+      if (!indicatorEle) {
+        continue;
+      }
+
       indicatorEle.innerHTML = voteCount;
 
       if (voteId === winningVoteId) {
@@ -98,7 +128,9 @@ function showVotingIndicator(voteDic) {
     }
 
     const injectedIndicator = injectVoteIndicator(voteId, voteCount);
-    votingIndicatorMap.set(voteId, injectedIndicator);
+    if (injectedIndicator) {
+      votingIndicatorMap.set(voteId, injectedIndicator);
+    }
   }
 
   if (!Object.hasOwn(removedWinningDic, "stay")) {
@@ -111,7 +143,7 @@ function showVotingIndicator(voteDic) {
       continue;
     }
 
-    indicatorEle.remove();
+    indicatorEle?.remove();
     votingIndicatorMap.delete(voteId);
   }
 }
@@ -121,7 +153,7 @@ function injectVoteIndicator(voteId, voteCount) {
   const containerElement = document.getElementById(voteId);
   if (!containerElement) {
     console.error("Not found element for clicked link");
-    return;
+    return null;
   }
 
   const voteMagnet = containerElement.querySelector(".votemagnet");
@@ -129,6 +161,7 @@ function injectVoteIndicator(voteId, voteCount) {
   const { top, left, width, height } = voteMagnet
     ? voteMagnet.getBoundingClientRect()
     : containerElement.getBoundingClientRect();
+
   const indicatorPosition = {
     top: top + height / 2,
     left: left + width / 2,
