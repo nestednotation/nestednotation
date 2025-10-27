@@ -57,6 +57,9 @@ router.get("/", function (req, res) {
 });
 
 router.get("/*", cache("30 minutes"), async function (req, res) {
+  // API Cache will be clear in routes/sm.js
+  req.apicacheGroup = "sessionHtml";
+
   if (req.path.endsWith("svgcontent.html")) {
     const path = req.path.match("/(.*?)/.*$");
     const sessionId = path[1];

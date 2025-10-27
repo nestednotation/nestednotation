@@ -65,6 +65,11 @@ block content
               input(type="number" name="votingSize",  value=d.votingSize, min=1)
           tr
             td
+              label(for="defaultVolume") &nbsp;audio level (%)&nbsp;
+            td
+              input(type="number" name="defaultVolume",  value=d.defaultVolume, min=0)
+          tr
+            td
               label(for="isHtml5") &nbsp;html5&nbsp;
             td
               input(type="checkbox" name="isHtml5" value="true", checked=(d.isHtml5 ? "checked" : undefined))
@@ -147,6 +152,11 @@ block content
           label(for="votingSize") &nbsp;voting size (%)&nbsp;
         td
           input(type="number" name="votingSize", value=100, min=1)
+      tr
+        td
+          label(for="defaultVolume") &nbsp;audio level (%)&nbsp;
+        td
+          input(type="number" name="defaultVolume", value=80, min=0)
       tr
         td
           label(for="isHtml5") &nbsp;html5&nbsp;

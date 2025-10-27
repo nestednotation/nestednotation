@@ -97,7 +97,9 @@ function volumeToGain(v) {
   return Math.round(result * 100) / 100;
 }
 
-const DEFAULT_VOLUME = 80;
+function getDefaultVolume() {
+  return window.defaultVolume ?? 80;
+}
 
 class Note {
   isAutoplay = true;
@@ -107,7 +109,7 @@ class Note {
 
   soundNames = [];
   soundInstances = [];
-  volumes = [DEFAULT_VOLUME];
+  volumes = [getDefaultVolume()];
 
   id = null;
   frameInstance = null;
@@ -160,12 +162,16 @@ class Note {
     const nodeVolumns = this.domElement
       .getAttribute("volume")
       ?.split(",")
-      .map(Number) ?? [DEFAULT_VOLUME];
+      .map(Number) ?? [getDefaultVolume()];
     this.volumes =
-      nodeVolumns.length === soundNames.length ? nodeVolumns : [DEFAULT_VOLUME];
+      nodeVolumns.length === soundNames.length
+        ? nodeVolumns
+        : [getDefaultVolume()];
     if (nodeVolumns.length !== soundNames.length) {
       console.warn(
-        "Volume values mismatch with sound values, will fallback to default volume (80)"
+        "Volume values mismatch with sound values, will fallback to default volume (" +
+          getDefaultVolume() +
+          ")"
       );
     }
 
@@ -260,7 +266,7 @@ class Note {
     const finalVolumes =
       fromVolumes.length === this.soundInstances.length
         ? fromVolumes
-        : [DEFAULT_VOLUME];
+        : [getDefaultVolume()];
     const isVolumeMismatch = finalVolumes.length === this.soundInstances;
 
     for (let idx = 0; idx < this.soundInstances.length; idx++) {

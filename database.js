@@ -238,7 +238,8 @@ class BMSession {
     adminpassword,
     playerpassword,
     isHtml5 = false,
-    fadeDuration = 1000
+    fadeDuration = 1000,
+    defaultVolume = 80
   ) {
     this.id = id;
     this.ownerId = adminId;
@@ -248,6 +249,7 @@ class BMSession {
 
     this.isHtml5 = isHtml5;
     this.fadeDuration = fadeDuration;
+    this.defaultVolume = defaultVolume;
 
     this.folder = folder;
 
@@ -321,8 +323,9 @@ class BMSession {
     if (!fs.existsSync(dir)) {
       return [];
     }
+    const files = await fs.promises.readdir(dir, { recursive: true });
 
-    return await fs.promises.readdir(dir);
+    return files.map((file) => file.replace("\\", "/"));
   }
 
   async buildSVGContent() {
@@ -357,7 +360,7 @@ class BMSession {
       const svgIndex = this.listFilesInLowerCase.indexOf(
         filename.toLowerCase()
       );
-      svg = svg.replace(
+      svg = svg?.replace(
         "<svg",
         `<svg id="svg${svgIndex}" class="hidden" file="${filename}" `
       );
@@ -421,8 +424,7 @@ class BMSession {
       title: `Session: ${this.folder}`,
       sessionId: this.id,
       noSleepDuration: 60,
-      scoreTitle: this.folder,
-
+      scoreTitle: encodeURIComponent(this.folder),
       msgPing: MESSAGES.MSG_PING,
       msgTap: MESSAGES.MSG_TAP,
       msgShow: MESSAGES.MSG_SHOW,
@@ -437,6 +439,7 @@ class BMSession {
       msgSelectHistory: MESSAGES.MSG_SELECT_HISTORY,
       msgShowNumberConnection: MESSAGES.MSG_SHOW_NUMBER_CONNECTION,
 
+      defaultVolume: JSON.stringify(this.defaultVolume),
       fadeDuration: JSON.stringify(this.fadeDuration),
       isHtml5: JSON.stringify(this.isHtml5),
       sessionSvg: await fs.promises.readFile(
@@ -554,7 +557,8 @@ class BMSessionTable {
     adminpassword,
     playerpassword,
     isHtml5,
-    fadeDuration
+    fadeDuration,
+    defaultVolume
   ) {
     //check folder exist
     const dir = DATA_DIR + "/" + folder;
@@ -572,7 +576,8 @@ class BMSessionTable {
       adminpassword,
       playerpassword,
       isHtml5,
-      fadeDuration
+      fadeDuration,
+      defaultVolume
     );
     await session.saveSessionStateToFile();
 

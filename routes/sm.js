@@ -38,6 +38,7 @@ router.get("/", async function (req, res) {
     const playerpassword = query.pp;
     const fadeDuration = Number(query.fadeDuration);
     const isHtml5 = Boolean(query.isHtml5);
+    const defaultVolume = Number(query.defaultVolume);
 
     if (
       sessionId != null &&
@@ -73,6 +74,8 @@ router.get("/", async function (req, res) {
             holdDuration: hold >= 0 ? hold : session.holdDuration,
             votingDuration: vote >= 0 ? vote : session.votingDuration,
             votingSize: size >= 0 ? size : session.votingSize,
+            defaultVolume:
+              defaultVolume >= 0 ? defaultVolume : session.defaultVolume,
           },
           true
         );
@@ -94,7 +97,7 @@ router.get("/", async function (req, res) {
         } else {
           await session.buildSVGContent();
         }
-        apicache.clear();
+        apicache.clear("sessionHtml");
       } else if (command === "create-session") {
         const listScore = db.getListScore();
         if (listScore.indexOf(folder) >= 0) {
@@ -107,7 +110,8 @@ router.get("/", async function (req, res) {
             adminpassword,
             playerpassword,
             isHtml5,
-            fadeDuration
+            fadeDuration,
+            defaultVolume
           );
 
           const hold = parseInt(holdDur);
