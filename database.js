@@ -367,7 +367,7 @@ class BMSession {
 
       const listA = svg.match(/<a.*?>/g);
       if (listA === null) {
-        return;
+        continue;
       }
 
       if (listA.length > 1 && !filename.startsWith("PRE")) {
