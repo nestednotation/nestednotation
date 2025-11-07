@@ -2,9 +2,10 @@
 <!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
 <svg width="100%" height="100%" viewBox="0 0 1701 2480" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" xml:space="preserve" xmlns:serif="http://www.serif.com/" style="fill-rule:evenodd;clip-rule:evenodd;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:1.5;">
     <rect id="C2D" x="0.931" y="0" width="1700" height="2480" style="fill:none;"/>
-    <g id="Fields" opacity="0.2">
+    <g id="Fields" opacity="0.2" sound="Field/05-Rays">
         <path id="_1" serif:id="1" d="M1204.84,895.587L1690.95,417.376L1690.95,10L1181.94,9.905L978.31,762.641C1064.84,786.499 1140.52,829.837 1204.84,895.587Z" style="fill:#63859f;stroke:#767676;stroke-width:8.33px;"/>
     </g>
+    <a href="C2D2.svg">
     <g id="S">
         <g id="Ring">
             <path id="Backer" d="M1262.37,1477C1131.48,1703.7 841.17,1781.5 614.482,1650.62C387.793,1519.75 310.016,1229.44 440.905,1002.74C571.793,776.037 862.1,698.239 1088.79,829.115C1315.48,959.991 1393.25,1250.3 1262.37,1477Z" style="fill:#fff;"/>
@@ -26,19 +27,20 @@
             <path id="_6" serif:id="6" d="M852.286,1607.62L815.986,1506.78L888.586,1506.78L852.286,1607.62ZM852.286,1551.04L861.32,1525.94L843.251,1525.94L852.286,1551.04Z" style="fill:#5b91a5;"/>
         </g>
         <g id="Notes">
-            <path id="_61" serif:id="6" d="M920.643,1756.34C898.654,1794.43 849.88,1807.5 811.793,1785.51C773.707,1763.52 760.638,1714.75 782.627,1676.66C804.616,1638.57 853.39,1625.51 891.477,1647.49C929.563,1669.48 942.632,1718.26 920.643,1756.34Z" style="fill:#5b91a5;stroke:#fff;stroke-width:24px;"/>
-            <path id="_11" serif:id="1" d="M1154.57,879.109C1132.58,917.195 1083.81,930.264 1045.72,908.275C1007.63,886.286 994.563,837.513 1016.55,799.427C1038.54,761.342 1087.32,748.273 1125.4,770.262C1163.49,792.251 1176.56,841.024 1154.57,879.109Z" style="fill:#5b91a5;stroke:#fff;stroke-width:24px;"/>
+            <path id="_61" serif:id="6" sound="Font/2-Low-Gb" d="M920.643,1756.34C898.654,1794.43 849.88,1807.5 811.793,1785.51C773.707,1763.52 760.638,1714.75 782.627,1676.66C804.616,1638.57 853.39,1625.51 891.477,1647.49C929.563,1669.48 942.632,1718.26 920.643,1756.34Z" style="fill:#5b91a5;stroke:#fff;stroke-width:24px;"/>
+            <path id="_11" serif:id="1" sound="Font/2-Mid-Db" d="M1154.57,879.109C1132.58,917.195 1083.81,930.264 1045.72,908.275C1007.63,886.286 994.563,837.513 1016.55,799.427C1038.54,761.342 1087.32,748.273 1125.4,770.262C1163.49,792.251 1176.56,841.024 1154.57,879.109Z" style="fill:#5b91a5;stroke:#fff;stroke-width:24px;"/>
         </g>
         <g id="Treble-Marker" serif:id="Treble Marker">
-            <g id="_5" serif:id="5">
+            <g id="_5" serif:id="5" sound="Font/2-High-F">
                 <path id="_5u" serif:id="5u" d="M1156.96,1693.33C1134.97,1731.42 1086.19,1744.49 1048.11,1722.5C1010.02,1700.51 996.951,1651.74 1018.94,1613.65C1040.93,1575.57 1089.7,1562.5 1127.79,1584.49C1165.88,1606.47 1178.94,1655.25 1156.96,1693.33Z" style="fill:#fff;stroke:#fff;stroke-width:33.33px;"/>
                 <circle id="_5a" serif:id="5a" cx="1087.95" cy="1653.49" r="64" style="fill:#fff;stroke:#5b91a5;stroke-width:16.67px;"/>
             </g>
         </g>
     </g>
+    </a>
     <g id="Songs">
         <g id="_-song-5-rays" serif:id=" song 5 rays">
-            <g id="C2D1" serif:id="C2D">
+            <g id="C2D1" serif:id="C2D" sound="Song/05-Rays-C2D">
                 <path d="M1442.56,318.621C1461.47,318.357 1480.29,310.884 1494.5,296.266L1520.26,269.78C1534.71,254.916 1541.65,235.507 1541.13,216.281L1441.87,216.459L1442.56,318.621Z" style="fill:#5b91a5;stroke:#fff;stroke-width:1.67px;"/>
                 <path d="M1341.2,216.64C1340.57,236.678 1348.04,256.904 1363.53,271.968L1390.02,297.725C1404.63,311.941 1423.65,318.885 1442.56,318.621L1441.87,216.459L1341.2,216.64Z" style="fill:#5b91a5;stroke:#fff;stroke-width:1.67px;"/>
                 <path d="M1441.87,317.628L1441.57,217.278" style="fill:none;stroke:#5b91a5;stroke-width:4.17px;stroke-linecap:butt;"/>
@@ -53,7 +55,7 @@
                     <path d="M1440.52,304.367L1440.52,237.968L1435.69,304.125C1437.3,304.292 1438.91,304.356 1440.52,304.367Z" style="fill:#e7e7e7;"/>
                 </g>
             </g>
-            <g id="C2D2">
+            <g id="C2D2" sound="Song/05-Rays-C2D2">
                 <path d="M1441.17,119.456C1421.78,119.35 1402.37,126.826 1387.79,141.817L1362.03,168.303C1348.66,182.049 1341.73,199.681 1341.17,217.462L1441.84,217.281L1441.17,119.456Z" style="fill:#4daab1;stroke:#fff;stroke-width:1.67px;"/>
                 <path d="M1541.1,217.102C1540.6,198.512 1533.13,180.091 1518.76,166.115L1492.28,140.358C1478.03,126.504 1459.61,119.556 1441.17,119.456L1441.84,217.281L1541.1,217.102Z" style="fill:#4daab1;stroke:#fff;stroke-width:1.67px;"/>
                 <path d="M1441.17,216.455L1441.17,120.455" style="fill:none;stroke:#4daab1;stroke-width:4.17px;stroke-linecap:butt;"/>

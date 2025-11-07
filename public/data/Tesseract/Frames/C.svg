@@ -3,9 +3,9 @@
 <svg width="100%" height="100%" viewBox="0 0 1700 2480" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" xml:space="preserve" xmlns:serif="http://www.serif.com/" style="fill-rule:evenodd;clip-rule:evenodd;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:1.5;">
     <rect id="C" x="0" y="0" width="1700" height="2480" style="fill:none;"/>
     <g id="Fields" opacity="0.2">
-        <path id="_11" serif:id="11" d="M496.488,894.587L10.379,416.376L10.379,10L517.393,9.905L722.022,762.641C635.493,786.499 560.817,828.837 496.488,894.587Z" style="fill:#607777;stroke:#767676;stroke-width:8.33px;"/>
-        <path id="_3" serif:id="3" d="M1328,1368.23L1690.05,1461.86L1690.05,1016L1328,1112.1C1349.41,1198.71 1351.76,1284.23 1328,1368.23Z" style="fill:#b7977c;stroke:#767676;stroke-width:8.33px;"/>
-        <path id="_1" serif:id="1" d="M1203.91,895.587L1690.02,417.376L1690.02,10L1181.01,9.905L977.379,762.641C1063.91,786.499 1139.58,829.837 1203.91,895.587Z" style="fill:#63859f;stroke:#767676;stroke-width:8.33px;"/>
+        <path id="_11" serif:id="11" sound="Field/08-Petals" d="M496.488,894.587L10.379,416.376L10.379,10L517.393,9.905L722.022,762.641C635.493,786.499 560.817,828.837 496.488,894.587Z" style="fill:#607777;stroke:#767676;stroke-width:8.33px;"/>
+        <path id="_3" serif:id="3" sound="Field/09-Petals" d="M1328,1368.23L1690.05,1461.86L1690.05,1016L1328,1112.1C1349.41,1198.71 1351.76,1284.23 1328,1368.23Z" style="fill:#b7977c;stroke:#767676;stroke-width:8.33px;"/>
+        <path id="_1" serif:id="1" sound="Field/05-Rays" d="M1203.91,895.587L1690.02,417.376L1690.02,10L1181.01,9.905L977.379,762.641C1063.91,786.499 1139.58,829.837 1203.91,895.587Z" style="fill:#63859f;stroke:#767676;stroke-width:8.33px;"/>
     </g>
     <g id="SG">
         <g id="Meta-Ring">
@@ -30,7 +30,8 @@
             <circle id="_1-Backer" serif:id="1 Backer" cx="1084.6" cy="838.09" r="92" style="fill:#fff;"/>
         </g>
         <g id="Child-Rings" serif:id="Child Rings">
-            <g id="_111" serif:id="11">
+            <a href="C2B.svg">
+            <g id="_111" serif:id="11" sound="Font/1-Low-Ab,Font/1-Mid-Bb,Font/1-High-B">
                 <g id="Ring--Sounder--Background" serif:id="Ring, Sounder, Background">
                     <circle id="Sounder" cx="615.136" cy="838.798" r="92" style="fill:#fff;"/>
                     <g id="Ring">
@@ -63,7 +64,9 @@
                     </g>
                 </g>
             </g>
-            <g id="_82" serif:id="8">
+            </a>
+            <a href="Crefocus.svg">
+            <g id="_82" serif:id="8" sound="Font/2-Low-Db,Font/2-Mid-Eb,Font/2-Mid-Ab,Font/2-Mid-B,Font/2-High-Db">
                 <g id="Ring--Sounder--Background1" serif:id="Ring, Sounder, Background">
                     <circle id="Sounder1" serif:id="Sounder" cx="443.136" cy="1470.8" r="92" style="fill:#fff;"/>
                     <g id="Ring1" serif:id="Ring">
@@ -97,7 +100,9 @@
                     </g>
                 </g>
             </g>
-            <g id="_32" serif:id="3">
+            </a>
+            <a href="C2W.svg">
+            <g id="_32" serif:id="3" sound="Font/3-Low-B,Font/3-High-Gb">
                 <g id="Ring--Sounder--Background2" serif:id="Ring, Sounder, Background">
                     <circle id="Sounder2" serif:id="Sounder" cx="1317.6" cy="1241.35" r="92" style="fill:#fff;stroke:#fff;stroke-width:1px;stroke-linecap:butt;stroke-miterlimit:2;"/>
                     <g id="Ring2" serif:id="Ring">
@@ -129,7 +134,9 @@
                     </g>
                 </g>
             </g>
-            <g id="_14" serif:id="1">
+            </a>
+            <a href="C2D.svg">
+            <g id="_14" serif:id="1" sound="Font/2-Low-Gb,Font/2-Mid-Db,Font/2-High-F">
                 <g id="Ring--Sounder--Background3" serif:id="Ring, Sounder, Background">
                     <circle id="Sounder3" serif:id="Sounder" cx="1084.6" cy="838.09" r="92" style="fill:#fff;"/>
                     <g id="Ring3" serif:id="Ring">
@@ -162,6 +169,7 @@
                     </g>
                 </g>
             </g>
+            </a>
         </g>
         <path d="M1085.6,950C1148.89,1380.17 1221.65,1541.72 1314,1353" style="fill:none;stroke:#d9d9d9;stroke-width:4.17px;"/>
         <path d="M498,1376.82C789.484,802.782 1065.24,559.646 1125,739" style="fill:none;stroke:#d9d9d9;stroke-width:4.17px;"/>
@@ -169,14 +177,14 @@
     </g>
     <g id="Songs">
         <g id="song-9-petals" serif:id="song 9 petals">
-            <g id="C2W">
+            <g id="C2W" sound="Song/09-Petals-C2W">
                 <path d="M1579.96,1339C1560.56,1339.11 1541.15,1331.63 1526.57,1316.64L1500.81,1290.15C1487.45,1276.41 1480.51,1258.78 1479.95,1241L1580.62,1241.18L1579.96,1339Z" style="fill:#cba877;stroke:#fff;stroke-width:1.67px;"/>
                 <path d="M1679.88,1241.36C1679.38,1259.95 1671.92,1278.37 1657.54,1292.34L1631.06,1318.1C1616.81,1331.95 1598.39,1338.9 1579.96,1339L1580.62,1241.18L1679.88,1241.36Z" style="fill:#cba877;stroke:#fff;stroke-width:1.67px;"/>
                 <path d="M1579.96,1242L1579.96,1338" style="fill:none;stroke:#cba977;stroke-width:4.17px;stroke-linecap:butt;"/>
                 <path id="q2" d="M1595.21,1242.62L1665.22,1242.62C1657.55,1248.33 1642.86,1257.77 1633.08,1257.77C1622.61,1257.77 1603.73,1247.57 1595.21,1242.62ZM1579.91,1327.19L1579.91,1258.14C1580.02,1257.96 1580.12,1257.79 1580.22,1257.62C1585.16,1266.14 1595.36,1285.02 1595.36,1295.49C1595.36,1306.03 1585.01,1321.18 1580.22,1327.59C1580.12,1327.46 1580.02,1327.33 1579.91,1327.19ZM1590.78,1253.22C1605.32,1257.04 1622.06,1263.06 1628.29,1269.32C1635.77,1276.77 1639.13,1294.82 1640.29,1302.73C1630.86,1301.36 1613.81,1297.63 1606.91,1290.7C1600.65,1284.47 1594.63,1267.73 1590.78,1253.22Z" style="fill:#e7e7e7;"/>
                 <path id="q3" d="M1579.91,1258.14L1579.91,1327.19C1575,1320.56 1565.07,1305.81 1565.07,1295.49C1565.07,1285.22 1574.87,1266.89 1579.91,1258.14ZM1495.21,1242.62L1565.22,1242.62C1556.7,1247.57 1537.82,1257.77 1527.35,1257.77C1516.81,1257.77 1501.63,1247.39 1495.21,1242.62ZM1532.14,1269.32C1538.37,1263.06 1555.11,1257.04 1569.65,1253.22C1565.8,1267.73 1559.78,1284.47 1553.52,1290.7C1546.07,1298.15 1528.05,1301.54 1520.14,1302.7C1521.3,1294.79 1524.69,1276.77 1532.14,1269.32Z" style="fill:#e7e7e7;"/>
             </g>
-            <g id="C1" serif:id="C">
+            <g id="C1" serif:id="C" sound="Song/09-Petals-C">
                 <path d="M1581.4,1141C1600.31,1141.27 1619.12,1148.74 1633.34,1163.36L1659.1,1189.85C1673.55,1204.71 1680.49,1224.12 1679.97,1243.34L1580.71,1243.16L1581.4,1141Z" style="fill:#78608c;stroke:#fff;stroke-width:1.67px;"/>
                 <path d="M1480.04,1242.98C1479.41,1222.95 1486.88,1202.72 1502.37,1187.66L1528.85,1161.9C1543.47,1147.68 1562.49,1140.74 1581.4,1141L1580.71,1243.16L1480.04,1242.98Z" style="fill:#78608c;stroke:#fff;stroke-width:1.67px;"/>
                 <path d="M1581.71,1142L1581.41,1242.35" style="fill:none;stroke:#78608c;stroke-width:4.17px;stroke-linecap:butt;"/>
@@ -185,7 +193,7 @@
             </g>
         </g>
         <g id="song-8-petals" serif:id="song 8 petals">
-            <g id="C2" serif:id="C">
+            <g id="C2" serif:id="C" sound="Song/08-Petals-C">
                 <path d="M260.298,319.999C279.694,320.104 299.106,312.628 313.683,297.638L339.44,271.151C352.807,257.406 359.745,239.773 360.306,221.993L259.638,222.174L260.298,319.999Z" style="fill:#78608c;stroke:#fff;stroke-width:1.67px;"/>
                 <path d="M360.306,221.993C360.938,201.955 353.472,181.729 337.981,166.665L311.495,140.908C296.876,126.693 277.863,119.748 258.949,120.012L259.638,222.174L360.306,221.993Z" style="fill:#78608c;stroke:#fff;stroke-width:1.67px;"/>
                 <path d="M359.343,222.174L260.343,222.352" style="fill:none;stroke:#78608c;stroke-width:4.17px;stroke-linecap:butt;"/>
@@ -206,7 +214,7 @@
                     <path d="M265.083,278.266C265.231,279.414 266.29,280.226 267.439,280.075C268.588,279.923 269.399,278.866 269.247,277.717C269.096,276.568 268.041,275.757 266.892,275.909C265.743,276.06 264.932,277.117 265.083,278.266ZM264.699,287.428C264.961,289.439 266.812,290.859 268.822,290.594C270.832,290.329 272.254,288.479 271.988,286.468C271.725,284.459 269.875,283.039 267.865,283.303C265.854,283.568 264.432,285.418 264.699,287.428ZM265.089,299.245C265.435,301.886 267.87,303.753 270.509,303.405C273.153,303.057 275.016,300.625 274.671,297.983C274.322,295.341 271.891,293.475 269.248,293.823C266.608,294.171 264.74,296.603 265.089,299.245ZM264.443,241.685C269.489,263.339 276.825,295.023 277.171,297.654C277.699,301.68 274.864,305.374 270.84,305.905C266.811,306.435 263.118,303.6 262.589,299.574C262.243,296.943 261.127,264.439 260.397,242.217C260.316,239.743 263.88,239.274 264.443,241.685Z" style="fill:#e7e7e7;fill-rule:nonzero;"/>
                 </g>
             </g>
-            <g id="C2B">
+            <g id="C2B" sound="Song/08-Petals-C2B">
                 <path d="M258.601,120.005C239.688,120.269 220.876,127.742 206.66,142.36L180.903,168.846C166.449,183.71 159.512,203.119 160.027,222.345L259.29,222.166L258.601,120.005Z" style="fill:#587f6f;stroke:#fff;stroke-width:1.67px;"/>
                 <path d="M160.027,222.345C160.525,240.936 167.99,259.356 182.362,273.333L208.849,299.09C223.095,312.943 241.516,319.891 259.949,319.992L259.29,222.166L160.027,222.345Z" style="fill:#587f6f;stroke:#fff;stroke-width:1.67px;"/>
                 <path d="M258.495,222.345L160.895,222.345" style="fill:none;stroke:#587f6f;stroke-width:4.17px;stroke-linecap:butt;"/>
@@ -229,7 +237,7 @@
             </g>
         </g>
         <g id="_-song-5-rays" serif:id=" song 5 rays">
-            <g id="C2D">
+            <g id="C2D" sound="Song/05-Rays-C2D">
                 <path d="M1441.63,318.621C1460.54,318.357 1479.36,310.884 1493.57,296.266L1519.33,269.78C1533.78,254.916 1540.72,235.507 1540.2,216.281L1440.94,216.459L1441.63,318.621Z" style="fill:#5b91a5;stroke:#fff;stroke-width:1.67px;"/>
                 <path d="M1340.27,216.64C1339.64,236.678 1347.11,256.904 1362.6,271.968L1389.08,297.725C1403.7,311.941 1422.72,318.885 1441.63,318.621L1440.94,216.459L1340.27,216.64Z" style="fill:#5b91a5;stroke:#fff;stroke-width:1.67px;"/>
                 <path d="M1440.94,317.628L1440.64,217.278" style="fill:none;stroke:#5b91a5;stroke-width:4.17px;stroke-linecap:butt;"/>
@@ -244,7 +252,7 @@
                     <path d="M1439.59,304.367L1439.59,237.968L1434.76,304.125C1436.37,304.292 1437.98,304.356 1439.59,304.367Z" style="fill:#e7e7e7;"/>
                 </g>
             </g>
-            <g id="C3" serif:id="C">
+            <g id="C3" serif:id="C" sound="Song/05-Rays-C">
                 <path d="M1440.24,119.456C1420.85,119.35 1401.44,126.826 1386.86,141.817L1361.1,168.303C1347.73,182.049 1340.8,199.681 1340.24,217.462L1440.9,217.281L1440.24,119.456Z" style="fill:#78608c;stroke:#fff;stroke-width:1.67px;"/>
                 <path d="M1540.17,217.102C1539.67,198.512 1532.2,180.091 1517.83,166.115L1491.35,140.358C1477.1,126.504 1458.68,119.556 1440.24,119.456L1440.9,217.281L1540.17,217.102Z" style="fill:#78608c;stroke:#fff;stroke-width:1.67px;"/>
                 <path d="M1440.24,216.455L1440.24,120.455" style="fill:none;stroke:#78608c;stroke-width:4.17px;stroke-linecap:butt;"/>
