@@ -136,7 +136,7 @@
                 </g>
             </g>
             <a href="Y2A.svg">
-            <g id="_03" serif:id="0" sound="Font/3-Low-A,3-Mid-E,3-Mid-C">
+            <g id="_03" serif:id="0" sound="Font/3-Low-A,3-Mid-E,3-Mid-C,3-High-G">
                 <g id="Ring--Sounder--Background3" serif:id="Ring, Sounder, Background">
                     <circle id="Sounder3" serif:id="Sounder" cx="852.665" cy="774.169" r="92" style="fill:#fff;"/>
                     <g id="Ring3" serif:id="Ring">
@@ -164,7 +164,7 @@
                     <path id="_94" serif:id="9" d="M785.97,774.807L804.242,768.229L804.242,781.385L785.97,774.807ZM796.222,774.807L800.77,776.444L800.77,773.17L796.222,774.807Z" style="fill:#c9a661;fill-opacity:0.9;"/>
                 </g>
                 <g id="Treble-Note3" serif:id="Treble Note">
-                    <g id="_75" serif:id="7" sound="Font/3-High-G">
+                    <g id="_75" serif:id="7">
                         <path id="_7u" serif:id="7u" d="M820.919,861.494C816.632,868.919 807.123,871.467 799.698,867.18C792.273,862.893 789.725,853.385 794.012,845.96C798.299,838.535 807.807,835.987 815.233,840.274C822.658,844.56 825.206,854.069 820.919,861.494Z" style="fill:#fff;stroke:#fff;stroke-width:6.5px;"/>
                         <circle id="_7a" serif:id="7a" cx="807.465" cy="853.727" r="12.477" style="fill:#fff;stroke:#c9a661;stroke-width:3.25px;"/>
                     </g>
