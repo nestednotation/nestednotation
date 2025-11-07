@@ -366,15 +366,12 @@ class BMSession {
       );
 
       const listA = svg.match(/<a.*?>/g);
-      if (listA === null) {
-        return;
-      }
 
-      if (listA.length > 1 && !filename.startsWith("PRE")) {
+      if (listA?.length > 1 && !filename.startsWith("PRE")) {
         this.listMultiChooseImages.push(svgIndex);
       }
 
-      listA.forEach((a, idx) => {
+      listA?.forEach((a, idx) => {
         const matchedHref = HREF_REGX.exec(a)?.[0];
         const aIndex = this.listFilesInLowerCase.indexOf(
           matchedHref?.toLowerCase()
