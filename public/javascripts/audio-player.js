@@ -175,9 +175,14 @@ class Note {
       );
     }
 
+    const defaultAutoplay = window.defaultAutoplay ?? true;
+
     this.isAutoplay = JSON.parse(
-      this.domElement.getAttribute("autoplay") ?? true
+      this.domElement.getAttribute("autoplay")
+        ? this.domElement.getAttribute("autoplay") === "true"
+        : defaultAutoplay
     );
+
     this.isLoop = JSON.parse(this.domElement.getAttribute("loop") ?? true);
 
     const isVolumeMismatch = this.volumes.length === this.soundInstances;
@@ -512,6 +517,9 @@ class AudioSession {
     } else {
       this.frameMap[this.currFrameId]?.stopAllNotes();
     }
+
+    const togglerElement = document.querySelector("#autoplay-toggler");
+    togglerElement.dataset.active = this.autoPlay;
   }
 
   markSoundAsLoading(soundKey) {
@@ -625,7 +633,4 @@ function toggleAutoplay(element) {
   }
 
   window.sessionInstance.toggleAutoplay();
-
-  const togglerElement = element.querySelector(".autoplay-toggler");
-  togglerElement.dataset.active = window.sessionInstance.autoPlay;
 }

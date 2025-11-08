@@ -36,6 +36,7 @@ html
       window.scoreHasAbout = JSON.parse('!{scoreHasAbout}');
       window.scoreTitle = decodeURIComponent(`#{scoreTitle}`);
       window.defaultVolume = JSON.parse('!{defaultVolume}');
+      window.defaultAutoplay = JSON.parse('!{defaultAutoplay}');
       
       window.CONST_NO_SLEEP_DURATION = #{noSleepDuration};
       window.MSG_PING = #{msgPing};
@@ -151,7 +152,7 @@ html
           li(onclick="refreshSession()") refresh session
             img(src="/svg/refresh-session-icon.svg")
           li(onclick="toggleAutoplay(this)") autoplay
-            div(class="autoplay-toggler")
+            div(class="autoplay-toggler", id="autoplay-toggler")
               div(class="autoplay-toggler-knob")
           li(onclick="showAboutNestedNotationPage()") about
             img(src="/svg/about-icon.svg")

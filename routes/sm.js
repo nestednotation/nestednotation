@@ -39,6 +39,7 @@ router.get("/", async function (req, res) {
     const fadeDuration = Number(query.fadeDuration);
     const isHtml5 = Boolean(query.isHtml5);
     const defaultVolume = Number(query.defaultVolume);
+    const defaultAutoplay = Boolean(query.defaultAutoplay);
 
     if (
       sessionId != null &&
@@ -76,6 +77,7 @@ router.get("/", async function (req, res) {
             votingSize: size >= 0 ? size : session.votingSize,
             defaultVolume:
               defaultVolume >= 0 ? defaultVolume : session.defaultVolume,
+            defaultAutoplay: defaultAutoplay ?? session.defaultAutoplay,
           },
           true
         );
