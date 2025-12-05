@@ -99,7 +99,7 @@ let hostAddress = null;
 const aboutNestedNotationSvg = buildAboutSvg(ABOUT_DATA_DIR, "-about-nn");
 
 const serverIp = process.env.SERVER_IP;
-const wsPath = `wss://${serverIp}`;
+const wsPath = `ws://localhost:2382`;
 console.log(`Websocket path is ${wsPath}`);
 
 class BMAdmin {
@@ -437,6 +437,7 @@ class BMSession {
       msgPause: MESSAGES.MSG_PAUSE,
       msgSelectHistory: MESSAGES.MSG_SELECT_HISTORY,
       msgShowNumberConnection: MESSAGES.MSG_SHOW_NUMBER_CONNECTION,
+      msgChangeFolder: MESSAGES.MSG_CHANGE_FOLDER,
 
       defaultAutoplay: JSON.stringify(this.defaultAutoplay),
       defaultVolume: JSON.stringify(this.defaultVolume),
@@ -598,7 +599,7 @@ class BMSessionTable {
   }
 
   getBySessionName(name) {
-    return this.data.find((e) => e.sessionName.trim() === name);
+    return this.data.find((e) => e.sessionName === name);
   }
 
   async forceSessionStop(session) {

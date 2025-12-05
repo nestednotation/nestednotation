@@ -13,19 +13,18 @@ const removeFileExt = (fileName) => {
 // Usually soundName and fileName will be similiar, only different is fileName have
 // additional .m4u3 as ext.
 // But I cache the list just in case the score using different file ext like .mp3
-let SOUND_FILE_LIST = null;
+window.SOUND_FILE_LIST = null;
 const getSoundLink = (soundName) => {
   const { scoreTitle, soundFileList } = window;
-
-  if (!SOUND_FILE_LIST) {
-    SOUND_FILE_LIST = soundFileList.reduce((acc, soundFile) => {
+  if (!window.SOUND_FILE_LIST) {
+    window.SOUND_FILE_LIST = soundFileList.reduce((acc, soundFile) => {
       const fileNameWithoutExt = removeFileExt(soundFile);
       acc[fileNameWithoutExt] = soundFile;
       return acc;
     }, {});
   }
 
-  const fileName = SOUND_FILE_LIST[soundName];
+  const fileName = window.SOUND_FILE_LIST[soundName];
   if (!fileName) {
     console.error(`Sound file not found for ${soundName}`);
   }
@@ -563,10 +562,10 @@ class AudioSession {
   }
 }
 
-const sessionInstance = new AudioSession();
-window.sessionInstance = sessionInstance;
+window.sessionInstance = new AudioSession();
 
 const handleOnUpdateView = ({ detail }) => {
+  const { sessionInstance } = window;
   const { newIndex } = detail;
 
   // newIndex === -1 => pausing
@@ -590,7 +589,7 @@ window.addEventListener("update-view", handleOnUpdateView);
 document.addEventListener(
   "DOMContentLoaded",
   () => {
-    sessionInstance.init();
+    window.sessionInstance.init();
 
     // For some reason in iOS if I register these event in ui.js file, it will not work
     // so I have to register here, it will work fine
@@ -617,7 +616,7 @@ window.onbeforeunload = () => {
   window.removeEventListener("update-view", handleOnUpdateView);
 };
 
-console.log("Session instance", sessionInstance);
+console.log("Session instance", window.sessionInstance);
 
 function toggleSessionMode(mode) {
   if (!window.sessionInstance) {
@@ -627,7 +626,7 @@ function toggleSessionMode(mode) {
   window.sessionInstance.mode = mode;
 }
 
-function toggleAutoplay(element) {
+function toggleAutoplay() {
   if (!window.sessionInstance) {
     return;
   }

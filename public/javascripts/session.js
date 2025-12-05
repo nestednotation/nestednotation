@@ -179,10 +179,13 @@ function parseMessage(data) {
     return;
   }
 
-  if (msg === MSG_NEED_DISPLAY) {
-    console.log("receive need to refresh");
+  if (msg === MSG_CHANGE_FOLDER) {
+    console.log("receive change folder");
     clearVotingIndicator();
     window.countDic = null;
+    window.soundFileList = data.soundList;
+    window.listFiles = data.listFiles;
+    window.SOUND_FILE_LIST = null;
     refreshScore();
     return;
   }
@@ -382,7 +385,7 @@ function hideAllCooldownCircles() {
 
 function showImageAtIndex(index) {
   const listImg = getListSvg();
-
+  console.log("showImageAtIndex", index);
   for (let i = 0; i < listImg.length; i++) {
     const id = parseInt(listImg[i].id.substr(3));
     listImg[i].setAttribute("class", id === index ? "" : "hidden");
@@ -471,11 +474,19 @@ function setIndicatorHold(value) {
 
 function refreshScore() {
   const xmlhttp = new XMLHttpRequest();
-
   xmlhttp.onreadystatechange = function () {
     if (this.readyState === 4 && this.status === 200) {
       const html = this.responseText;
+      const sessionFolder = this.getResponseHeader("data-session-folder");
       document.getElementById("MainSVGContent").innerHTML = html;
+
+      setTimeout(() => {
+        window.scoreTitle = sessionFolder;
+        console.log("score refreshed");
+        const sessionInstance = new AudioSession();
+        window.sessionInstance = sessionInstance;
+        sessionInstance.init();
+      });
 
       sendToServer(MSG_NEED_DISPLAY);
     }

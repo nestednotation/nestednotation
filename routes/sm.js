@@ -91,9 +91,9 @@ router.get("/", async function (req, res) {
 
             const sendToAllClients = req.app.get("sendToAllClients");
             sendToAllClients(session, 0, {
-              m: MESSAGES.MSG_NEED_DISPLAY,
-              v1: 0,
-              v2: 0,
+              m: MESSAGES.MSG_CHANGE_FOLDER,
+              soundList: session.soundList,
+              listFiles: session.listFiles,
             });
           }
         } else {
@@ -137,9 +137,9 @@ router.get("/", async function (req, res) {
             "sendToAllClientsWithDelay"
           );
           sendToAllClientsWithDelay(session, 0, {
-            m: MESSAGES.MSG_NEED_DISPLAY,
-            v1: 0,
-            v2: 0,
+            m: MESSAGES.MSG_CHANGE_FOLDER,
+            soundList: session.soundList,
+            listFiles: session.listFiles,
           });
         }
       }
