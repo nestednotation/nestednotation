@@ -12,6 +12,30 @@ if (!fs.existsSync(testPrefixFile)) {
 }
 const SERVER_STATE_DIR = `${prefixDir}/server_state`;
 
+router.get(
+  "/:sessionId/svgcontent.html",
+  cache("30 minutes"),
+  async function (req, res) {
+    req.apicacheGroup = "sessionHtml";
+
+    const sessionId = req.params.sessionId;
+    const db = req.app.get("Database");
+    const session = db.sessionTable.getById(sessionId);
+
+    if (!session) {
+      res.status(404).send("Session not found");
+      return;
+    }
+
+    res.header("data-session-folder", session.folder);
+
+    const stream = fs.createReadStream(
+      `${SERVER_STATE_DIR}/${sessionId}.content.svg`
+    );
+    stream.pipe(res);
+  }
+);
+
 router.get("/", function (req, res) {
   const sessionName = req.query.s;
   if (sessionName == null || sessionName.length == 0) {
@@ -59,16 +83,6 @@ router.get("/", function (req, res) {
 router.get("/*", cache("30 minutes"), async function (req, res) {
   // API Cache will be clear in routes/sm.js
   req.apicacheGroup = "sessionHtml";
-
-  if (req.path.endsWith("svgcontent.html")) {
-    const path = req.path.match("/(.*?)/.*$");
-    const sessionId = path[1];
-    const stream = fs.createReadStream(
-      `${SERVER_STATE_DIR}/${sessionId}.content.svg`
-    );
-    stream.pipe(res);
-    return;
-  }
 
   const path = req.path.match("/(.*?)/*$");
   const sessionId = path[1];

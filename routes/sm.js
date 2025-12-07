@@ -65,6 +65,7 @@ router.get("/", async function (req, res) {
           return;
         }
 
+        const isVolumeChanged = defaultVolume !== session.defaultVolume;
         const hold = parseInt(holdDur);
         const vote = parseInt(voteDur);
         const size = parseInt(votingSize);
@@ -82,6 +83,8 @@ router.get("/", async function (req, res) {
           true
         );
 
+        const sendToAllClients = req.app.get("sendToAllClients");
+
         if (session.folder.trim() !== folder) {
           const listScore = db.getListScore();
           if (listScore.indexOf(folder) >= 0) {
@@ -89,16 +92,34 @@ router.get("/", async function (req, res) {
             session.clearAllTimer();
             await session.saveSessionStateToFile();
 
-            const sendToAllClients = req.app.get("sendToAllClients");
             sendToAllClients(session, 0, {
-              m: MESSAGES.MSG_NEED_DISPLAY,
-              v1: 0,
-              v2: 0,
+              m: MESSAGES.MSG_CHANGE_FOLDER,
+              soundList: session.soundList,
+              listFiles: session.listFiles,
+              folder: session.folder,
+              sessionId: session.id,
+              wsPath: session.wsPath,
+              qrSharePath: session.qrSharePath,
+              votingSize: session.votingSize,
+              isHtml5: session.isHtml5,
+              fadeDuration: session.fadeDuration,
+              scoreHasAbout: session.aboutSvg !== null,
+              scoreTitle: session.folder,
+              defaultVolume: session.defaultVolume,
+              defaultAutoplay: session.defaultAutoplay,
             });
           }
         } else {
           await session.buildSVGContent();
+
+          if (isVolumeChanged) {
+            sendToAllClients(session, 0, {
+              m: MESSAGES.MSG_CHANGE_VOLUME,
+              volume: defaultVolume,
+            });
+          }
         }
+
         apicache.clear("sessionHtml");
       } else if (command === "create-session") {
         const listScore = db.getListScore();
@@ -137,9 +158,10 @@ router.get("/", async function (req, res) {
             "sendToAllClientsWithDelay"
           );
           sendToAllClientsWithDelay(session, 0, {
-            m: MESSAGES.MSG_NEED_DISPLAY,
-            v1: 0,
-            v2: 0,
+            m: MESSAGES.MSG_CHANGE_FOLDER,
+            soundList: session.soundList,
+            listFiles: session.listFiles,
+            folder: session.folder,
           });
         }
       }

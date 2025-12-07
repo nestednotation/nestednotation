@@ -204,6 +204,12 @@ class BMSession {
   votingSize = 100;
   hasSounds = false;
 
+  get qrSharePath() {
+    return `/session/${this.id}/?p=${encodeURIComponent(
+      this.playerPassword
+    )}&t=2`;
+  }
+
   checkScoreHasSounds(score) {
     const dir = `${DATA_DIR}/${score}`;
 
@@ -367,7 +373,7 @@ class BMSession {
         `<svg id="svg${svgIndex}" class="hidden" file="${filename}" `
       );
 
-      const listA = svg.match(/<a.*?>/g);
+      const listA = svg?.match(/<a.*?>/g);
 
       if (listA?.length > 1 && !filename.startsWith("PRE")) {
         this.listMultiChooseImages.push(svgIndex);
@@ -423,7 +429,8 @@ class BMSession {
       title: `Session: ${this.folder}`,
       sessionId: this.id,
       noSleepDuration: 60,
-      scoreTitle: encodeURIComponent(this.folder),
+      scoreTitle: this.folder,
+
       msgPing: MESSAGES.MSG_PING,
       msgTap: MESSAGES.MSG_TAP,
       msgShow: MESSAGES.MSG_SHOW,
@@ -437,6 +444,8 @@ class BMSession {
       msgPause: MESSAGES.MSG_PAUSE,
       msgSelectHistory: MESSAGES.MSG_SELECT_HISTORY,
       msgShowNumberConnection: MESSAGES.MSG_SHOW_NUMBER_CONNECTION,
+      msgChangeFolder: MESSAGES.MSG_CHANGE_FOLDER,
+      msgChangeVolume: MESSAGES.MSG_CHANGE_VOLUME,
 
       defaultAutoplay: JSON.stringify(this.defaultAutoplay),
       defaultVolume: JSON.stringify(this.defaultVolume),
@@ -452,9 +461,7 @@ class BMSession {
       aboutScoreSvg: aboutSvg,
       scoreHasAbout: aboutSvg !== null,
       votingSize: this.votingSize,
-      qrSharePath: `/session/${this.id}/?p=${encodeURIComponent(
-        this.playerPassword
-      )}&t=2`,
+      qrSharePath: this.qrSharePath,
       listFiles: JSON.stringify(this.listFiles),
     });
 
@@ -598,7 +605,7 @@ class BMSessionTable {
   }
 
   getBySessionName(name) {
-    return this.data.find((e) => e.sessionName.trim() === name);
+    return this.data.find((e) => e.sessionName === name);
   }
 
   async forceSessionStop(session) {
@@ -660,6 +667,8 @@ class BMDatabase {
     this.MSG_PAUSE = MESSAGES.MSG_PAUSE;
     this.MSG_SELECT_HISTORY = MESSAGES.MSG_SELECT_HISTORY;
     this.MSG_SHOW_NUMBER_CONNECTION = MESSAGES.MSG_SHOW_NUMBER_CONNECTION;
+    this.MSG_CHANGE_VOLUME = MESSAGES.MSG_CHANGE_VOLUME;
+    this.MSG_CHANGE_FOLDER = MESSAGES.MSG_CHANGE_FOLDER;
 
     this.aboutSvg = aboutNestedNotationSvg;
   }

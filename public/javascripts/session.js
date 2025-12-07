@@ -179,11 +179,11 @@ function parseMessage(data) {
     return;
   }
 
-  if (msg === MSG_NEED_DISPLAY) {
-    console.log("receive need to refresh");
-    clearVotingIndicator();
-    window.countDic = null;
-    refreshScore();
+  if (msg === MSG_CHANGE_FOLDER) {
+    console.log("receive change folder");
+
+    handleChangeFolder(data);
+
     return;
   }
 
@@ -288,6 +288,13 @@ function parseMessage(data) {
   if (msg === MSG_SHOW_NUMBER_CONNECTION) {
     const { playerCount, riderCount } = data;
     updateNumberOfConnection(playerCount, riderCount);
+    return;
+  }
+
+  if (msg === MSG_CHANGE_VOLUME) {
+    const { volume } = data;
+    window.defaultVolume = volume;
+    window.sessionInstance.updateDefaultVolume();
     return;
   }
 }
@@ -471,15 +478,76 @@ function setIndicatorHold(value) {
 
 function refreshScore() {
   const xmlhttp = new XMLHttpRequest();
-
   xmlhttp.onreadystatechange = function () {
     if (this.readyState === 4 && this.status === 200) {
       const html = this.responseText;
+
       document.getElementById("MainSVGContent").innerHTML = html;
+
+      setTimeout(() => {
+        const sessionInstance = new AudioSession();
+        window.sessionInstance = sessionInstance;
+
+        resetUIState();
+        sessionInstance.init();
+      });
 
       sendToServer(MSG_NEED_DISPLAY);
     }
   };
   xmlhttp.open("GET", "svgcontent.html", true);
   xmlhttp.send();
+}
+
+function handleChangeFolder(sessionData) {
+  refreshScore();
+
+  window.winningVoteId = null;
+  window.currVoteId = null;
+  clearVotingIndicator();
+  window.countDic = null;
+
+  window.soundFileList = sessionData.soundList;
+  window.listFiles = sessionData.listFiles;
+  window.scoreTitle = sessionData.folder;
+
+  window.SOUND_FILE_LIST = null;
+
+  window.sessionId = sessionData.sessionId;
+  window.wsPath = sessionData.wsPath;
+
+  window.qrSharePath = sessionData.qrSharePath;
+  window.votingSize = sessionData.votingSize;
+  window.isHtml5 = sessionData.isHtml5;
+  window.fadeDuration = sessionData.fadeDuration;
+  window.scoreHasAbout = sessionData.scoreHasAbout;
+  window.scoreTitle = sessionData.scoreTitle;
+  window.defaultVolume = sessionData.defaultVolume;
+  window.defaultAutoplay = sessionData.defaultAutoplay;
+}
+
+function resetUIState() {
+  // Reset session on UI to play mode
+  document.body.classList.toggle("guide-mode", false);
+  document.body.classList.toggle("play-mode", true);
+  document.getElementById("change-mode-container").dataset.mode = "PLAY";
+  document.getElementById("change-mode-container").dataset.guideLock = false;
+
+  // Reset autoplay on UI
+  const togglerElement = document.querySelector("#autoplay-toggler");
+  togglerElement.dataset.active = false;
+
+  // Reset voting indicator on UI
+  clearVotingIndicator();
+  window.countDic = null;
+
+  // Reset holding indicator on UI
+  clearInterval(holdingTimer);
+  clearInterval(cooldownTimer);
+  holdingTimer = null;
+  cooldownTimer = null;
+  isCooldowning = false;
+  hideAllCooldownCircles();
+  setIndicatorCooldown(false);
+  setIndicatorHold(false);
 }
