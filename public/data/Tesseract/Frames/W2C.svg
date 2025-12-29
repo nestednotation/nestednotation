@@ -2,7 +2,7 @@
 <!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
 <svg width="100%" height="100%" viewBox="0 0 1700 2481" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" xml:space="preserve" xmlns:serif="http://www.serif.com/" style="fill-rule:evenodd;clip-rule:evenodd;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:1.5;">
     <rect id="W2C" x="0" y="0.93" width="1700" height="2480" style="fill:none;"/>
-    <g id="Fields" opacity="0.2" sound="Field/09-Petals">
+    <g id="Fields" opacity="0.2" sound="Field/09-Petals" autoplay="true">
         <path id="_3" serif:id="3" d="M1328,1369.16L1690.05,1462.79L1690.05,1016.93L1328,1113.03C1349.41,1199.64 1351.76,1285.16 1328,1369.16Z" style="fill:#b7977c;stroke:#767676;stroke-width:8.33px;"/>
     </g>
     <a href="W2C2.svg">
@@ -40,7 +40,7 @@
     </a>
     <g id="Songs">
         <g id="song-9-petals" serif:id="song 9 petals">
-            <g id="W2C1" serif:id="W2C" sound="Song/09-Petals-W2C">
+            <g id="W2C1" serif:id="W2C" sound="Song/09-Petals-W2C" autoplay="true">
                 <path d="M1579.96,1141.93C1560.56,1141.82 1541.15,1149.3 1526.57,1164.29L1500.81,1190.78C1487.45,1204.52 1480.51,1222.15 1479.95,1239.93L1580.62,1239.75L1579.96,1141.93Z" style="fill:#a28481;stroke:#fff;stroke-width:1.67px;"/>
                 <path d="M1679.88,1239.57C1679.38,1220.98 1671.92,1202.56 1657.54,1188.59L1631.06,1162.83C1616.81,1148.98 1598.39,1142.03 1579.96,1141.93L1580.62,1239.75L1679.88,1239.57Z" style="fill:#a28481;stroke:#fff;stroke-width:1.67px;"/>
                 <path d="M1579.96,1238.93L1579.96,1142.93" style="fill:none;stroke:#a28481;stroke-width:4.17px;stroke-linecap:butt;"/>
@@ -56,7 +56,7 @@
             </g>
         </g>
     </g>
-    <g id="Map">
+    <g id="Map" sound="Map/W2C" loop="false" autoplay="true">
         <g id="Frame">
             <rect x="754.5" y="42.472" width="190" height="190" style="fill:#fff;"/>
             <rect x="754.5" y="42.472" width="190" height="190" style="fill:none;stroke:#000;stroke-width:1.17px;stroke-linejoin:bevel;"/>

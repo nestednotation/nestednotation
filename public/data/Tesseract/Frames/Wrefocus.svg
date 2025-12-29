@@ -61,7 +61,7 @@
     </a>
     <g id="Songs">
     </g>
-    <g id="Map">
+    <g id="Map" sound="Map/W" loop="false" autoplay="true">
         <g id="Frame">
             <rect x="1472.12" y="42.472" width="190" height="190" style="fill:#fff;"/>
             <rect x="1472.12" y="42.472" width="190" height="190" style="fill:none;stroke:#000;stroke-width:1.17px;stroke-linecap:round;stroke-linejoin:bevel;"/>
@@ -95,7 +95,7 @@
         </g>
         <path d="M1664.56,226.217C1667.8,227.561 1669.35,231.287 1668,234.532C1666.66,237.777 1662.93,239.32 1659.69,237.976C1656.44,236.632 1654.9,232.906 1656.24,229.661C1657.59,226.416 1661.31,224.873 1664.56,226.217Z" style="fill:#fff;stroke:#f5cd6c;stroke-width:5.99px;stroke-linecap:round;"/>
     </g>
-    <g id="S-melisma" serif:id="S melisma">
+    <g id="S-melisma" serif:id="S melisma" sound="Scale/W" loop="false">
         <path id="Sounder" d="M1626.87,2303.48C1601.61,2347.22 1545.6,2362.23 1501.87,2336.98C1458.13,2311.73 1443.12,2255.72 1468.38,2211.98C1493.63,2168.24 1549.64,2153.23 1593.38,2178.48C1637.11,2203.73 1652.12,2259.74 1626.87,2303.48Z" style="fill:#fff;"/>
         <g id="Ring1" serif:id="Ring" opacity="0.5">
             <path d="M1626.87,2303.48C1601.61,2347.22 1545.6,2362.23 1501.87,2336.98C1458.13,2311.73 1443.12,2255.72 1468.38,2211.98C1493.63,2168.24 1549.64,2153.23 1593.38,2178.48C1637.11,2203.73 1652.12,2259.74 1626.87,2303.48Z" style="fill:none;stroke:#000;stroke-width:1.93px;stroke-linecap:round;"/>

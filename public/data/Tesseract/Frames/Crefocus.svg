@@ -36,7 +36,7 @@
         </g>
     </g>
     </a>
-    <g id="Map">
+    <g id="Map" sound="Map/C" loop="false" autoplay="true">
         <g id="Frame">
             <rect x="755.931" y="41.542" width="190" height="190" style="fill:#fff;"/>
             <rect x="755.931" y="41.542" width="190" height="190" style="fill:none;stroke:#000;stroke-width:1.17px;stroke-linejoin:bevel;"/>
@@ -70,7 +70,7 @@
         </g>
         <circle cx="893.931" cy="180.125" r="6.364" style="fill:#fff;stroke:#78608c;stroke-width:5.99px;"/>
     </g>
-    <g id="S-melisma" serif:id="S melisma">
+    <g id="S-melisma" serif:id="S melisma" sound="Scale/C" loop="false">
         <path id="Sounder" d="M1627.18,2302.55C1601.92,2346.29 1545.91,2361.3 1502.18,2336.05C1458.44,2310.8 1443.43,2254.79 1468.69,2211.05C1493.94,2167.31 1549.95,2152.3 1593.69,2177.55C1637.42,2202.8 1652.43,2258.81 1627.18,2302.55Z" style="fill:#fff;"/>
         <g id="Ring1" serif:id="Ring" opacity="0.5">
             <path d="M1627.18,2302.55C1601.92,2346.29 1545.91,2361.3 1502.18,2336.05C1458.44,2310.8 1443.43,2254.79 1468.69,2211.05C1493.94,2167.31 1549.95,2152.3 1593.69,2177.55C1637.42,2202.8 1652.43,2258.81 1627.18,2302.55Z" style="fill:none;stroke:#000;stroke-width:1.93px;"/>

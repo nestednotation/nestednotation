@@ -2,7 +2,7 @@
 <!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
 <svg width="100%" height="100%" viewBox="0 0 1700 2480" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" xml:space="preserve" xmlns:serif="http://www.serif.com/" style="fill-rule:evenodd;clip-rule:evenodd;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:1.5;">
     <rect id="B2C" x="0" y="0" width="1700" height="2480" style="fill:none;"/>
-    <g id="Fields" opacity="0.2" sound="Field/08-Petals">
+    <g id="Fields" opacity="0.2" sound="Field/08-Petals" autoplay="true">
         <path id="_11" serif:id="11" d="M496.488,894.587L10.379,416.376L10.379,10L517.393,9.905L722.022,762.641C635.493,786.499 560.817,828.837 496.488,894.587Z" style="fill:#607777;stroke:#767676;stroke-width:8.33px;"/>
     </g>
     <a href="B2C2.svg">
@@ -61,7 +61,7 @@
                     <path d="M255.26,278.266C255.112,279.414 254.053,280.226 252.904,280.075C251.756,279.923 250.944,278.866 251.096,277.717C251.248,276.568 252.303,275.757 253.451,275.909C254.6,276.06 255.411,277.117 255.26,278.266ZM255.644,287.428C255.382,289.439 253.531,290.859 251.521,290.594C249.511,290.329 248.089,288.479 248.356,286.468C248.618,284.459 250.469,283.039 252.479,283.303C254.489,283.568 255.911,285.418 255.644,287.428ZM255.254,299.245C254.908,301.886 252.474,303.753 249.834,303.405C247.191,303.057 245.327,300.625 245.672,297.983C246.021,295.341 248.452,293.475 251.096,293.823C253.735,294.171 255.603,296.603 255.254,299.245ZM255.901,241.685C250.855,263.339 243.519,295.023 243.172,297.654C242.644,301.68 245.479,305.374 249.503,305.905C253.532,306.435 257.226,303.6 257.754,299.574C258.1,296.943 259.216,264.439 259.946,242.217C260.027,239.743 256.463,239.274 255.901,241.685Z" style="fill:#e7e7e7;fill-rule:nonzero;"/>
                 </g>
             </g>
-            <g id="B2C1" serif:id="B2C" sound="Song/08-Petals-B2C">
+            <g id="B2C1" serif:id="B2C" sound="Song/08-Petals-B2C" autoplay="true">
                 <path d="M261.742,120.005C280.655,120.269 299.468,127.742 313.683,142.36L339.44,168.846C353.895,183.71 360.831,203.119 360.317,222.345L261.053,222.166L261.742,120.005Z" style="fill:#686f7e;stroke:#fff;stroke-width:1.67px;"/>
                 <path d="M360.317,222.345C359.819,240.936 352.354,259.356 337.981,273.333L311.495,299.09C297.249,312.943 278.828,319.891 260.394,319.992L261.053,222.166L360.317,222.345Z" style="fill:#686f7e;stroke:#fff;stroke-width:1.67px;"/>
                 <path d="M261.848,222.345L359.448,222.345" style="fill:none;stroke:#686f7e;stroke-width:4.17px;stroke-linecap:butt;"/>
@@ -84,7 +84,7 @@
             </g>
         </g>
     </g>
-    <g id="Map">
+    <g id="Map" sound="Map/B2C" loop="false" autoplay="true">
         <g id="Frame">
             <rect x="1471.5" y="41.542" width="190" height="190" style="fill:#fff;"/>
             <rect x="1471.5" y="41.542" width="190" height="190" style="fill:none;stroke:#000;stroke-width:1.17px;stroke-linejoin:bevel;"/>

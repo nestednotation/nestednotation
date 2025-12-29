@@ -229,7 +229,7 @@
             </g>
         </g>
     </g>
-    <g id="Map">
+    <g id="Map" sound="Map/X" loop="false" autoplay="true">
         <g id="Frame">
             <rect x="1472.05" y="42.39" width="190" height="190" style="fill:#fff;"/>
             <rect x="1472.05" y="42.39" width="190" height="190" style="fill:none;stroke:#000;stroke-width:1.17px;stroke-linejoin:bevel;"/>
@@ -289,7 +289,7 @@
             </g>
         </g>
     </g>
-    <g id="S-melisma" serif:id="S melisma">
+    <g id="S-melisma" serif:id="S melisma" sound="Scale/X" loop="false">
         <path id="Sounder4" serif:id="Sounder" d="M1626.8,2303.4C1601.54,2347.14 1545.53,2362.15 1501.8,2336.9C1458.06,2311.65 1443.05,2255.64 1468.31,2211.9C1493.56,2168.16 1549.57,2153.15 1593.31,2178.4C1637.04,2203.65 1652.05,2259.66 1626.8,2303.4Z" style="fill:#fff;"/>
         <g id="Ring4" serif:id="Ring" opacity="0.5">
             <path d="M1626.8,2303.4C1601.54,2347.14 1545.53,2362.15 1501.8,2336.9C1458.06,2311.65 1443.05,2255.64 1468.31,2211.9C1493.56,2168.16 1549.57,2153.15 1593.31,2178.4C1637.04,2203.65 1652.05,2259.66 1626.8,2303.4Z" style="fill:none;stroke:#000;stroke-width:1.93px;"/>

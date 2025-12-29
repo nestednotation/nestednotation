@@ -2,7 +2,7 @@
 <!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
 <svg width="100%" height="100%" viewBox="0 0 1701 2480" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" xml:space="preserve" xmlns:serif="http://www.serif.com/" style="fill-rule:evenodd;clip-rule:evenodd;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:1.5;">
     <rect id="D2C" x="0.931" y="0" width="1700" height="2480" style="fill:none;"/>
-    <g id="Fields" opacity="0.2" sound="Field/05-Rays">
+    <g id="Fields" opacity="0.2" sound="Field/05-Rays" autoplay="true">
         <path id="_1" serif:id="1" d="M1204.84,895.587L1690.95,417.376L1690.95,10L1181.94,9.905L978.31,762.641C1064.84,786.499 1140.52,829.837 1204.84,895.587Z" style="fill:#63859f;stroke:#767676;stroke-width:8.33px;"/>
     </g>
     <a href="D2C2.svg">
@@ -56,7 +56,7 @@
                     <path d="M1438.77,246.992L1437.9,246.907L1437.05,246.711C1436.48,246.578 1435.9,246.498 1435.34,246.356C1434.78,246.167 1434.23,245.991 1433.66,245.825L1422.34,279.471L1426.25,280.675C1427.57,281.015 1428.91,281.271 1430.25,281.555L1432.25,281.956L1434.29,282.207L1438.36,282.633L1440.5,247.197L1438.77,246.992Z" style="fill:#e7e7e7;fill-rule:nonzero;"/>
                 </g>
             </g>
-            <g id="D2C1" serif:id="D2C" sound="Song/05-Rays-D2C">
+            <g id="D2C1" serif:id="D2C" sound="Song/05-Rays-D2C" autoplay="true">
                 <path d="M1442.56,119.462C1461.47,119.726 1480.29,127.199 1494.5,141.817L1520.26,168.303C1534.71,183.167 1541.65,202.576 1541.13,221.802L1441.87,221.623L1442.56,119.462Z" style="fill:#6a7998;stroke:#fff;stroke-width:1.67px;"/>
                 <path d="M1341.2,221.442C1340.57,201.405 1348.04,181.179 1363.53,166.115L1390.02,140.358C1404.63,126.142 1423.65,119.198 1442.56,119.462L1441.87,221.623L1341.2,221.442Z" style="fill:#6a7998;stroke:#fff;stroke-width:1.67px;"/>
                 <path d="M1441.87,120.455L1441.57,220.805" style="fill:none;stroke:#6a7998;stroke-width:4.17px;stroke-linecap:butt;"/>
@@ -73,7 +73,7 @@
             </g>
         </g>
     </g>
-    <g id="Map">
+    <g id="Map" sound="Map/D2C" loop="false" autoplay="true">
         <g id="Frame">
             <rect x="755.931" y="41.542" width="190" height="190" style="fill:#fff;"/>
             <rect x="755.931" y="41.542" width="190" height="190" style="fill:none;stroke:#000;stroke-width:1.17px;stroke-linejoin:bevel;"/>

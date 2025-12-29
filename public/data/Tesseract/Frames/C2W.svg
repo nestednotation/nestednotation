@@ -2,7 +2,7 @@
 <!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
 <svg width="100%" height="100%" viewBox="0 0 1701 2481" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" xml:space="preserve" xmlns:serif="http://www.serif.com/" style="fill-rule:evenodd;clip-rule:evenodd;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:1.5;">
     <rect id="C2W" x="0.621" y="0.93" width="1700" height="2480" style="fill:none;"/>
-    <g id="Fields" opacity="0.2" sound="Field/09-Petals">
+    <g id="Fields" opacity="0.2" sound="Field/09-Petals" autoplay="true">
         <path id="_6" serif:id="6" d="M978.001,1718.86L1183.63,2470.59L516.166,2470.5L717.794,1716.83C804.034,1738.73 893.471,1741.63 978.001,1718.86Z" style="fill:#b7977c;stroke:#767676;stroke-width:8.33px;"/>
     </g>
     <a href="C2W2.svg">
@@ -39,7 +39,7 @@
     </a>
     <g id="Songs">
         <g id="song-9-petals" serif:id="song 9 petals">
-            <g id="C2W1" serif:id="C2W" sound="Song/09-Petals-C2W">
+            <g id="C2W1" serif:id="C2W" sound="Song/09-Petals-C2W" autoplay="true">
                 <path d="M861.072,2358.94C841.676,2359.04 822.264,2351.57 807.687,2336.58L781.93,2310.09C768.563,2296.34 761.625,2278.71 761.064,2260.93L861.732,2261.11L861.072,2358.94Z" style="fill:#cba877;stroke:#fff;stroke-width:1.67px;"/>
                 <path d="M960.995,2261.29C960.497,2279.88 953.032,2298.3 938.66,2312.28L912.173,2338.03C897.927,2351.89 879.506,2358.84 861.072,2358.94L861.732,2261.11L960.995,2261.29Z" style="fill:#cba877;stroke:#fff;stroke-width:1.67px;"/>
                 <path d="M861.072,2261.94L861.072,2357.94" style="fill:none;stroke:#cba877;stroke-width:4.17px;stroke-linecap:butt;"/>
@@ -55,7 +55,7 @@
             </g>
         </g>
     </g>
-    <g id="Map">
+    <g id="Map" sound="Map/C2W" loop="false" autoplay="true">
         <g id="Frame">
             <rect x="1472.12" y="42.472" width="190" height="190" style="fill:#fff;"/>
             <rect x="1472.12" y="42.472" width="190" height="190" style="fill:none;stroke:#000;stroke-width:1.17px;stroke-linejoin:bevel;"/>

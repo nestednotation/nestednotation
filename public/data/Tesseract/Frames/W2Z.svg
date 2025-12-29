@@ -2,7 +2,7 @@
 <!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
 <svg width="100%" height="100%" viewBox="0 0 1700 2481" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" xml:space="preserve" xmlns:serif="http://www.serif.com/" style="fill-rule:evenodd;clip-rule:evenodd;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:1.5;">
     <rect id="W2Z" x="0" y="0.829" width="1700" height="2480" style="fill:none;"/>
-    <g id="Fields" opacity="0.2" sound="Field/04-Petals">
+    <g id="Fields" opacity="0.2" sound="Field/04-Petals" autoplay="true">
         <path id="_11" serif:id="11" d="M496.488,895.416L10.379,417.205L10.379,10.829L517.393,10.734L722.022,763.47C635.493,787.328 560.817,829.666 496.488,895.416Z" style="fill:#db9d84;stroke:#767676;stroke-width:8.33px;"/>
     </g>
     <a href="W2Z2.svg">
@@ -56,7 +56,7 @@
                     <path d="M307.206,219.165C297.353,221.806 282.103,222.506 280.743,217.43C279.383,212.353 292.94,205.335 302.793,202.695C323.382,197.178 346.194,199.892 346.194,199.892C346.194,199.892 327.796,213.649 307.206,219.165Z" style="fill:#e7e7e7;fill-rule:nonzero;"/>
                 </g>
             </g>
-            <g id="W2Z1" serif:id="W2Z" sound="Song/04-Petals-W2Z">
+            <g id="W2Z1" serif:id="W2Z" sound="Song/04-Petals-W2Z" autoplay="true">
                 <path d="M258.601,120.842C239.688,121.106 220.876,128.579 206.66,143.197L180.903,169.684C166.449,184.547 159.512,203.956 160.027,223.182L259.29,223.004L258.601,120.842Z" style="fill:#d2828b;stroke:#fff;stroke-width:1.67px;"/>
                 <path d="M160.027,223.182C160.525,241.773 167.99,260.193 182.362,274.17L208.849,299.927C223.095,313.781 241.516,320.729 259.949,320.829L259.29,223.004L160.027,223.182Z" style="fill:#d2828b;stroke:#fff;stroke-width:1.67px;"/>
                 <path d="M258.495,223.182L160.895,223.182" style="fill:none;stroke:#d2828b;stroke-width:4.17px;stroke-linecap:butt;"/>
@@ -73,7 +73,7 @@
             </g>
         </g>
     </g>
-    <g id="Map">
+    <g id="Map" sound="Map/W2Z" loop="false" autoplay="true">
         <g id="Frame">
             <rect x="1471.5" y="42.371" width="190" height="190" style="fill:#fff;"/>
             <rect x="1471.5" y="42.371" width="190" height="190" style="fill:none;stroke:#000;stroke-width:1.17px;stroke-linejoin:bevel;"/>

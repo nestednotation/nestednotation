@@ -2,7 +2,7 @@
 <!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
 <svg width="100%" height="100%" viewBox="0 0 1701 2480" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" xml:space="preserve" xmlns:serif="http://www.serif.com/" style="fill-rule:evenodd;clip-rule:evenodd;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:1.5;">
     <rect id="D2C2" x="0.931" y="0" width="1700" height="2480" style="fill:none;"/>
-    <g id="Fields" opacity="0.2" sound="Field/05-Rays">
+    <g id="Fields" opacity="0.2" sound="Field/05-Rays" autoplay="true">
         <path id="_1" serif:id="1" d="M1204.84,895.587L1690.95,417.376L1690.95,10L1181.94,9.905L978.31,762.641C1064.84,786.499 1140.52,829.837 1204.84,895.587Z" style="fill:#63859f;stroke:#767676;stroke-width:8.33px;"/>
     </g>
     <a href="C.svg">
@@ -41,7 +41,7 @@
     </a>
     <g id="Songs">
         <g id="_-song-5-rays" serif:id=" song 5 rays">
-            <g id="D2C21" serif:id="D2C2" sound="Song/05-Rays-D2C2">
+            <g id="D2C21" serif:id="D2C2" sound="Song/05-Rays-D2C2" autoplay="true">
                 <path d="M1441.17,318.627C1421.78,318.733 1402.37,311.256 1387.79,296.266L1362.03,269.78C1348.66,256.034 1341.73,238.402 1341.17,220.621L1441.84,220.802L1441.17,318.627Z" style="fill:#78608c;stroke:#fff;stroke-width:1.67px;"/>
                 <path d="M1541.1,220.98C1540.6,239.571 1533.13,257.991 1518.76,271.968L1492.28,297.725C1478.03,311.579 1459.61,318.527 1441.17,318.627L1441.84,220.802L1541.1,220.98Z" style="fill:#78608c;stroke:#fff;stroke-width:1.67px;"/>
                 <path d="M1441.17,221.628L1441.17,317.628" style="fill:none;stroke:#78608c;stroke-width:4.17px;stroke-linecap:butt;"/>
@@ -73,7 +73,7 @@
             </g>
         </g>
     </g>
-    <g id="Map">
+    <g id="Map" sound="Map/D2C2" loop="false" autoplay="true">
         <g id="Frame">
             <rect x="755.931" y="41.542" width="190" height="190" style="fill:#fff;"/>
             <rect x="755.931" y="41.542" width="190" height="190" style="fill:none;stroke:#000;stroke-width:1.17px;stroke-linejoin:bevel;"/>
@@ -131,7 +131,7 @@
             </g>
         </g>
     </g>
-    <g id="S-melisma" serif:id="S melisma">
+    <g id="S-melisma" serif:id="S melisma" sound="Scale/D2C2" loop="false" autoplay="true">
         <path id="Sounder" d="M930.176,2302.55C904.923,2346.29 848.912,2361.3 805.176,2336.05C761.44,2310.8 746.434,2254.79 771.687,2211.05C796.94,2167.31 852.95,2152.3 896.687,2177.55C940.423,2202.8 955.429,2258.81 930.176,2302.55Z" style="fill:#fff;"/>
         <g id="Ring1" serif:id="Ring" opacity="0.5">
             <path d="M930.176,2302.55C904.923,2346.29 848.912,2361.3 805.176,2336.05C761.44,2310.8 746.434,2254.79 771.687,2211.05C796.94,2167.31 852.95,2152.3 896.687,2177.55C940.423,2202.8 955.429,2258.81 930.176,2302.55Z" style="fill:none;stroke:#000;stroke-width:1.93px;"/>

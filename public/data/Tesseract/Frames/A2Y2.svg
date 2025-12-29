@@ -2,7 +2,7 @@
 <!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
 <svg width="100%" height="100%" viewBox="0 0 1700 2481" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" xml:space="preserve" xmlns:serif="http://www.serif.com/" style="fill-rule:evenodd;clip-rule:evenodd;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:1.5;">
     <rect id="A2Y2" x="0" y="0.177" width="1700" height="2480" style="fill:none;"/>
-    <g id="Fields" opacity="0.2" sound="Field/11-Eyeral">
+    <g id="Fields" opacity="0.2" sound="Field/11-Eyeral" autoplay="true">
         <path id="_0" serif:id="0" d="M977.38,762.819L1181.01,10.082L517.545,10.177L721.173,762.841C807.412,740.948 892.85,740.044 977.38,762.819Z" style="fill:#b7ad66;stroke:#767676;stroke-width:8.33px;"/>
     </g>
     <a href="Y.svg">
@@ -41,7 +41,7 @@
     </a>
     <g id="Songs">
         <g id="song-11-eyeral" serif:id="song 11 eyeral">
-            <g id="A2Y21" serif:id="A2Y2" sound="Song/11-Eyeral-A2Y2">
+            <g id="A2Y21" serif:id="A2Y2" sound="Song/11-Eyeral-A2Y2" autoplay="true">
                 <path d="M850.048,318.357C830.651,318.463 811.24,310.986 796.662,295.996L770.906,269.51C757.538,255.764 750.6,238.132 750.04,220.351L850.708,220.532L850.048,318.357Z" style="fill:#82c072;stroke:#fff;stroke-width:1.67px;"/>
                 <path d="M949.971,220.71C949.473,239.301 942.008,257.722 927.635,271.698L901.149,297.455C886.903,311.309 868.482,318.257 850.048,318.357L850.708,220.532L949.971,220.71Z" style="fill:#82c072;stroke:#fff;stroke-width:1.67px;"/>
                 <path d="M850.048,221.358L850.048,317.358" style="fill:none;stroke:#82c072;stroke-width:4.17px;stroke-linecap:butt;"/>
@@ -57,7 +57,7 @@
             </g>
         </g>
     </g>
-    <g id="Map">
+    <g id="Map" sound="Map/A2Y2" loop="false" autoplay="true">
         <g id="Frame">
             <rect x="1471.5" y="41.719" width="190" height="190" style="fill:#fff;"/>
             <rect x="1471.5" y="41.719" width="190" height="190" style="fill:none;stroke:#000;stroke-width:1.17px;stroke-linejoin:bevel;"/>
@@ -99,7 +99,7 @@
             <path id="q11" serif:id="q1" d="M1514.99,71.231L1512.74,71.231C1512.75,70.644 1512.71,70.052 1512.64,69.457C1511.94,65.431 1509.58,61.402 1505.56,60.431C1505.97,61.124 1506.81,61.124 1507.27,61.819C1508.3,62.685 1509.48,64.139 1510.31,65.864C1511.1,67.591 1511.4,69.433 1511.26,71.231L1508.59,71.231C1508.64,70.85 1508.67,70.462 1508.67,70.068C1508.67,65.379 1505.03,61.54 1500.42,61.227L1500.42,56.182C1503.94,56.094 1507.12,57.22 1509.86,59.458C1513.34,62.372 1515.16,66.813 1514.99,71.231ZM1500.42,65.925C1502.45,66.271 1504.01,68.048 1504.01,70.184C1504.01,70.545 1503.96,70.896 1503.88,71.231L1500.42,71.231L1500.42,65.925Z" style="fill:#733c52;"/>
         </g>
     </g>
-    <g id="S-melisma" serif:id="S melisma">
+    <g id="S-melisma" serif:id="S melisma" sound="Scale/A2Y2" loop="false">
         <path id="Sounder" d="M929.245,2302.73C903.992,2346.47 847.981,2361.48 804.245,2336.23C760.508,2310.98 745.502,2254.97 770.755,2211.23C796.008,2167.49 852.019,2152.48 895.755,2177.73C939.492,2202.98 954.498,2258.99 929.245,2302.73Z" style="fill:#fff;"/>
         <g id="Ring1" serif:id="Ring" opacity="0.5">
             <path d="M929.245,2302.73C903.992,2346.47 847.981,2361.48 804.245,2336.23C760.508,2310.98 745.502,2254.97 770.755,2211.23C796.008,2167.49 852.019,2152.48 895.755,2177.73C939.492,2202.98 954.498,2258.99 929.245,2302.73Z" style="fill:none;stroke:#000;stroke-width:1.93px;"/>

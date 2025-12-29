@@ -2,7 +2,7 @@
 <!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
 <svg width="100%" height="100%" viewBox="0 0 1700 2481" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" xml:space="preserve" xmlns:serif="http://www.serif.com/" style="fill-rule:evenodd;clip-rule:evenodd;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:1.5;">
     <rect id="Y2A" x="0" y="0.177" width="1700" height="2480" style="fill:none;"/>
-    <g id="Fields" opacity="0.2" sound="Field/11-Eyeral">
+    <g id="Fields" opacity="0.2" sound="Field/11-Eyeral" autoplay="true">
         <path id="_0" serif:id="0" d="M977.38,762.819L1181.01,10.082L517.545,10.177L721.173,762.841C807.412,740.948 892.85,740.044 977.38,762.819Z" style="fill:#b7ad66;stroke:#767676;stroke-width:8.33px;"/>
     </g>
     <a href="Y2A2.svg">
@@ -41,7 +41,7 @@
     </a>
     <g id="Songs">
         <g id="song-11-eyeral" serif:id="song 11 eyeral">
-            <g id="Y2A1" serif:id="Y2A" sound="Song/11-Eyeral-Y2A">
+            <g id="Y2A1" serif:id="Y2A" sound="Song/11-Eyeral-Y2A" autoplay="true">
                 <path d="M850.048,318.357C830.651,318.463 811.24,310.986 796.662,295.996L770.906,269.51C757.538,255.764 750.6,238.132 750.04,220.351L850.708,220.532L850.048,318.357Z" style="fill:#c9a661;stroke:#fff;stroke-width:1.67px;"/>
                 <path d="M949.971,220.71C949.473,239.301 942.008,257.722 927.635,271.698L901.149,297.455C886.903,311.309 868.482,318.257 850.048,318.357L850.708,220.532L949.971,220.71Z" style="fill:#c9a661;stroke:#fff;stroke-width:1.67px;"/>
                 <path d="M850.048,221.358L850.048,317.358" style="fill:none;stroke:#c9a661;stroke-width:4.17px;stroke-linecap:butt;"/>
@@ -57,7 +57,7 @@
             </g>
         </g>
     </g>
-    <g id="Map">
+    <g id="Map" sound="Map/Y2A" loop="false" autoplay="true">
         <g id="Frame">
             <rect x="1471.5" y="41.719" width="190" height="190" style="fill:#fff;"/>
             <rect x="1471.5" y="41.719" width="190" height="190" style="fill:none;stroke:#000;stroke-width:1.17px;stroke-linejoin:bevel;"/>

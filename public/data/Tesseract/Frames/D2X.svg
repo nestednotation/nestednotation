@@ -2,7 +2,7 @@
 <!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
 <svg width="100%" height="100%" viewBox="0 0 1701 2481" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" xml:space="preserve" xmlns:serif="http://www.serif.com/" style="fill-rule:evenodd;clip-rule:evenodd;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:1.5;">
     <rect id="D2X" x="0.245" y="0.177" width="1700" height="2480" style="fill:none;"/>
-    <g id="Fields" opacity="0.2" sound="Field/10-Orbitals">
+    <g id="Fields" opacity="0.2" sound="Field/10-Orbitals" autoplay="true">
         <path id="_0" serif:id="0" d="M977.625,762.819L1181.25,10.082L517.79,10.177L721.418,762.841C807.658,740.948 893.095,740.044 977.625,762.819Z" style="fill:#967b7b;stroke:#767676;stroke-width:8.33px;"/>
     </g>
     <a href="D2X2.svg">
@@ -39,7 +39,7 @@
     </a>
     <g id="Songs">
         <g id="song-10-orbitals" serif:id="song 10 orbitals">
-            <g id="D2X1" serif:id="D2X" sound="Song/10-Orbitals-D2X">
+            <g id="D2X1" serif:id="D2X" sound="Song/10-Orbitals-D2X" autoplay="true">
                 <path d="M851.851,121.93C870.765,122.194 889.577,129.666 903.793,144.285L929.55,170.771C944.004,185.635 950.941,205.043 950.426,224.27L851.163,224.091L851.851,121.93Z" style="fill:#ae6b68;stroke:#fff;stroke-width:1.67px;"/>
                 <path d="M950.426,224.27C949.928,242.86 942.463,261.281 928.091,275.258L901.604,301.014C887.358,314.868 868.937,321.816 850.503,321.916L851.163,224.091L950.426,224.27Z" style="fill:#ae6b68;stroke:#fff;stroke-width:1.67px;"/>
                 <path d="M851.958,224.27L949.558,224.27" style="fill:none;stroke:#ae6b68;stroke-width:4.17px;stroke-linecap:butt;"/>
@@ -55,7 +55,7 @@
             </g>
         </g>
     </g>
-    <g id="Map">
+    <g id="Map" sound="Map/D2X" loop="false" autoplay="true">
         <g id="Frame">
             <rect x="1471.75" y="41.719" width="190" height="190" style="fill:#fff;"/>
             <rect x="1471.75" y="41.719" width="190" height="190" style="fill:none;stroke:#000;stroke-width:1.17px;stroke-linejoin:bevel;"/>

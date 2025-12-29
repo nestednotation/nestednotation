@@ -269,7 +269,7 @@
             </g>
         </g>
     </g>
-    <g id="Map">
+    <g id="Map" sound="Map/Y" loop="false" autoplay="true">
         <g id="Frame">
             <rect x="1472.43" y="41.542" width="190" height="190" style="fill:#fff;"/>
             <rect x="1472.43" y="41.542" width="190" height="190" style="fill:none;stroke:#000;stroke-width:1.17px;stroke-linejoin:bevel;"/>
@@ -370,7 +370,7 @@
     <path d="M520.931,1585.9C448.964,1527.68 1006.47,966.094 1164.9,960" style="fill:none;stroke:#ccc;stroke-width:4.17px;"/>
     <path d="M480.931,1185.17C603.113,1131.74 789.288,1511.63 711.665,1581.84" style="fill:none;stroke:#808080;stroke-width:4.17px;"/>
     <path d="M280.931,1227.89C163.098,1053.98 676.259,780.198 740.931,780C519.199,842.678 889.922,1012.47 1140.93,1010" style="fill:none;stroke:#808080;stroke-width:4.17px;"/>
-    <g id="S-melisma" serif:id="S melisma">
+    <g id="S-melisma" serif:id="S melisma" sound="Scale/Y" loop="false">
         <path id="Sounder4" serif:id="Sounder" d="M1627.18,2302.55C1601.92,2346.29 1545.91,2361.3 1502.18,2336.05C1458.44,2310.8 1443.43,2254.79 1468.69,2211.05C1493.94,2167.31 1549.95,2152.3 1593.69,2177.55C1637.42,2202.8 1652.43,2258.81 1627.18,2302.55Z" style="fill:#fff;"/>
         <g id="Ring4" serif:id="Ring" opacity="0.5">
             <path d="M1627.18,2302.55C1601.92,2346.29 1545.91,2361.3 1502.18,2336.05C1458.44,2310.8 1443.43,2254.79 1468.69,2211.05C1493.94,2167.31 1549.95,2152.3 1593.69,2177.55C1637.42,2202.8 1652.43,2258.81 1627.18,2302.55Z" style="fill:none;stroke:#000;stroke-width:1.93px;"/>

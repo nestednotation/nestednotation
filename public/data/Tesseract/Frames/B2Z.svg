@@ -2,7 +2,7 @@
 <!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
 <svg width="100%" height="100%" viewBox="0 0 1701 2481" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" xml:space="preserve" xmlns:serif="http://www.serif.com/" style="fill-rule:evenodd;clip-rule:evenodd;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:1.5;">
     <rect id="B2Z" x="0.876" y="0.674" width="1700" height="2480" style="fill:none;"/>
-    <g id="Fields" opacity="0.2" sound="Field/12-Claw-Wreath">
+    <g id="Fields" opacity="0.2" sound="Field/12-Claw-Wreath" autoplay="true">
         <path id="_4" serif:id="4" d="M1329.91,1364.67L1690.41,1462.2L1690.96,2062.67L1205.42,1584.78C1261.63,1528.13 1304.13,1455.47 1329.91,1364.67Z" style="fill:#84757e;stroke:#767676;stroke-width:8.33px;"/>
     </g>
     <a href="B2Z2.svg">
@@ -28,7 +28,7 @@
         </g>
         <g id="Notes">
             <path id="_11" serif:id="11" sound="Font/3-Mid-B" d="M683.063,874.076C661.074,912.161 612.3,925.23 574.213,903.241C536.127,881.252 523.058,832.479 545.047,794.394C567.036,756.308 615.81,743.239 653.897,765.228C691.983,787.217 705.052,835.99 683.063,874.076Z" style="fill:#986d88;stroke:#fff;stroke-width:24px;"/>
-            <path id="_7" serif:id="7" sound="Font/3-Mid-G" d="M687.68,1689.87C665.691,1727.95 616.917,1741.02 578.831,1719.04C540.744,1697.05 527.675,1648.27 549.664,1610.19C571.654,1572.1 620.428,1559.03 658.514,1581.02C696.601,1603.01 709.67,1651.78 687.68,1689.87Z" style="fill:#986d88;stroke:#fff;stroke-width:24px;"/>
+            <path id="_8" serif:id="8" sound="Font/3-Mid-Ab" d="M511.368,1521.97C489.379,1560.05 440.605,1573.12 402.518,1551.13C364.432,1529.14 351.363,1480.37 373.352,1442.28C395.341,1404.2 444.115,1391.13 482.202,1413.12C520.288,1435.11 533.357,1483.88 511.368,1521.97Z" style="fill:#986d88;stroke:#fff;stroke-width:24px;"/>
             <path id="_12" serif:id="1" sound="Font/3-Low-Db" d="M1154.51,879.783C1132.52,917.869 1083.75,930.937 1045.66,908.948C1007.58,886.96 994.508,838.187 1016.5,800.101C1038.49,762.015 1087.26,748.946 1125.35,770.935C1163.43,792.924 1176.5,841.697 1154.51,879.783Z" style="fill:#986d88;stroke:#fff;stroke-width:24px;"/>
         </g>
         <g id="Treble-Marker" serif:id="Treble Marker">
@@ -41,7 +41,7 @@
     </a>
     <g id="Songs">
         <g id="song-12-claw-wreath" serif:id="song 12 claw wreath">
-            <g id="B2Z1" serif:id="B2Z" sound="Song/12-Claw-Wreath-B2Z">
+            <g id="B2Z1" serif:id="B2Z" sound="Song/12-Claw-Wreath-B2Z" autoplay="true">
                 <path d="M1566.83,1751.67C1547.44,1751.77 1528.03,1744.3 1513.45,1729.31L1487.69,1702.82C1474.32,1689.07 1467.39,1671.44 1466.83,1653.66L1567.49,1653.84L1566.83,1751.67Z" style="fill:#986d88;stroke:#fff;stroke-width:1.67px;"/>
                 <path d="M1466.83,1653.66C1466.19,1633.62 1473.66,1613.4 1489.15,1598.33L1515.64,1572.58C1530.26,1558.36 1549.27,1551.42 1568.18,1551.68L1567.49,1653.84L1466.83,1653.66Z" style="fill:#986d88;stroke:#fff;stroke-width:1.67px;"/>
                 <path d="M1467.79,1653.84L1566.79,1654.02" style="fill:none;stroke:#986d88;stroke-width:4.17px;stroke-linecap:butt;"/>
@@ -57,7 +57,7 @@
             </g>
         </g>
     </g>
-    <g id="Map">
+    <g id="Map" sound="Map/B2Z" loop="false" autoplay="true">
         <g id="Frame">
             <rect x="1472.38" y="42.215" width="190" height="190" style="fill:#fff;"/>
             <rect x="1472.38" y="42.215" width="190" height="190" style="fill:none;stroke:#000;stroke-width:1.17px;stroke-linejoin:bevel;"/>

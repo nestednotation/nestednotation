@@ -2,7 +2,7 @@
 <!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
 <svg width="100%" height="100%" viewBox="0 0 1701 2481" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" xml:space="preserve" xmlns:serif="http://www.serif.com/" style="fill-rule:evenodd;clip-rule:evenodd;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:1.5;">
     <rect id="C2W2" x="0.621" y="0.593" width="1700" height="2480" style="fill:none;"/>
-    <g id="Fields" opacity="0.2" sound="Field/09-Petals">
+    <g id="Fields" opacity="0.2" sound="Field/09-Petals" autoplay="true">
         <path id="_6" serif:id="6" d="M978.001,1718.52L1183.63,2470.26L516.166,2470.16L717.794,1716.5C804.034,1738.39 893.471,1741.3 978.001,1718.52Z" style="fill:#b7977c;stroke:#767676;stroke-width:8.33px;"/>
     </g>
     <a href="W.svg">
@@ -48,7 +48,7 @@
                 <path id="q2" d="M876.327,2262.22L946.331,2262.22C938.665,2267.93 923.974,2277.37 914.2,2277.37C903.724,2277.37 884.849,2267.17 876.327,2262.22ZM861.03,2346.78L861.03,2277.74C861.132,2277.56 861.233,2277.39 861.331,2277.22C866.279,2285.74 876.48,2304.61 876.48,2315.09C876.48,2325.63 866.126,2340.78 861.331,2347.19C861.233,2347.06 861.132,2346.92 861.03,2346.78ZM871.899,2272.82C886.437,2276.64 903.174,2282.65 909.405,2288.91C916.888,2296.37 920.248,2314.42 921.408,2322.33C911.971,2320.95 894.928,2317.23 888.025,2310.29C881.764,2304.06 875.747,2287.33 871.899,2272.82Z" style="fill:#e7e7e7;"/>
                 <path id="q3" d="M861.03,2277.74L861.03,2346.78C856.116,2340.16 846.182,2325.41 846.182,2315.09C846.182,2304.82 855.981,2286.49 861.03,2277.74ZM776.331,2262.22L846.335,2262.22C837.813,2267.17 818.938,2277.37 808.462,2277.37C797.925,2277.37 782.745,2266.99 776.331,2262.22ZM813.257,2288.91C819.488,2282.65 836.225,2276.64 850.763,2272.82C846.915,2287.33 840.898,2304.06 834.637,2310.29C827.185,2317.75 809.164,2321.14 801.254,2322.3C802.415,2314.39 805.805,2296.37 813.257,2288.91Z" style="fill:#e7e7e7;"/>
             </g>
-            <g id="C2W21" serif:id="C2W2" sound="Song/09-Petals-C2W2">
+            <g id="C2W21" serif:id="C2W2" sound="Song/09-Petals-C2W2" autoplay="true">
                 <path d="M862.515,2160.6C881.428,2160.87 900.241,2168.34 914.456,2182.96L940.213,2209.44C954.668,2224.31 961.604,2243.71 961.089,2262.94L861.826,2262.76L862.515,2160.6Z" style="fill:#f5cd6c;stroke:#fff;stroke-width:1.67px;"/>
                 <path d="M761.158,2262.58C760.526,2242.54 767.993,2222.32 783.483,2207.25L809.97,2181.5C824.588,2167.28 843.602,2160.34 862.515,2160.6L861.826,2262.76L761.158,2262.58Z" style="fill:#f5cd6c;stroke:#fff;stroke-width:1.67px;"/>
                 <path d="M862.826,2161.59L862.525,2261.94" style="fill:none;stroke:#f5cd6c;stroke-width:4.17px;stroke-linecap:butt;"/>
@@ -57,7 +57,7 @@
             </g>
         </g>
     </g>
-    <g id="Map">
+    <g id="Map" sound="Map/C2W2" loop="false" autoplay="true">
         <g id="Frame">
             <rect x="1472.12" y="42.135" width="190" height="190" style="fill:#fff;"/>
             <rect x="1472.12" y="42.135" width="190" height="190" style="fill:none;stroke:#000;stroke-width:1.17px;stroke-linejoin:bevel;"/>

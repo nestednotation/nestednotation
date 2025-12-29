@@ -2,7 +2,7 @@
 <!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
 <svg width="100%" height="100%" viewBox="0 0 1700 2480" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" xml:space="preserve" xmlns:serif="http://www.serif.com/" style="fill-rule:evenodd;clip-rule:evenodd;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:1.5;">
     <rect id="A2B" x="0" y="0" width="1700" height="2480" style="fill:none;"/>
-    <g id="Fields" sound="Field/07-Masks" opacity="0.2">
+    <g id="Fields" sound="Field/07-Masks" autoplay="true" opacity="0.2">
         <path id="_8" serif:id="8" d="M373.045,1368L10.541,1462.53L11,2065L497.539,1586.1C441.322,1529.45 398.828,1458.8 373.045,1368Z" style="fill:#9a945d;stroke:#767676;stroke-width:8.33px;"/>
     </g>
     <a href="A2B2.svg">
@@ -40,7 +40,7 @@
    </a>
     <g id="Songs">
         <g id="song-7-masks" serif:id="song 7 masks">
-            <g id="A2B1" serif:id="A2B" sound="Song/07-Masks-A2B">
+            <g id="A2B1" serif:id="A2B" sound="Song/07-Masks-A2B" autoplay="true">
                 <path d="M135.009,1751.01C115.612,1751.11 96.2,1743.63 81.623,1728.64L55.866,1702.16C42.499,1688.41 35.561,1670.78 35,1653L135.668,1653.18L135.009,1751.01Z" style="fill:#7f925e;stroke:#fff;stroke-width:1.67px;"/>
                 <path d="M234.931,1653.36C234.433,1671.95 226.968,1690.37 212.596,1704.35L186.109,1730.1C171.863,1743.96 153.442,1750.91 135.009,1751.01L135.668,1653.18L234.931,1653.36Z" style="fill:#7f925e;stroke:#fff;stroke-width:1.67px;"/>
                 <path d="M135.009,1654.01L135.009,1750.01" style="fill:none;stroke:#7f925e;stroke-width:4.17px;stroke-linecap:butt;"/>
@@ -56,7 +56,7 @@
             </g>
         </g>
     </g>
-    <g id="Map">
+    <g id="Map" sound="Map/A2B" loop="false" autoplay="true">
         <g id="Frame">
             <rect x="1471.5" y="41.542" width="190" height="190" style="fill:#fff;"/>
             <rect x="1471.5" y="41.542" width="190" height="190" style="fill:none;stroke:#000;stroke-width:1.17px;stroke-linejoin:bevel;"/>
