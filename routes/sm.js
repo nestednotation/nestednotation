@@ -20,7 +20,7 @@ router.get("/", async function (req, res) {
     res
       .status(301)
       .redirect(
-        `/root/?msg=${encodeURIComponent(FORM_MESSAGES.INVALID_ADMIN_USER)}`
+        `/root/?msg=${encodeURIComponent(FORM_MESSAGES.INVALID_ADMIN_USER)}`,
       );
     return;
   }
@@ -80,7 +80,7 @@ router.get("/", async function (req, res) {
               defaultVolume >= 0 ? defaultVolume : session.defaultVolume,
             defaultAutoplay: defaultAutoplay ?? session.defaultAutoplay,
           },
-          true
+          true,
         );
 
         const sendToAllClients = req.app.get("sendToAllClients");
@@ -90,6 +90,7 @@ router.get("/", async function (req, res) {
           if (listScore.indexOf(folder) >= 0) {
             await session.reloadScore(folder);
             session.clearAllTimer();
+            session.resetSessionHistory();
             await session.saveSessionStateToFile();
 
             sendToAllClients(session, 0, {
@@ -134,7 +135,7 @@ router.get("/", async function (req, res) {
             playerpassword,
             isHtml5,
             fadeDuration,
-            defaultVolume
+            defaultVolume,
           );
 
           const hold = parseInt(holdDur);
@@ -146,7 +147,7 @@ router.get("/", async function (req, res) {
               votingDuration: vote >= 0 ? vote : session.votingDuration,
               votingSize: size >= 0 ? size : session.votingSize,
             },
-            true
+            true,
           );
         }
       } else if (command === "stop-session") {
@@ -155,7 +156,7 @@ router.get("/", async function (req, res) {
           await db.sessionTable.forceSessionStop(session);
 
           const sendToAllClientsWithDelay = req.app.get(
-            "sendToAllClientsWithDelay"
+            "sendToAllClientsWithDelay",
           );
           sendToAllClientsWithDelay(session, 0, {
             m: MESSAGES.MSG_CHANGE_FOLDER,
@@ -172,7 +173,7 @@ router.get("/", async function (req, res) {
   }
 
   const listSession = db.sessionTable.data.filter(
-    (o) => o.ownerId == checkExist.id
+    (o) => o.ownerId == checkExist.id,
   );
   const listScore = db.getListScore();
 

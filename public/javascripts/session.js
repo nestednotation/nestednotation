@@ -44,7 +44,7 @@ function onDOMContentLoaded() {
       noSleepTimer = setInterval(noSleepCallback, 500);
       btnSleep.setAttribute("class", "hidden");
     },
-    false
+    false,
   );
   const searchParams = new URLSearchParams(window.location.search);
   const isAdmin = searchParams.get("t");
@@ -132,7 +132,7 @@ function sendToServer(message, payload) {
       sid: window.sessionId,
       msg: message,
       ...payload,
-    })
+    }),
   );
 }
 
@@ -181,8 +181,7 @@ function parseMessage(data) {
 
   if (msg === MSG_CHANGE_FOLDER) {
     console.log("receive change folder");
-
-    handleChangeFolder(data);
+    window.location.reload();
 
     return;
   }
@@ -415,7 +414,7 @@ function setCooldownTimeTo(second) {
     for (let i = 0; i < 10; i++) {
       list[i].setAttribute(
         "class",
-        i + 1 <= secondLeft ? "circle active" : "circle active filled"
+        i + 1 <= secondLeft ? "circle active" : "circle active filled",
       );
       if (i + 1 > cooldownDuration) {
         list[i].setAttribute("class", "hidden");
@@ -435,7 +434,7 @@ function setHoldingTimeTo(second) {
     for (let i = 0; i < 10; i++) {
       list[i].setAttribute(
         "class",
-        i + 1 <= secondLeft ? "circle active" : "circle active filled"
+        i + 1 <= secondLeft ? "circle active" : "circle active filled",
       );
       if (i + 1 > holdingDuration) {
         list[i].setAttribute("class", "hidden");
@@ -474,80 +473,4 @@ function setIndicatorHold(value) {
   }
 
   document.body.classList.toggle("holding", value);
-}
-
-function refreshScore() {
-  const xmlhttp = new XMLHttpRequest();
-  xmlhttp.onreadystatechange = function () {
-    if (this.readyState === 4 && this.status === 200) {
-      const html = this.responseText;
-
-      document.getElementById("MainSVGContent").innerHTML = html;
-
-      setTimeout(() => {
-        const sessionInstance = new AudioSession();
-        window.sessionInstance = sessionInstance;
-
-        resetUIState();
-        sessionInstance.init();
-      });
-
-      sendToServer(MSG_NEED_DISPLAY);
-    }
-  };
-  xmlhttp.open("GET", "svgcontent.html", true);
-  xmlhttp.send();
-}
-
-function handleChangeFolder(sessionData) {
-  refreshScore();
-
-  window.winningVoteId = null;
-  window.currVoteId = null;
-  clearVotingIndicator();
-  window.countDic = null;
-
-  window.soundFileList = sessionData.soundList;
-  window.listFiles = sessionData.listFiles;
-  window.scoreTitle = sessionData.folder;
-
-  window.SOUND_FILE_LIST = null;
-
-  window.sessionId = sessionData.sessionId;
-  window.wsPath = sessionData.wsPath;
-
-  window.qrSharePath = sessionData.qrSharePath;
-  window.votingSize = sessionData.votingSize;
-  window.isHtml5 = sessionData.isHtml5;
-  window.fadeDuration = sessionData.fadeDuration;
-  window.scoreHasAbout = sessionData.scoreHasAbout;
-  window.scoreTitle = sessionData.scoreTitle;
-  window.defaultVolume = sessionData.defaultVolume;
-  window.defaultAutoplay = sessionData.defaultAutoplay;
-}
-
-function resetUIState() {
-  // Reset session on UI to play mode
-  document.body.classList.toggle("guide-mode", false);
-  document.body.classList.toggle("play-mode", true);
-  document.getElementById("change-mode-container").dataset.mode = "PLAY";
-  document.getElementById("change-mode-container").dataset.guideLock = false;
-
-  // Reset autoplay on UI
-  const togglerElement = document.querySelector("#autoplay-toggler");
-  togglerElement.dataset.active = false;
-
-  // Reset voting indicator on UI
-  clearVotingIndicator();
-  window.countDic = null;
-
-  // Reset holding indicator on UI
-  clearInterval(holdingTimer);
-  clearInterval(cooldownTimer);
-  holdingTimer = null;
-  cooldownTimer = null;
-  isCooldowning = false;
-  hideAllCooldownCircles();
-  setIndicatorCooldown(false);
-  setIndicatorHold(false);
 }

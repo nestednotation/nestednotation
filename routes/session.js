@@ -30,10 +30,10 @@ router.get(
     res.header("data-session-folder", session.folder);
 
     const stream = fs.createReadStream(
-      `${SERVER_STATE_DIR}/${sessionId}.content.svg`
+      `${SERVER_STATE_DIR}/${sessionId}.content.svg`,
     );
     stream.pipe(res);
-  }
+  },
 );
 
 router.get("/", function (req, res) {
@@ -42,7 +42,7 @@ router.get("/", function (req, res) {
     res
       .status(301)
       .redirect(
-        `/?msg=${encodeURIComponent(FORM_MESSAGES.INVALID_SESSION_DATA)}`
+        `/?msg=${encodeURIComponent(FORM_MESSAGES.INVALID_SESSION_DATA)}`,
       );
     return;
   }
@@ -59,7 +59,7 @@ router.get("/", function (req, res) {
     res
       .status(301)
       .redirect(
-        `/?msg=${encodeURIComponent(FORM_MESSAGES.INVALID_SESSION_DATA)}`
+        `/?msg=${encodeURIComponent(FORM_MESSAGES.INVALID_SESSION_DATA)}`,
       );
     return;
   }
@@ -68,15 +68,15 @@ router.get("/", function (req, res) {
     session.adminPassword === password
       ? 1
       : session.playerPassword === password
-      ? 2
-      : 0;
+        ? 2
+        : 0;
 
   res
     .status(301)
     .redirect(
       `/session/${session.id}/?p=${encodeURIComponent(
-        password
-      )}&t=${encodeURIComponent(type)}`
+        password,
+      )}&t=${encodeURIComponent(type)}`,
     );
 });
 
@@ -91,7 +91,7 @@ router.get("/*", cache("30 minutes"), async function (req, res) {
     res
       .status(301)
       .redirect(
-        `/?msg=${encodeURIComponent(FORM_MESSAGES.INVALID_SESSION_DATA)}`
+        `/?msg=${encodeURIComponent(FORM_MESSAGES.INVALID_SESSION_DATA)}`,
       );
     return;
   }
@@ -102,7 +102,7 @@ router.get("/*", cache("30 minutes"), async function (req, res) {
     res
       .status(301)
       .redirect(
-        `/?msg=${encodeURIComponent(FORM_MESSAGES.INVALID_SESSION_DATA)}`
+        `/?msg=${encodeURIComponent(FORM_MESSAGES.INVALID_SESSION_DATA)}`,
       );
     return;
   }
@@ -111,7 +111,7 @@ router.get("/*", cache("30 minutes"), async function (req, res) {
     res
       .status(301)
       .redirect(
-        `/?msg=${encodeURIComponent(FORM_MESSAGES.INVALID_SESSION_DATA)}`
+        `/?msg=${encodeURIComponent(FORM_MESSAGES.INVALID_SESSION_DATA)}`,
       );
     return;
   }
