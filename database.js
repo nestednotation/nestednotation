@@ -270,8 +270,6 @@ class BMSession {
       return;
     }
 
-    this.setCurrIdxTo(this.listFiles.indexOf(startedFile));
-
     this.setCurrIdxToStart();
   }
 
