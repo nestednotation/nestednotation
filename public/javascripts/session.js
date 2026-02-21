@@ -296,6 +296,11 @@ function parseMessage(data) {
     window.sessionInstance.updateDefaultVolume();
     return;
   }
+
+  if (msg === MSG_GLOBAL_REFRESH) {
+    window.location.reload();
+    return;
+  }
 }
 
 function updateNumberOfConnection(numPlayer, numRider) {
@@ -343,6 +348,15 @@ function sendHold(check) {
 
 function sendHistory(select) {
   sendToServer(MSG_SELECT_HISTORY, { selectedIdx: select.selectedIndex });
+}
+
+function sendGlobalRefresh() {
+  const r = confirm("Reload all clients in this session?");
+  if (!r) {
+    return;
+  }
+
+  sendToServer(MSG_GLOBAL_REFRESH);
 }
 
 function holdingCallback() {

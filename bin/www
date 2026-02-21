@@ -671,6 +671,13 @@ async function messageHandle(conn, message) {
     await jumpScoreForSession(session, selectedIdx);
     return;
   }
+
+  if (msg === MESSAGES.MSG_GLOBAL_REFRESH) {
+    sendToAllClients(session, 0, {
+      m: MESSAGES.MSG_GLOBAL_REFRESH,
+    });
+    return;
+  }
 }
 
 /**

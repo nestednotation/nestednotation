@@ -55,6 +55,7 @@ html
       window.MSG_SHOW_NUMBER_CONNECTION = #{msgShowNumberConnection};
       window.MSG_CHANGE_FOLDER = #{msgChangeFolder};
       window.MSG_CHANGE_VOLUME = #{msgChangeVolume};
+      window.MSG_GLOBAL_REFRESH = #{msgGlobalRefresh};
 
     script(src='/javascripts/voting.js')
     script(src='/javascripts/session.js')
@@ -130,6 +131,7 @@ html
       div(id="divfinish", style="display: none;")
         button(type="button", id="finish", onclick="sendFinish(this);") end
       button(type="button",  id="SleepActivate") wake lock
+      button(type="button", id="globalRefresh", onclick="sendGlobalRefresh();") global refresh
 
     div(id="loading-sound-indicator")
       | loading audio...

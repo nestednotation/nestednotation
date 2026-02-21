@@ -451,6 +451,7 @@ class BMSession {
       msgShowNumberConnection: MESSAGES.MSG_SHOW_NUMBER_CONNECTION,
       msgChangeFolder: MESSAGES.MSG_CHANGE_FOLDER,
       msgChangeVolume: MESSAGES.MSG_CHANGE_VOLUME,
+      msgGlobalRefresh: MESSAGES.MSG_GLOBAL_REFRESH,
 
       defaultAutoplay: JSON.stringify(this.defaultAutoplay),
       enableAutoplayByDefault: JSON.stringify(
@@ -679,6 +680,7 @@ class BMDatabase {
     this.MSG_SHOW_NUMBER_CONNECTION = MESSAGES.MSG_SHOW_NUMBER_CONNECTION;
     this.MSG_CHANGE_VOLUME = MESSAGES.MSG_CHANGE_VOLUME;
     this.MSG_CHANGE_FOLDER = MESSAGES.MSG_CHANGE_FOLDER;
+    this.MSG_GLOBAL_REFRESH = MESSAGES.MSG_GLOBAL_REFRESH;
 
     this.aboutSvg = aboutNestedNotationSvg;
   }
