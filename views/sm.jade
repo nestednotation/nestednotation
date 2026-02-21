@@ -75,6 +75,11 @@ block content
               input(type="checkbox" name="defaultAutoplay" value="true", checked=(d.defaultAutoplay ? "checked" : undefined))
           tr
             td
+              label(for="enableAutoplayByDefault") &nbsp;gallery mode&nbsp;
+            td
+              input(type="checkbox" name="enableAutoplayByDefault" value="true", checked=(d.enableAutoplayByDefault ? "checked" : undefined))
+          tr
+            td
               label(for="isHtml5") &nbsp;html5&nbsp;
             td
               input(type="checkbox" name="isHtml5" value="true", checked=(d.isHtml5 ? "checked" : undefined))
@@ -167,6 +172,11 @@ block content
           label(for="defaultAutoplay") &nbsp;autoplay default&nbsp;
         td
           input(type="checkbox" name="defaultAutoplay" value="true")
+      tr
+        td
+          label(for="enableAutoplayByDefault") &nbsp;Gallery mode&nbsp;
+        td
+          input(type="checkbox" name="enableAutoplayByDefault" value="true")
       tr
         td
           label(for="isHtml5") &nbsp;html5&nbsp;

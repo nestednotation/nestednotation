@@ -2,7 +2,7 @@ const express = require("express");
 const router = express.Router();
 
 const { MESSAGES, FORM_MESSAGES } = require("../constants");
-const { apicache } = require("../utils/sessionCache");
+const { apicache, SESSION_CACHE_KEY } = require("../utils/sessionCache");
 
 /* GET home page. */
 router.get("/", async function (req, res) {
@@ -40,6 +40,7 @@ router.get("/", async function (req, res) {
     const isHtml5 = Boolean(query.isHtml5);
     const defaultVolume = Number(query.defaultVolume);
     const defaultAutoplay = Boolean(query.defaultAutoplay);
+    const enableAutoplayByDefault = Boolean(query.enableAutoplayByDefault);
 
     if (
       sessionId != null &&
@@ -79,6 +80,8 @@ router.get("/", async function (req, res) {
             defaultVolume:
               defaultVolume >= 0 ? defaultVolume : session.defaultVolume,
             defaultAutoplay: defaultAutoplay ?? session.defaultAutoplay,
+            enableAutoplayByDefault:
+              enableAutoplayByDefault ?? session.enableAutoplayByDefault,
           },
           true,
         );
@@ -108,6 +111,7 @@ router.get("/", async function (req, res) {
               scoreTitle: session.folder,
               defaultVolume: session.defaultVolume,
               defaultAutoplay: session.defaultAutoplay,
+              enableAutoplayByDefault: session.enableAutoplayByDefault,
             });
           }
         } else {
@@ -121,7 +125,7 @@ router.get("/", async function (req, res) {
           }
         }
 
-        apicache.clear("sessionHtml");
+        apicache.clear(SESSION_CACHE_KEY);
       } else if (command === "create-session") {
         const listScore = db.getListScore();
         if (listScore.indexOf(folder) >= 0) {
@@ -136,6 +140,8 @@ router.get("/", async function (req, res) {
             isHtml5,
             fadeDuration,
             defaultVolume,
+            defaultAutoplay,
+            enableAutoplayByDefault,
           );
 
           const hold = parseInt(holdDur);
@@ -146,6 +152,9 @@ router.get("/", async function (req, res) {
               holdDuration: hold >= 0 ? hold : session.holdDuration,
               votingDuration: vote >= 0 ? vote : session.votingDuration,
               votingSize: size >= 0 ? size : session.votingSize,
+              defaultAutoplay: defaultAutoplay ?? session.defaultAutoplay,
+              enableAutoplayByDefault:
+                enableAutoplayByDefault ?? session.enableAutoplayByDefault,
             },
             true,
           );

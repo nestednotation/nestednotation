@@ -3,7 +3,7 @@ const router = express.Router();
 const { FORM_MESSAGES } = require("../constants");
 const fs = require("fs");
 
-const { cache } = require("../utils/sessionCache");
+const { cache, SESSION_CACHE_KEY } = require("../utils/sessionCache");
 
 let prefixDir = ".";
 const testPrefixFile = prefixDir + "/account/admin.dat";
@@ -16,7 +16,7 @@ router.get(
   "/:sessionId/svgcontent.html",
   cache("30 minutes"),
   async function (req, res) {
-    req.apicacheGroup = "sessionHtml";
+    req.apicacheGroup = SESSION_CACHE_KEY;
 
     const sessionId = req.params.sessionId;
     const db = req.app.get("Database");
@@ -82,7 +82,7 @@ router.get("/", function (req, res) {
 
 router.get("/*", cache("30 minutes"), async function (req, res) {
   // API Cache will be clear in routes/sm.js
-  req.apicacheGroup = "sessionHtml";
+  req.apicacheGroup = SESSION_CACHE_KEY;
 
   const path = req.path.match("/(.*?)/*$");
   const sessionId = path[1];

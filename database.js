@@ -247,6 +247,7 @@ class BMSession {
     fadeDuration = 1000,
     defaultVolume = 80,
     defaultAutoplay = true,
+    enableAutoplayByDefault = false,
   ) {
     this.id = id;
     this.ownerId = adminId;
@@ -258,6 +259,7 @@ class BMSession {
     this.fadeDuration = fadeDuration;
     this.defaultVolume = defaultVolume;
     this.defaultAutoplay = defaultAutoplay;
+    this.enableAutoplayByDefault = enableAutoplayByDefault;
 
     this.folder = folder;
 
@@ -451,6 +453,9 @@ class BMSession {
       msgChangeVolume: MESSAGES.MSG_CHANGE_VOLUME,
 
       defaultAutoplay: JSON.stringify(this.defaultAutoplay),
+      enableAutoplayByDefault: JSON.stringify(
+        this.enableAutoplayByDefault ?? false,
+      ),
       defaultVolume: JSON.stringify(this.defaultVolume),
       fadeDuration: JSON.stringify(this.fadeDuration),
       isHtml5: JSON.stringify(this.isHtml5),
@@ -570,6 +575,7 @@ class BMSessionTable {
     fadeDuration,
     defaultVolume,
     defaultAutoplay,
+    enableAutoplayByDefault,
   ) {
     //check folder exist
     const dir = DATA_DIR + "/" + folder;
@@ -590,6 +596,7 @@ class BMSessionTable {
       fadeDuration,
       defaultVolume,
       defaultAutoplay,
+      enableAutoplayByDefault,
     );
     await session.saveSessionStateToFile();
 

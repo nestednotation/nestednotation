@@ -30,7 +30,7 @@ const getSoundLink = (soundName) => {
   }
 
   return `/data/${encodeURIComponent(scoreTitle)}/Sounds/${encodeURIComponent(
-    fileName
+    fileName,
   )}`;
 };
 
@@ -69,8 +69,8 @@ const logMismatchSound = () => {
         if (!isExist) {
           console.error(
             `Incorrect sound name: ${soundName} \n Found in file: ${frame.getAttribute(
-              "file"
-            )}`
+              "file",
+            )}`,
           );
         }
       }
@@ -170,9 +170,7 @@ class Note {
         : [getDefaultVolume()];
     if (nodeVolumns.length !== soundNames.length) {
       console.warn(
-        "Volume values mismatch with sound values, will fallback to default volume (" +
-          getDefaultVolume() +
-          ")"
+        `Volume values mismatch with sound values, will fallback to default volume (${getDefaultVolume()})`,
       );
     }
 
@@ -181,7 +179,7 @@ class Note {
     this.isAutoplay = JSON.parse(
       this.domElement.getAttribute("autoplay")
         ? this.domElement.getAttribute("autoplay") === "true"
-        : defaultAutoplay
+        : defaultAutoplay,
     );
 
     this.isLoop = JSON.parse(this.domElement.getAttribute("loop") ?? true);
@@ -199,14 +197,15 @@ class Note {
         preload: false,
         html5: isHtml5,
         volume: volumeToGain(this.volumes[volumeIdx]),
-        onload: () => {
-          const soundLoadedEvent = new CustomEvent("sound-loaded", {
-            detail: {
-              key: sn,
-            },
-          });
-          window.dispatchEvent(soundLoadedEvent);
-        },
+      });
+
+      soundInst.once("load", () => {
+        const soundLoadedEvent = new CustomEvent("sound-loaded", {
+          detail: {
+            key: sn,
+          },
+        });
+        window.dispatchEvent(soundLoadedEvent);
       });
 
       soundInst.on("play", () => {
@@ -283,7 +282,7 @@ class Note {
       sound.fade(
         volumeToGain(finalVolumes[volumeIdx]),
         sound.volume(),
-        fadeDuration
+        fadeDuration,
       );
 
       if (seekTimestamp && seekTimestamp[idx]) {
@@ -429,6 +428,16 @@ class AudioSession {
       this.handleSoundLoaded(e.detail);
     });
 
+    const allSoundLoadedListener = () => {
+      if (window.enableAutoplayByDefault) {
+        this.toggleAutoplay();
+      }
+
+      window.removeEventListener("all-sound-loaded", allSoundLoadedListener);
+    };
+
+    window.addEventListener("all-sound-loaded", allSoundLoadedListener);
+
     this.generateSoundMap();
   }
 
@@ -461,6 +470,9 @@ class AudioSession {
     if (!prevId) {
       const initialFrame = this.frameMap[nextId];
       initialFrame.loadFrameSounds();
+      if (this.autoPlay) {
+        initialFrame.playAllAutoplayNotes();
+      }
       initialFrame
         .getAllSoundNameInFrame()
         .forEach((s) => this.markSoundAsLoading(s));
@@ -483,7 +495,7 @@ class AudioSession {
 
     console.log(
       "Common sound notes between prev and current frame:",
-      Object.keys(continueNotes)
+      Object.keys(continueNotes),
     );
 
     for (const [noteId, note] of Object.entries(nextSoundData)) {
@@ -517,7 +529,7 @@ class AudioSession {
 
   getPlayingNotes() {
     return this.frameMap[this.currFrameId].notes.filter(
-      (n) => n.playingCount > 0
+      (n) => n.playingCount > 0,
     );
   }
 
@@ -553,8 +565,13 @@ class AudioSession {
 
     document.body.classList.toggle(
       "loading-sound",
-      this.soundLoadSet.size !== 0
+      this.soundLoadSet.size !== 0,
     );
+
+    if (this.soundLoadSet.size === 0) {
+      const allSoundLoadedEvent = new CustomEvent("all-sound-loaded");
+      window.dispatchEvent(allSoundLoadedEvent);
+    }
   }
 
   markToGrayscaleNoneSoundLinkSvg(linkElement) {
@@ -636,7 +653,7 @@ document.addEventListener(
       });
     });
   },
-  false
+  false,
 );
 
 window.onbeforeunload = () => {
