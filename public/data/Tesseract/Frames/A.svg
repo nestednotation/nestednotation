@@ -226,7 +226,7 @@
             </g>
         </g>
     </g>
-    <g id="Map" sound="Map/A" loop="false">
+    <g id="Map" sound="Map/A" autoplay="true" loop="false">
         <g id="Frame">
             <rect x="1471.98" y="41.542" width="190" height="190" style="fill:#fff;"/>
             <rect x="1471.98" y="41.542" width="190" height="190" style="fill:none;stroke:#000;stroke-width:1.17px;stroke-linejoin:bevel;"/>

@@ -88,19 +88,21 @@ The following elements are common to all canonical Nested Notation scores:
 
 The score **Tesseract** demonstrates canonical grammar clearly. Its SVG frames are named after the vertices of a cube (A, B, C, D, W, X, Y, Z), connected by bidirectional transition frames (A2B, B2A, A2D, D2A, etc.). The title is metaphorical — the cube-shaped piece is experienced as "changing throughout time," giving it a tesseract-like quality. Vertex frames carry the full ring structure (meta-ring, child rings, notes, root markers, and connecting curves); transition frames guide performer and audience between harmonic contexts; refocus frames (e.g., `Arefocus.svg`) serve as navigation anchors.
 
-Beyond the common ring elements, Tesseract's vertex frames carry four score-specific element groups. **Fields** and **Songs** are named SVG groups wired to the Field and Song audio layers described in the next section — Field elements provide an atmospheric backdrop, while Song elements move in harmonic lockstep with the frame's child rings. **Map** is a miniature diagram of the Tesseract cube in the upper corner of each SVG, showing the current frame's position; tapping it triggers a sound from the Map audio layer. **Composite Scale ring** is a ring that combines the notes of all child rings into a single harmonic structure; this element blends harmony from past or future frames with the present frame in a polychord, serving as a courtesy to musicians at moments of high complexity.
+Beyond the common ring elements, Tesseract's vertex frames carry four score-specific element groups. **Fields** and **Songs** are named SVG groups wired to the Field and Song audio layers described in the next section — Field elements provide an atmospheric backdrop, while Song elements move in harmonic lockstep with the frame's child rings (whose notes are played with audio from the **Font** layer). **Map** is a miniature diagram of the Tesseract cube in the upper corner of each SVG, showing the current frame's position; tapping it triggers a sound from the Map audio layer. **Composite Scale ring** is a ring that combines the notes of all child rings into a single harmonic structure; this element can also blend harmony from past or future frames with the present frame in a polychord, serving as a courtesy to musicians at moments of high complexity.
 
 ### Audio Layers in Tesseract
 
 Tesseract's `Sounds/` folder organizes audio into five simultaneous layers:
 
-- **Field** — Ambient/textural layers (e.g., "Zen", "Grooves", "Arrows", "Petals")
+- **Field** — Textural layers (e.g., "Zen", "Grooves", "Arrows", "Petals")
 - **Font** — Pitched notes in three registers (Low, Mid, High) across the chromatic scale, in three timbral "fonts"
-- **Map** — Spatial reference sounds tied to navigation positions
-- **Scale** — Harmonic/tonal anchor tones
-- **Song** — Melodic layers with base and transition variants (e.g., `06-Tubular-A.m4a`, `06-Tubular-A2B.m4a`)
+- **Map** — Each frame has its own audio position signature
+- **Scale** — Ascending-descending scalar melodies available at vertices and moments of harmonic complexity
+- **Song** — Melodic layers which match Fields in groove and vibe, using harmony specific to each frame (e.g., `06-Tubular-A.m4a`, `06-Tubular-A2B.m4a`)
 
-These layers can play simultaneously from a single frame, creating rich polyphonic textures from simple visual interactions.
+These layers can play simultaneously from a single frame, creating rich, asynchronous polyphonic textures from simple visual interactions.
+
+Tesseract's ideal session configuration is `autoplay default = false`, `gallery mode = true` (see [Admin Console](#admin-console-sm)). Under this pairing, transition frames (A2B, A2D, etc.) autoplay three elements — Field, Song, and the Map signature — while vertex frames (A, B, C, D, W, X, Y, Z) autoplay only Map. The Field and Song initiated at a transition continue seamlessly into the arriving vertex, because sound IDs shared across consecutive frames continue looping. The vertex's remaining Fields and Songs are present in the frame but silent on arrival; the room voices them as audience members and musicians tap additional elements, each tap adding layers. The result is a layered polyphony constructed socially at each vertex rather than dumped onto the room by autoplay.
 
 ### Serotonin: Molecular Structure as Musical Topology
 
@@ -114,29 +116,31 @@ The H-PRE chains of SVG frames — linear sequences of progressive frames connec
 
 In a Nested Notation session, a musician's role is improvisatory realization within a pitch set, not sight-reading. The ring specifies which pitches are available; it does not prescribe which pitch to play first, which pitch to progress to next, or at what tempo. Macro-level time is handled by the graph of frames and by the group vote that advances from one frame to the next. Within any given frame, note-to-note timing is the musician's own.
 
-This relationship to the score is closer to figured-bass or jazz-changes realization than to Western classical sight-reading. Performance is realization, not fidelity. There is no "wrong pitch" within the available ring set, no "wrong order" through it, no "wrong tempo." Musical decisions are aesthetic rather than evaluative.
+This relationship to the score is closer to figured bass or jazz changes-realization than to Western classical sight-reading. Performance is realization, not fidelity. There is no "wrong pitch" within the available ring set or larger auditory environment, no "wrong order" through it, no "wrong tempo." Musical decisions are aesthetic rather than evaluative.
 
-**Ensemble attunement.** What replaces fidelity-to-score is attentive listening. The auditory environment is itself being produced by other musicians making their own improvisatory choices, by vocalists realizing the ring, and — perhaps most surprisingly — by dozens of audience phones firing pre-recorded samples asynchronously, functioning as a kind of distributed instrument. There is no downbeat to lock onto and no chord root to anchor against. The listening posture is different from conventional ensemble practice: the sampled pitched and rhythmic content is a springboard, other musicians' gestures are conversational partners, and the musician's inner ear is the arbiter of fit.
+**Ensemble attunement.** What replaces fidelity-to-score is attentive listening. The auditory environment is itself being produced by other musicians making their own improvisatory choices, by vocalists realizing the ring, and — perhaps most surprisingly — by dozens of audience phones firing pre-recorded samples asynchronously, functioning as a kind of distributed instrument. There is no downbeat to lock onto and no chord root to anchor against. The listening posture is different from conventional ensemble practice: the sampled pitched and rhythmic content is a springboard, other musicians may be conversational partners, and the musician's inner ear is the arbiter of fit.
 
-**Asynchronicity.** Nested Notation embraces asynchronicity. Musicians are welcome to enter at any time, and there is no "wrong" time to make or cease making a sound. The one aesthetic principle above the grammar is simple: what sounds good, is good.
+**Asynchronicity.** Nested Notation embraces asynchronicity. Musicians are welcome to play or rest at any time, and there is no "wrong" time to make or cease making a sound. The aesthetic principle above the grammar is simple: what sounds good, is good.
 
-**Different musicians carry different loads.** Vocalists read the notation directly but do not manipulate a physical instrument; sight-singing is already challenging in familiar notation, and Nested Notation's novel appearance compounds it. Instrumental musicians carry the heaviest combined load: they must adapt the notation's pitch set to the idiosyncrasies of their instrument's physical nature, and they must take a hand off their instrument to interact with their device. Some scores — Serotonin and Hey-Bob, for example — use hybrid notation, co-presenting melodies and rhythms in Western notation alongside the Nested Notation harmony, adding a parallel reading stream. Hoops Winter introduces its own novel graphic convention for rhythm (see [Hoops Winter: Rhythm from Harmony](#hoops-winter-rhythm-from-harmony)).
+**Different musicians carry different loads.** Vocalists read the notation directly but do not manipulate a physical instrument; sight-singing is already challenging in familiar notation, and Nested Notation's novel appearance compounds this. Instrumental musicians carry the heaviest combined load: they must adapt the notation's pitch set to the idiosyncrasies of their instrument's physical nature, and they must take a hand off their instrument to interact with their device. Some scores — Serotonin and Hey-Bob, for example — use hybrid notation, co-presenting melodies and rhythms in Western notation alongside the Nested Notation harmony, adding a parallel reading stream. Hoops Winter introduces its own novel graphic convention for rhythm (see [Hoops Winter: Rhythm from Harmony](#hoops-winter-rhythm-from-harmony)).
 
 **What to bring.**
 
 - A **tablet** is preferred to a phone for the larger screen.
 - A **Bluetooth speaker** is preferred to a device's built-in speaker for greater volume.
 - A **wire music stand** or a **mic stand with tablet clip** enables hands-free operation, which matters especially for instrumentalists.
-- Musicians using amps or electronic instruments should plan for **power**: an extension cord if AC is available at the venue, or a battery-powered option if not.
+- Musicians using amps, electronic instruments, or effects/synth/mixing rigs on device output should plan for **power**: an extension cord if AC is available at the venue, or a battery-powered option if not. Feel free to bring a small table if you need one. Don't be shy about "moving in".
 - Be prepared to **refresh your device** if you suspect it has fallen out of sync with the server. Session stability is an active area of improvement and is not always perfect.
+
+**Autoplay as an entry point.** Instrumentalists often want **autoplay** on (via the UI side menu toggle), because it's an easier way to hold an instrument and still contribute to the distributed samplework — the composer's authored material triggers on frame load and the musician keeps their hands and attention on playing.
 
 ### Audience Members
 
 Audience members are full participants in a Nested Notation session. They interact with the score on their devices, and those interactions shape the session in two ways: by firing pre-recorded audio samples into the room, and by voting on the paths the score takes.
 
-**The distributed instrument.** Each audience member's device is a node in a large, asynchronous sampler. When many phones fire pitched and rhythmic samples at once, the collective sound is the harmonic and rhythmic bed that musicians are listening to and playing with. Audience members don't need to read notation to contribute meaningfully — they shape the room simply by engaging with the visual score in front of them.
+**The distributed instrument.** Each audience member's device is a node in a large, asynchronous sampler. When many phones fire pitched and rhythmic samples at once, the collective sound is the harmonic and rhythmic bed that musicians are listening and playing to. Audience members don't need to read notation to contribute meaningfully — they shape the room simply by engaging with the visual score in front of them.
 
-**Voting is mostly yours.** Any session-authenticated client may open a voting period at any time, in Guide Mode, by tapping any SVG element with color. Once a vote is open, everyone in the session can cast a ballot. In practice, audience members cast the majority of votes: musicians tend to take a passive stance at voting time because they are busy making music, even though their intuition about the score's paths may be greater. Audience members should vote freely and according to their own criteria — which graphic they are drawn to, which link corresponds to the sound they most want to hear next, or, if they love what is happening in the room exactly as it is, the **stay** option, which keeps the session on its current frame. Don't be shy about voting to stay.
+**Voting is mostly yours.** Any session-authenticated client may open a voting period at any time, in Guide Mode, by tapping any SVG element with color. Once a vote is open, everyone in the session can cast a ballot. In practice, audience members cast the majority of votes: musicians tend to take a passive stance at voting time because they are busy making music, even though their intuition about the score's paths may be greater. Audience members should vote freely and according to their own criteria — which graphic they are drawn to, which link corresponds to the sound they're most enjoying, or, if they love what is happening in the room exactly as it is, the **stay** option, which keeps the session on its current frame. Don't be shy about voting to stay.
 
 **Movement and etiquette.** Audience members are welcome to move through the space during a session — to let in a friend, use the restroom, or change position within the venue. Please move calmly and with intention. Coming and going as necessary is fine; milling is not encouraged.
 
@@ -149,17 +153,19 @@ Audience members are full participants in a Nested Notation session. They intera
 - Be prepared to **refresh your device** if you suspect it has fallen out of sync with the server.
 - If you are feeling adventurous, you are welcome to **bring an instrument** and cross into the musicians' role.
 
+**If you're unsure how to participate, turn on autoplay.** The **autoplay** toggle in the UI side menu lets your device contribute sound on every frame load, without any action from you. You are already part of the distributed instrument — your phone is voicing its share of the room. As the sonic landscape becomes familiar, tapping and voting become inviting rather than intimidating. Autoplay is the low-stakes entry point into any session.
+
 ### Event Host
 
-The event host produces and runs the event itself — selecting and preparing the venue, onboarding arriving participants, and serving as the on-site point of contact for anything that comes up. A capable host understands their venue's quirks: Wi-Fi capacity, how to reset the network if it stalls, where power outlets live, and how the room's acoustics will interact with a crowd of phones and Bluetooth speakers.
+The event host produces and runs the event itself — selecting and preparing the venue, onboarding arriving participants, and serving as the on-site point of contact for anything that comes up. A capable host understands their venue's quirks: Wi-Fi capacity, how to reset the network if it stalls, where power outlets live, and how the room's acoustics might interact with a crowd of phones and Bluetooth speakers.
 
-**Venue.** Large, open spaces "in the round" are preferred, with enough seating for those who want it and enough open floor for standing instrumentalists to have room to move. High ceilings and natural light are always a plus. A Nested Notation session can take place in a traditional proscenium hall, but open, flexible spaces are the preferred alternative — they support the distributed, non-directional auditory field the format produces.
+**Venue.** Large, open spaces "in the round" are preferred, with enough seating for those who want it and enough open floor for standing instrumentalists to have room to move. High ceilings and natural light are always a plus. A Nested Notation session can take place in a traditional proscenium hall, but open, flexible, quiet spaces are the preferred alternative — they support the distributed, local auditory field the format produces.
 
-**Space preparation.** Aisles or walkways may be delineated with gaff tape prior to the event to encourage purposeful movement (see the etiquette note in *Audience Members* above) and to keep instrumentalists' performance areas clear.
+**Space preparation.** Aisles or walkways may be delineated with gaff tape prior to the event to encourage purposeful movement (see the etiquette note in *Audience Members* above) and to keep instrumentalists' playing areas clear. The event host may also decide how much time to allow for musician setup in the venue prior to opening the doors to the audience.
 
-**Wi-Fi capacity.** The venue's network is the practical ceiling on how large a session can be. Sessions have run successfully with simultaneous connections in the high dozens and low hundreds; the ideal headcount for Nested Notation is still an open question and depends heavily on the local network. The host should know how to reset the router or access point if things stall. Technical readers can find a summary of the server-side mitigations in [Load Behavior at Frame Transitions](#load-behavior-at-frame-transitions).
+**Wi-Fi capacity.** The venue's network is the practical ceiling on how large a session can be. Sessions have run successfully with simultaneous connections in the high dozens; the ideal headcount for Nested Notation is still an open question and depends heavily on the local network. The host should know how to reset the router or access point if things stall. Technical readers can find a summary of the server-side mitigations in [Load Behavior at Frame Transitions](#load-behavior-at-frame-transitions). Clients need not all be on the same Wi-Fi network; using cellular data (if there's reception), expect a per-device download rate of 65-95 MB per hour.
 
-**House sound.** If the venue has a PA system, a designated operator may run it at low volume. House sound should never overwhelm the crowdsourced sound energy — the point of the session is the distributed instrument that participants are collectively producing.
+**House sound.** If the venue has a PA system, a designated operator may a client device through it at low volume. House sound should never overwhelm the crowdsourced sound energy — the point of the session is the distributed instrument that participants are collectively producing.
 
 **Additional display.** A projector or large screen, if available, can serve as a beneficial additional display of the current frame, letting anyone in the room follow the score even if they are momentarily not looking at their own device.
 
@@ -169,19 +175,19 @@ The event host produces and runs the event itself — selecting and preparing th
 
 The session manager is the platform operator during a live event. The role can be filled by the composer, a technically-inclined assistant, or a collaborator distinct from the event host. The **primary session manager** receives an admin credential from the developer or composer, which grants access to the `/setup` login and, from there, the full admin-level dashboard. With that credential the primary session manager chooses the score, configures the session parameters — voting duration, holding duration, fade duration, audio level (%), passwords — and places the session on **hold** or **pause** until the event is ready to begin.
 
-**Multiple session managers.** Nested Notation allows any number of clients to serve as session managers simultaneously by connecting with the session's manager password. This effectively distributes live-session responsibilities across collaborators within the `/sm` interface: hold, pause, history scroll-back, global refresh, and end. Manager-password-only clients are *barred* from hot-swapping the score, adjusting voting or holding durations, or adjusting audio level (%) — those remain with the primary (admin-credentialed) session manager. (**Note for a future version:** the **end** control should be removed from the manager-password `/sm` interface, as ending a session is a drastic action that should not be exposed to every session manager. God forbid a mis-tap.)
+**Multiple session managers.** Nested Notation allows any number of clients to serve as session managers simultaneously by connecting with the session's manager password. This effectively distributes live-session responsibilities across collaborators within the `/sm` interface: hold, pause, history scroll-back, global refresh, and end. Manager-password-only clients are *barred* from hot-swapping the score, adjusting voting or holding durations, or adjusting audio level (%) — those remain with the primary (admin-credentialed) session manager. (**Note for a future version:** the **end** control should be removed from the manager-password `/sm` interface, as ending a session is a drastic action that should not be exposed to every session manager. God forbid a mis-tap. Likewise, tapping **Stop Session** from the setup console should invoke a modal dialog box for confirmation in a future version.)
 
 **Posture.** The session manager's role can be active or passive, depending on the individual and the session. In the main, they are closer to a stage manager than a conductor — keeping the mechanism running so the music can happen, rather than actively shaping the arc. Client count on the admin dashboard is a resource but need not be watched closely. Config and pacing are adjusted only when clearly warranted.
 
-**Pacing.** The session manager can adjust voting and holding durations live during a session, lengthening or shortening the windows as the room's energy shifts. Shorter windows quicken the sense of movement through the score; longer windows give musicians more settling time within each frame.
+**Pacing.** The session manager can adjust voting and holding durations live during a session, lengthening or shortening the windows as the room's energy shifts. Shorter voting windows mean quicker transitions; longer holding windows give musicians more settling time within each frame.
 
 **Crowd sound volume.** The audio level (%) dialog in the setup console controls the volume of the distributed audience sound. This is one of the session manager's most expressive levers: it can be used to encourage musicians to play louder or quieter, to boost the crowd field when musicians are playing loudly, or to fade the room out gracefully at the close of a piece or concert.
 
 **Navigation nuances.** The session manager cannot advance the score any differently than an audience member — they vote like anyone else. They can, however, invoke **hold** at the moment their preferred vote is winning, effectively freezing a favorable outcome in place. They can also jump through the navigation history via the History dropdown in `/sm`.
 
-**Disruption protocol.** When something goes wrong, the session manager's first response is **hold**, not **pause**. Pause removes the SVG content from view for all clients, which is effectively stopping the session and is therefore reserved for ending a piece or handling something serious. Hold gives the session manager a moment to address a situation without dropping the room out of the piece.
+**Disruption protocol.** When something goes wrong, the session manager's options are **hold** and **pause**. Pause removes the SVG content from view for all clients, which is effectively stopping the session flow and is therefore reserved for ending a piece or handling something serious. Hold gives the session manager a moment to address a situation without dropping the room out of the piece.
 
-**Hot-swapping scores.** If an event calls for more than one score — much like a concert flowing from piece to piece — the session manager can select a different score in the setup console and tap **update**. Sometimes **global refresh** in `/sm` is also required. Participants remain logged into the same session throughout, so there is no need to redo QR sharing or re-authenticate. This turns a Nested Notation event into a multi-piece program, whether that means Tesseract to Serotonin in a concert setting or a rapid, unceremonious swap in a classroom.
+**Hot-swapping scores.** If an event calls for more than one score — much like a concert flowing from piece to piece — the primary (admin-credentialed) session manager can select a different score in the setup console and tap **update**. Sometimes **global refresh** in `/sm` is also required. Participants remain logged into the same session throughout, so there is no need to redo QR sharing or re-authenticate. This turns a Nested Notation event into a multi-piece program, whether that means Tesseract to Serotonin in a concert setting or a rapid, unceremonious swap in a classroom.
 
 **Closing.** When a piece or the event is winding down, the session manager typically tapers the crowd sound first, then places the session on pause to clear the SVG from view and bring the piece to rest.
 
@@ -207,9 +213,9 @@ During voting, circular indicators appear on each link showing the current vote 
 
 After the configurable voting duration expires, the platform navigates all connected clients to the winning frame. In the event of a tie, the server selects randomly among the tied options, with a stabilization rule: if the current leader is among the tied options and the number of tied options hasn't changed, the server holds with the current leader rather than re-randomizing.
 
-By default, every client returns to Play mode after each frame transition. Double-tapping the Guide button activates **guide lock**, which keeps the interface in Guide mode across transitions. This is especially useful for musicians playing a physical instrument — with guide lock enabled, they can vote on navigation with a single tap and immediately return their attention to reading and performing, without needing to switch modes after every transition. In guide lock, sound interaction is disabled; the client acts purely as a navigator.
+By default, every client returns to Play mode after each frame transition. Double-tapping the Guide button activates **guide lock**, which keeps the interface in Guide mode across transitions. This is especially useful for instrumentalists who prioritize voting — with guide lock enabled, they can vote on navigation with a single tap and immediately return their attention to reading and playing, without needing to switch modes after every transition. In guide lock, sound interaction is disabled; the client acts purely as a navigator.
 
-Guide lock is a per-client, self-activated toggle — it grants no special voting power. A participant's vote while in guide lock is still one vote among many. It therefore offers an emergent and extreme-outlier mode of *consensual conducting*: if a single participant enters guide lock and the rest of the ensemble chooses not to cast votes, that person's taps drive navigation uncontested. The mechanism does not silence anyone else; the conducting is only possible by the consent of those who remain passive.
+Guide lock is a per-client, self-activated toggle — it grants no special voting power. A participant's vote while in guide lock is still one vote among many. Guide mode does however offer an emergent and extreme-outlier mode of *consensual conducting*: if a single participant enters guide lock and the rest of the ensemble chooses not to cast votes, that person's taps drive navigation uncontested. The mechanism does not silence anyone else; the conducting is only possible by the consent of those who remain passive.
 
 ### UI Side Menu
 
@@ -219,7 +225,7 @@ A side menu is accessible from the upper-right corner of the session interface. 
 
 **Refresh session** — Reloads the session page.
 
-**Autoplay** — A toggle switch that controls automatic sound playback. When enabled, sounds marked with `autoplay="true"` (or defaulting to the session's autoplay setting) begin playing as soon as a frame loads. When disabled, frames load silently and all sounds must be triggered manually by tapping.
+**Autoplay** — A toggle switch that controls automatic sound playback on this client. When enabled, sounds marked with `autoplay="true"` (or defaulting to the session's autoplay setting) begin playing as soon as a frame loads. When disabled, frames load silently and all sounds must be triggered manually by tapping. Autoplay is the natural posture for instrumentalists whose hands are on their instruments, and the gentlest entry point for anyone unsure how to begin participating — with autoplay on, the device contributes sound to the distributed instrument without the participant having to tap.
 
 **About** — Opens an overlay with navigable SVG pages that explain the basics of the Nested Notation platform — how Play and Guide modes work, how voting works, and how to interact with the interface. These pages are platform-level (not score-specific) and are available in every session, distinct from the per-score documentation accessed via the score title.
 
@@ -241,9 +247,9 @@ A footer bar below the score displays status and provides additional actions:
 
 **Global refresh** — Forces every connected client device to refresh simultaneously. This is especially useful when the admin has updated session parameters or changed the score folder and needs all clients to pick up the changes immediately.
 
-**End** — Ends the session for all connected clients.
+**End** — Ends the session for all connected clients. This is deprecated and scheduled for removal in a future version.
 
-**Wake lock** — Attempts to prevent the session manager's device from sleeping during a session. This uses the NoSleep.js library (v0.9.0); however, its functionality is limited on modern devices and browsers that have restricted the underlying APIs.
+**Wake lock** — Attempts to prevent the session manager's device from sleeping during a session. This uses the NoSleep.js library (v0.9.0); however, its functionality is limited on modern devices and browsers that have restricted the underlying APIs. This is deprecated and scheduled for removal in a future version.
 
 ### Countdown Timer
 
@@ -287,7 +293,7 @@ The first tenet is **free rotation**: child rings are no longer locked to a noon
 
 The consequence of the second tenet — and, importantly, it holds whether or not any rings have actually been rotated — is that each non-matching curve becomes a **metastatic hinge**. It is a local sameness-claim that seeds a modulation as the reader traverses the figure repeatedly. Following such a curve carries a pitch from one ring's context into another, and the accumulated offsets over successive readings produce a **growth cycle**: a pitch-space trajectory analogous to a Bach sequence, but encoded geometrically in the graph rather than described procedurally. The notation *generates* the modulation; it does not *narrate* it. The reader's journey through the score enacts the modulation that the graph quietly prescribes.
 
-There are eleven distinct growth cycles, corresponding to the non-zero signed semitone offsets mod 12: ±1, ±2, ±3, ±4, ±5, and the self-inverse tritone (6). Direction is kept distinct for the asymmetric intervals, which is why there are eleven rather than six. Each cycle inscribes a regular polygon in the 12-position clockface — dodecagon for ±1, hexagon for ±2, square for ±3, equilateral triangle for ±4, 12-pointed star for ±5, and digon for the tritone — with cycle length equal to 12 / gcd(|interval|, 12). Where Canonical scores uphold harmonic stability (allowing rich sound content), Unhinged scores capture harmonic motion — the notation pulling the musician through key space. Careful, you might break something.
+There are eleven distinct growth cycles, corresponding to the non-zero signed semitone offsets mod 12: ±1, ±2, ±3, ±4, ±5, and the self-inverse tritone (6). Direction is kept distinct for each interval pair, which is why there are eleven rather than six. Each cycle inscribes a regular polygon in the 12-position clockface — dodecagon for ±1, hexagon for ±2, square for ±3, equilateral triangle for ±4, 12-pointed star for ±5, and digon for the tritone — with cycle length equal to 12 / gcd(|interval|, 12). Where Canonical scores uphold harmonic stability (allowing rich audio content), Unhinged scores capture harmonic motion — the notation pulling the musician through key space. Careful, you might break something.
 
 Unhinged scores currently carry no audio. Pre-recorded samples assume the canonical fixed mapping from ring position to pitch, which growth cycles disrupt: the same visual position sounds at a different pitch on each repetition. A future audio pathway using Howler's `rate()` for tape-style transposition is under consideration, which would let Unhinged scores drive sample playback at the shifting pitch each reading demands.
 
@@ -307,7 +313,7 @@ The Unhinged scores currently in the library:
 
 ### Nonconforming Scores
 
-Nonconforming scores have no notational specification, but make use of the Nested Notation app's group vote-based navigation and audio playback capability. This includes hybrid scores featuring Western notation, purely visual compositions, audio installations, and simple instruments.
+Nonconforming scores have no notational specification, but make use of the Nested Notation app's vote-based navigation and audio playback capability. This includes hybrid scores featuring Western notation, purely visual compositions, audio installations, and simple instruments.
 
 | Score | Frames | Audio | Description |
 |-------|--------|-------|-------------|
@@ -337,17 +343,17 @@ A C major triad (C, E, G) yields:
 - `1` — filled diamond notehead with stem; adjacent 1s beam together with a single horizontal flag, like eighth notes
 - `2` — filled diamond, no stem
 - `3` — filled diamond with a dot above (dotted-Western logic: +half)
-- `4` — open diamond with stem (no beaming)
-- `5` — open diamond with stem and a dot inside
-- `6` — open diamond with stem and a dot above
-- `7` — open diamond with stem, a dot inside, and a dot above
-- `8` — open diamond, no stem
-- `9` — open diamond with one dot inside
+- `4` — open diamond with stem (no beaming, reminiscent of a half note)
+- `5` — open diamond with stem and a dot inside (logic: +1)
+- `6` — open diamond with stem and a dot above (dotted-Western logic: +half)
+- `7` — open diamond with stem, a dot inside, and a dot above (logic: +half, +1)
+- `8` — open diamond, no stem (reminiscent of a whole note)
+- `9` — open diamond with one dot inside (logic: +1)
 - `10` — open diamond with two dots inside (side by side, like eyes; the doubling mirrors the single inside-dot of 5, since 10 = 2 × 5)
 - `11` — open diamond with three dots inside in an equilateral triangle (rare in practice)
-- `12` — open diamond with a dot above (dotted-Western logic applied to the stemless open diamond: 8 + half = 12)
+- `12` — open diamond with a dot above (dotted-Western logic applied to the stemless open diamond: 8 +half = 12)
 
-The filled/open distinction alludes to the Western convention that filled noteheads carry shorter durations than open ones, without mapping literally to a 2× doubling. Dots above follow the Western dotted-note convention; dots inside are bespoke additive marks for counts that Western notation cannot render as a single duration.
+The filled/open distinction alludes to the Western convention that filled noteheads carry shorter durations than open ones, although the stem conventions for `1` and `2` break the literality of a consistent 2× doubling. Dots above follow the Western dotted-note convention; dots inside are bespoke additive marks for counts that Western notation cannot render as a single duration.
 
 **Performance.** A musician reads the figure from one end to the other and back again, as many times as they wish. Because the string is palindromic, the forward and backward passes are identical, and the two endpoint glyphs meet seamlessly at each turnaround — the C major triad loops as "dotted quarter, six eighth notes, dotted quarter, six eighth notes…" indefinitely. The rhythm is both literal and improvisatory: the notation is structurally fixed, but a musician is always encouraged to respond to the sounds of their environment following their own intuition. What sounds good, is good.
 
@@ -447,7 +453,7 @@ A composer begins by searching for a network graph that promises narrative poten
 
 ### 2. Harmonic Plotting (microstructure)
 
-Once the network is established, the composer plots the harmonic content across its nodes. Since the visual signatures of canonical Nested Notation match the harmonic content (child ring positions in meta-rings match note positions in the refocus ring, and note positions in child rings correspond to chromatic pitches), the composer carefully designs the harmonies and relationships that carry across nodes. Transition frames between nodes without meta-ring structure require less careful attention, as they bridge harmonic contexts through voice leading (a less rigid relationship).
+Once the network paths are understood, the composer plots the harmonic content across its nodes, also typically with pencil and paper. Since the visual signatures of canonical Nested Notation match the harmonic content (child ring positions in meta-rings match note positions in the refocus ring, and note positions in child rings correspond to chromatic pitches), the composer carefully designs the harmonies and relationships that carry across nodes. Transition frames between nodes without meta-ring structure require less careful attention, as they bridge harmonic contexts through voice leading (a less rigid relationship).
 
 ### 3. Audio Production
 
@@ -464,10 +470,14 @@ If SVG authoring is like drawing a flipbook frame by frame, markup is like arran
 - **Navigation links** — Wrapping drawn elements with `<a href="...">` tags to wire frames together according to the network graph.
 - **Sound mapping** — Adding `sound` attributes to graphical elements, connecting them to the corresponding audio files in the `Sounds/` folder.
 - **Playback behavior** — Adding `autoplay="true"`, `loop="false"`, and `volume` attributes to control how individual sounds behave.
-- **Timing overrides** — Adding `voting` and `holding` attributes to control pacing at each node. These values are planned in advance and reflect the composer's intent about how long the audience should dwell at each point in the network. For example, in Serotonin, a vertex frame like `C2.svg` — with rich harmonic content and multiple navigation options — carries longer voting and holding periods than a transit frame like `C2-TRANSIT-C3.svg`, which serves as a passageway between nodes and needs less deliberation time.
-- **Vote indicator placement** — Adding the `votemagnet` class to an element within each navigable link to control where the orange vote indicator circle appears in Guide mode. Without it, the indicator defaults to the center of the link's container element.
+- **Timing overrides** — Adding `voting` and `holding` attributes to control pacing at nodes if necessary. These values are planned in advance and reflect the composer's intent about how long the audience should dwell at each point in the network. For example, in Serotonin, a vertex frame like `C2.svg` — with rich harmonic content and multiple navigation options — carries longer voting and holding periods than a transit frame like `C2-TRANSIT-C3.svg`, which serves as a passageway between nodes and needs less deliberation time.
+- **Vote indicator placement** — If necessary, adding the `votemagnet` class to an element within each navigable link to control where the orange vote indicator circle appears in Guide mode. Without it, the indicator defaults to the center of the link's container element.
 
 The markup must display consistent behavior across the network: timing values, autoplay settings, and sound mappings are all extensions of the compositional plan, not afterthoughts.
+
+**Autoplay as a compositional choice.** The `autoplay` attribute on individual SVG elements makes use of the session's `autoplay default` setting in a useful way: `autoplay default` governs the *posture of the unmarked majority* of notes, while explicit `autoplay="true"` or `autoplay="false"` attributes are the composer's per-element exceptions. Rather than annotating every soundmaking element by hand, the composer picks a default that matches the piece's overall disposition — *ready to sound* or *waiting to be voiced* — and then marks only the elements that deviate from it. Tesseract, for example, sets `autoplay default = false` and marks exactly three elements per transition frame (Field, Song, Map) as `autoplay="true"`; every other element at the transition, and nearly every element at each vertex, is left unmarked and therefore silent on arrival, available for tap. The default captures the piece's restraint; the explicit markup names its exceptions.
+
+**Cross-frame continuity.** When the same `sound` value appears on an element in both the outgoing and incoming frame, that sound continues seamlessly across the transition — same volume, same seek position, rather than restarted (see [Load Behavior at Frame Transitions](#load-behavior-at-frame-transitions) for the matching logic). Composers use this to author continuous threads that bridge the group vote: a Field that spans a transition, a Song that carries across a boundary. Conversely, changing the sound ID at the boundary is indicative of change, as new sound replaces what came before. The graph advances; whether or not a given sound does is a function of the graph's structure.
 
 ### Checking Markup
 
@@ -504,7 +514,7 @@ Client (browser)
 
 ### Load Behavior at Frame Transitions
 
-The session has been tested with simultaneous connections in the high dozens and low hundreds. The ideal headcount for a Nested Notation session is still unknown and will vary with venue network capacity.
+The session has been tested with simultaneous connections in the high dozens. The ideal headcount for a Nested Notation session is still unknown and will vary with venue network capacity.
 
 At a frame transition, every client device simultaneously needs the new frame's SVG and audio assets, which produces a characteristic load spike. Several mitigations reduce that spike:
 
@@ -610,7 +620,7 @@ When creating or updating a session, the admin console exposes the following opt
 
 **sm password** — The manager password. Anyone who connects with this password gains session manager controls (pause, hold, history navigation, end session). Defaults to `"managerpassword"`.
 
-**player password** — Required for session creation. This password is embedded in the session URL and QR code, so arriving participants who receive the link or scan the code join automatically as players without needing to enter it manually. The server distinguishes players (who connected with this password) from riders (who did not) — see [Roles](#roles). Both counts are displayed to the session manager.
+**player password** — Required for session creation. This password is embedded in the session URL and QR code, so arriving participants who receive the link or scan the code join automatically as players without needing to enter it manually. The server distinguishes players (who connected with this password) from riders (who did not) — see [Roles](#roles). Both counts are displayed to any session managers.
 
 **voting duration** — Duration of each voting round in seconds (default: 10). Individual frames can override this with the `voting` markup attribute.
 
@@ -622,11 +632,11 @@ When creating or updating a session, the admin console exposes the following opt
 
 **audio level (%)** — Default playback volume for all sound elements (default: 80). Individual elements can override this with the `volume` markup attribute.
 
-**autoplay default** — When checked, all sound elements without an explicit `autoplay` attribute will autoplay on frame load; only elements marked `autoplay="false"` are excluded. When unchecked, no sounds autoplay unless explicitly marked `autoplay="true"`. This setting also determines the initial state of the autoplay toggle in the client's UI side menu.
+**autoplay default** — The fallback for notes without an explicit `autoplay` attribute. When checked, unmarked sound elements are treated as `autoplay="true"` (and will autoplay on frame load whenever a client has its UI autoplay toggle enabled); only elements marked `autoplay="false"` are excluded. When unchecked, unmarked sound elements are treated as `autoplay="false"`, so only elements explicitly marked `autoplay="true"` can autoplay. Composers use this setting to decide how much of their markup they need to annotate by hand: set the default to match the posture of the majority of notes, then mark the exceptions.
 
-**gallery mode** — When checked, the client's autoplay toggle is automatically enabled on connection. Useful for unattended installations or exhibition settings where sounds should begin immediately without user interaction.
+**gallery mode** — When checked, each client's autoplay toggle flips on automatically once the session's initial sounds finish loading. This is the only mechanism that auto-enables the client UI toggle — **autoplay default** does not. Pair `autoplay default` (the per-note fallback) with `gallery mode` (the client-toggle initial state) to shape the room's posture: `default=false, gallery mode=true` yields a room that's *sounds together some of the time* (Tesseract's ideal — the composer marks transitions explicitly and lets vertices wait for the room); `default=true, gallery mode=true` yields a fully self-playing room, appropriate for unattended installations; `default=false, gallery mode=false` yields a tap-only room where silence somewhat more common.
 
-**html5** — Toggles Howler.js between HTML5 Audio mode and Web Audio API mode. HTML5 Audio may provide better compatibility on some devices.
+**html5** — Toggles Howler.js between HTML5 Audio mode and Web Audio API mode. HTML5 Audio does not support certain Howler features (like fade) but can be more stable in certain situations.
 
 For running sessions, the admin console also provides three actions: **Update session** (apply parameter changes to the live session), **Stop session** (end the session for all clients), and **Manage** (join the session as a session manager).
 
