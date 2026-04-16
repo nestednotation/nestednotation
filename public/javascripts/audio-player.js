@@ -173,9 +173,8 @@ class Note {
         `Volume values mismatch with sound values, will fallback to default volume (${getDefaultVolume()})`,
       );
     }
-
+    //? defaultAutoplay means that the note by default will be autoplay
     const defaultAutoplay = window.defaultAutoplay ?? true;
-
     this.isAutoplay = JSON.parse(
       this.domElement.getAttribute("autoplay")
         ? this.domElement.getAttribute("autoplay") === "true"
@@ -197,15 +196,14 @@ class Note {
         preload: false,
         html5: isHtml5,
         volume: volumeToGain(this.volumes[volumeIdx]),
-      });
-
-      soundInst.once("load", () => {
-        const soundLoadedEvent = new CustomEvent("sound-loaded", {
-          detail: {
-            key: sn,
-          },
-        });
-        window.dispatchEvent(soundLoadedEvent);
+        onload: () => {
+          const soundLoadedEvent = new CustomEvent("sound-loaded", {
+            detail: {
+              key: sn,
+            },
+          });
+          window.dispatchEvent(soundLoadedEvent);
+        },
       });
 
       soundInst.on("play", () => {
@@ -429,6 +427,7 @@ class AudioSession {
     });
 
     const allSoundLoadedListener = () => {
+      //? enableAutoplayByDefault means that autoplay button will be enable by default
       if (window.enableAutoplayByDefault) {
         this.toggleAutoplay();
       }
