@@ -13,25 +13,24 @@ const removeFileExt = (fileName) => {
 // Usually soundName and fileName will be similiar, only different is fileName have
 // additional .m4u3 as ext.
 // But I cache the list just in case the score using different file ext like .mp3
-let SOUND_FILE_LIST = null;
+window.SOUND_FILE_LIST = null;
 const getSoundLink = (soundName) => {
   const { scoreTitle, soundFileList } = window;
-
-  if (!SOUND_FILE_LIST) {
-    SOUND_FILE_LIST = soundFileList.reduce((acc, soundFile) => {
+  if (!window.SOUND_FILE_LIST) {
+    window.SOUND_FILE_LIST = soundFileList.reduce((acc, soundFile) => {
       const fileNameWithoutExt = removeFileExt(soundFile);
       acc[fileNameWithoutExt] = soundFile;
       return acc;
     }, {});
   }
 
-  const fileName = SOUND_FILE_LIST[soundName];
+  const fileName = window.SOUND_FILE_LIST[soundName];
   if (!fileName) {
     console.error(`Sound file not found for ${soundName}`);
   }
 
   return `/data/${encodeURIComponent(scoreTitle)}/Sounds/${encodeURIComponent(
-    fileName
+    fileName,
   )}`;
 };
 
@@ -70,8 +69,8 @@ const logMismatchSound = () => {
         if (!isExist) {
           console.error(
             `Incorrect sound name: ${soundName} \n Found in file: ${frame.getAttribute(
-              "file"
-            )}`
+              "file",
+            )}`,
           );
         }
       }
@@ -97,7 +96,9 @@ function volumeToGain(v) {
   return Math.round(result * 100) / 100;
 }
 
-const DEFAULT_VOLUME = 80;
+function getDefaultVolume() {
+  return window.defaultVolume ?? 80;
+}
 
 class Note {
   isAutoplay = true;
@@ -107,7 +108,7 @@ class Note {
 
   soundNames = [];
   soundInstances = [];
-  volumes = [DEFAULT_VOLUME];
+  volumes = [getDefaultVolume()];
 
   id = null;
   frameInstance = null;
@@ -160,18 +161,26 @@ class Note {
     const nodeVolumns = this.domElement
       .getAttribute("volume")
       ?.split(",")
-      .map(Number) ?? [DEFAULT_VOLUME];
+      .map(Number) ?? [getDefaultVolume()];
+
+    const defaultVolPercentage = getDefaultVolume() / 100;
     this.volumes =
-      nodeVolumns.length === soundNames.length ? nodeVolumns : [DEFAULT_VOLUME];
+      nodeVolumns.length === this.soundNames.length
+        ? nodeVolumns.map((v) => v * defaultVolPercentage)
+        : [getDefaultVolume()];
     if (nodeVolumns.length !== soundNames.length) {
       console.warn(
-        "Volume values mismatch with sound values, will fallback to default volume (80)"
+        `Volume values mismatch with sound values, will fallback to default volume (${getDefaultVolume()})`,
       );
     }
-
+    //? defaultAutoplay means that the note by default will be autoplay
+    const defaultAutoplay = window.defaultAutoplay ?? true;
     this.isAutoplay = JSON.parse(
-      this.domElement.getAttribute("autoplay") ?? true
+      this.domElement.getAttribute("autoplay")
+        ? this.domElement.getAttribute("autoplay") === "true"
+        : defaultAutoplay,
     );
+
     this.isLoop = JSON.parse(this.domElement.getAttribute("loop") ?? true);
 
     const isVolumeMismatch = this.volumes.length === this.soundInstances;
@@ -260,7 +269,7 @@ class Note {
     const finalVolumes =
       fromVolumes.length === this.soundInstances.length
         ? fromVolumes
-        : [DEFAULT_VOLUME];
+        : [getDefaultVolume()];
     const isVolumeMismatch = finalVolumes.length === this.soundInstances;
 
     for (let idx = 0; idx < this.soundInstances.length; idx++) {
@@ -271,7 +280,7 @@ class Note {
       sound.fade(
         volumeToGain(finalVolumes[volumeIdx]),
         sound.volume(),
-        fadeDuration
+        fadeDuration,
       );
 
       if (seekTimestamp && seekTimestamp[idx]) {
@@ -298,6 +307,25 @@ class Note {
     } else {
       this.play();
     }
+  }
+
+  updateDefaultVolume() {
+    const nodeVolumns = this.domElement
+      .getAttribute("volume")
+      ?.split(",")
+      .map(Number) ?? [getDefaultVolume()];
+
+    const defaultVolPercentage = getDefaultVolume() / 100;
+    this.volumes =
+      nodeVolumns.length === this.soundNames.length
+        ? nodeVolumns.map((v) => v * defaultVolPercentage)
+        : [getDefaultVolume()];
+
+    const isVolumeMismatch = this.volumes.length === this.soundInstances;
+    this.soundInstances.forEach((s, idx) => {
+      const volumeIdx = isVolumeMismatch ? idx : 0;
+      s.volume(volumeToGain(this.volumes[volumeIdx]));
+    });
   }
 }
 
@@ -398,6 +426,17 @@ class AudioSession {
       this.handleSoundLoaded(e.detail);
     });
 
+    const allSoundLoadedListener = () => {
+      //? enableAutoplayByDefault means that autoplay button will be enable by default
+      if (window.enableAutoplayByDefault) {
+        this.toggleAutoplay();
+      }
+
+      window.removeEventListener("all-sound-loaded", allSoundLoadedListener);
+    };
+
+    window.addEventListener("all-sound-loaded", allSoundLoadedListener);
+
     this.generateSoundMap();
   }
 
@@ -430,6 +469,9 @@ class AudioSession {
     if (!prevId) {
       const initialFrame = this.frameMap[nextId];
       initialFrame.loadFrameSounds();
+      if (this.autoPlay) {
+        initialFrame.playAllAutoplayNotes();
+      }
       initialFrame
         .getAllSoundNameInFrame()
         .forEach((s) => this.markSoundAsLoading(s));
@@ -452,7 +494,7 @@ class AudioSession {
 
     console.log(
       "Common sound notes between prev and current frame:",
-      Object.keys(continueNotes)
+      Object.keys(continueNotes),
     );
 
     for (const [noteId, note] of Object.entries(nextSoundData)) {
@@ -486,7 +528,7 @@ class AudioSession {
 
   getPlayingNotes() {
     return this.frameMap[this.currFrameId].notes.filter(
-      (n) => n.playingCount > 0
+      (n) => n.playingCount > 0,
     );
   }
 
@@ -506,6 +548,9 @@ class AudioSession {
     } else {
       this.frameMap[this.currFrameId]?.stopAllNotes();
     }
+
+    const togglerElement = document.querySelector("#autoplay-toggler");
+    togglerElement.dataset.active = this.autoPlay;
   }
 
   markSoundAsLoading(soundKey) {
@@ -519,8 +564,13 @@ class AudioSession {
 
     document.body.classList.toggle(
       "loading-sound",
-      this.soundLoadSet.size !== 0
+      this.soundLoadSet.size !== 0,
     );
+
+    if (this.soundLoadSet.size === 0) {
+      const allSoundLoadedEvent = new CustomEvent("all-sound-loaded");
+      window.dispatchEvent(allSoundLoadedEvent);
+    }
   }
 
   markToGrayscaleNoneSoundLinkSvg(linkElement) {
@@ -547,12 +597,20 @@ class AudioSession {
       }
     }
   }
+
+  updateDefaultVolume() {
+    for (const frame of Object.values(this.frameMap)) {
+      for (const node of frame.notes) {
+        node.updateDefaultVolume();
+      }
+    }
+  }
 }
 
-const sessionInstance = new AudioSession();
-window.sessionInstance = sessionInstance;
+window.sessionInstance = new AudioSession();
 
 const handleOnUpdateView = ({ detail }) => {
+  const { sessionInstance } = window;
   const { newIndex } = detail;
 
   // newIndex === -1 => pausing
@@ -576,7 +634,7 @@ window.addEventListener("update-view", handleOnUpdateView);
 document.addEventListener(
   "DOMContentLoaded",
   () => {
-    sessionInstance.init();
+    window.sessionInstance.init();
 
     // For some reason in iOS if I register these event in ui.js file, it will not work
     // so I have to register here, it will work fine
@@ -594,7 +652,7 @@ document.addEventListener(
       });
     });
   },
-  false
+  false,
 );
 
 window.onbeforeunload = () => {
@@ -603,7 +661,7 @@ window.onbeforeunload = () => {
   window.removeEventListener("update-view", handleOnUpdateView);
 };
 
-console.log("Session instance", sessionInstance);
+console.log("Session instance", window.sessionInstance);
 
 function toggleSessionMode(mode) {
   if (!window.sessionInstance) {
@@ -613,13 +671,10 @@ function toggleSessionMode(mode) {
   window.sessionInstance.mode = mode;
 }
 
-function toggleAutoplay(element) {
+function toggleAutoplay() {
   if (!window.sessionInstance) {
     return;
   }
 
   window.sessionInstance.toggleAutoplay();
-
-  const togglerElement = element.querySelector(".autoplay-toggler");
-  togglerElement.dataset.active = window.sessionInstance.autoPlay;
 }

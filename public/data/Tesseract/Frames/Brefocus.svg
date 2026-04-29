@@ -1,0 +1,108 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
+<svg width="100%" height="100%" viewBox="0 0 1700 2480" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" xml:space="preserve" xmlns:serif="http://www.serif.com/" style="fill-rule:evenodd;clip-rule:evenodd;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:1.5;">
+    <rect id="Brefocus" x="0" y="0" width="1700" height="2480" style="fill:none;"/>
+    <a href="B.svg">
+    <g id="S">
+        <g id="Ring">
+            <path id="Backer" d="M1261.43,1477C1130.55,1703.7 840.239,1781.5 613.55,1650.62C386.862,1519.75 309.085,1229.44 439.973,1002.74C570.862,776.037 861.169,698.239 1087.86,829.115C1314.55,959.991 1392.32,1250.3 1261.43,1477Z" style="fill:#fff;"/>
+            <path d="M1261.43,1477C1130.55,1703.7 840.239,1781.5 613.55,1650.62C386.862,1519.75 309.085,1229.44 439.973,1002.74C570.862,776.037 861.169,698.239 1087.86,829.115C1314.55,959.991 1392.32,1250.3 1261.43,1477Z" style="fill:none;stroke:#000;stroke-width:8.33px;"/>
+            <path d="M1261.43,1477L1235.18,1461.84" style="fill:none;stroke:#000;stroke-width:8.33px;"/>
+            <path d="M466.231,1017.9L439.973,1002.74" style="fill:none;stroke:#000;stroke-width:8.33px;"/>
+            <path d="M628.71,1624.37L613.55,1650.62" style="fill:none;stroke:#000;stroke-width:8.33px;"/>
+            <path d="M1087.86,829.115L1072.7,855.372" style="fill:none;stroke:#000;stroke-width:8.33px;"/>
+            <path d="M1087.85,1650.6L1072.69,1624.35" style="fill:none;stroke:#000;stroke-width:8.33px;"/>
+            <path d="M628.72,855.389L613.56,829.132" style="fill:none;stroke:#000;stroke-width:8.33px;"/>
+            <path d="M466.201,1461.86L439.944,1477.02" style="fill:none;stroke:#000;stroke-width:8.33px;"/>
+            <path d="M1261.46,1002.72L1235.21,1017.88" style="fill:none;stroke:#000;stroke-width:8.33px;"/>
+            <path d="M850.704,1714.16L850.704,1683.85" style="fill:none;stroke:#000;stroke-width:8.33px;"/>
+            <path d="M850.704,795.892L850.704,765.573" style="fill:none;stroke:#000;stroke-width:8.33px;"/>
+            <path d="M406.736,1239.87L376.417,1239.87" style="fill:none;stroke:#000;stroke-width:8.33px;"/>
+            <path d="M1324.99,1239.87L1294.67,1239.87" style="fill:none;stroke:#000;stroke-width:8.33px;"/>
+        </g>
+        <g id="Root-Markers" serif:id="Root Markers">
+            <path id="_8" serif:id="8" d="M532.245,1423.16L601.419,1341.31L637.718,1404.18L532.245,1423.16ZM581.24,1394.87L607.49,1390.15L598.456,1374.5L581.24,1394.87Z" style="fill:#488e61;"/>
+        </g>
+        <g id="Notes">
+            <path id="_11" sound="Font/1-Mid-B" serif:id="11" d="M682.187,873.402C660.198,911.488 611.424,924.556 573.337,902.568C535.251,880.579 522.182,831.806 544.171,793.72C566.16,755.634 614.934,742.566 653.021,764.554C691.107,786.543 704.176,835.316 682.187,873.402Z" style="fill:#488e61;stroke:#fff;stroke-width:24px;"/>
+            <path id="_81" sound="Font/1-Low-Ab" serif:id="8" d="M510.492,1521.29C488.503,1559.38 439.729,1572.45 401.643,1550.46C363.556,1528.47 350.487,1479.7 372.476,1441.61C394.466,1403.53 443.24,1390.46 481.326,1412.44C519.413,1434.43 532.482,1483.21 510.492,1521.29Z" style="fill:#488e61;stroke:#fff;stroke-width:24px;"/>
+            <path id="_4" sound="Font/1-Mid-E" serif:id="4" d="M1327.25,1519.4C1305.27,1557.49 1256.49,1570.56 1218.4,1548.57C1180.32,1526.58 1167.25,1477.81 1189.24,1439.72C1211.23,1401.64 1260,1388.57 1298.09,1410.56C1336.17,1432.55 1349.24,1481.32 1327.25,1519.4Z" style="fill:#488e61;stroke:#fff;stroke-width:24px;"/>
+        </g>
+        <g id="Treble-Marker" serif:id="Treble Marker">
+            <g id="_10" serif:id="10" sound="Font/1-High-Bb">
+                <path id="_101" serif:id="10" d="M513.323,1048.9C491.333,1086.99 442.559,1100.06 404.473,1078.07C366.386,1056.08 353.317,1007.31 375.307,969.221C397.296,931.136 446.07,918.067 484.156,940.056C522.243,962.045 535.312,1010.82 513.323,1048.9Z" style="fill:#fff;stroke:#fff;stroke-width:33.33px;"/>
+                <circle id="_10a" serif:id="10a" cx="444.315" cy="1009.06" r="64" style="fill:#fff;stroke:#488e61;stroke-width:16.67px;"/>
+            </g>
+        </g>
+    </g>
+    </a>
+    <g id="Map" sound="Map/B" loop="false" autoplay="true">
+        <g id="Frame">
+            <rect x="1471.5" y="41.542" width="190" height="190" style="fill:#fff;"/>
+            <rect x="1471.5" y="41.542" width="190" height="190" style="fill:none;stroke:#000;stroke-width:1.17px;stroke-linejoin:bevel;"/>
+            <rect x="1523.38" y="93.417" width="86.25" height="86.25" style="fill:none;stroke:#000;stroke-width:1.25px;stroke-linejoin:bevel;"/>
+            <path d="M1609.62,93.417L1661.5,41.75" style="fill:none;stroke:#000;stroke-width:1.25px;stroke-linejoin:bevel;"/>
+            <path d="M1523.38,93.417L1471.92,41.75" style="fill:none;stroke:#000;stroke-width:1.25px;stroke-linejoin:bevel;"/>
+            <path d="M1523.38,179.667L1471.5,231.542" style="fill:none;stroke:#000;stroke-width:1.25px;stroke-linejoin:bevel;"/>
+            <path d="M1609.62,179.667L1661.5,231.542" style="fill:none;stroke:#000;stroke-width:1.25px;stroke-linejoin:bevel;"/>
+        </g>
+        <g id="Dots">
+            <circle cx="1471.5" cy="231.5" r="1.5" style="stroke:#000;stroke-width:1.25px;stroke-linejoin:bevel;"/>
+            <circle cx="1566.2" cy="231.625" r="1.5" style="stroke:#000;stroke-width:1.25px;stroke-linejoin:bevel;"/>
+            <circle cx="1661.5" cy="231.5" r="1.5" style="stroke:#000;stroke-width:1.25px;stroke-linejoin:bevel;"/>
+            <circle cx="1633.85" cy="203.667" r="1.5" style="stroke:#000;stroke-width:1.25px;stroke-linejoin:bevel;"/>
+            <circle cx="1609.62" cy="179.5" r="1.5" style="stroke:#000;stroke-width:1.25px;stroke-linejoin:bevel;"/>
+            <circle cx="1609.2" cy="136.625" r="1.5" style="stroke:#000;stroke-width:1.25px;stroke-linejoin:bevel;"/>
+            <circle cx="1609.32" cy="93.375" r="1.5" style="stroke:#000;stroke-width:1.25px;stroke-linejoin:bevel;"/>
+            <circle cx="1633.76" cy="69.167" r="1.5" style="stroke:#000;stroke-width:1.25px;stroke-linejoin:bevel;"/>
+            <circle cx="1566.2" cy="93.375" r="1.5" style="stroke:#000;stroke-width:1.25px;stroke-linejoin:bevel;"/>
+            <circle cx="1523.07" cy="93.5" r="1.5" style="stroke:#000;stroke-width:1.25px;stroke-linejoin:bevel;"/>
+            <circle cx="1566.5" cy="41.5" r="1.5" style="stroke:#000;stroke-width:1.25px;stroke-linejoin:bevel;"/>
+            <circle cx="1471.5" cy="41.542" r="1.5" style="stroke:#000;stroke-width:1.25px;stroke-linejoin:bevel;"/>
+            <circle cx="1499.35" cy="69.5" r="1.5" style="stroke:#000;stroke-width:1.25px;stroke-linejoin:bevel;"/>
+            <circle cx="1471.5" cy="136.542" r="1.5" style="stroke:#000;stroke-width:1.25px;stroke-linejoin:bevel;"/>
+            <circle cx="1523.38" cy="136.542" r="1.5" style="stroke:#000;stroke-width:1.25px;stroke-linejoin:bevel;"/>
+            <circle cx="1566" cy="179.667" r="1.5" style="stroke:#000;stroke-width:1.25px;stroke-linejoin:bevel;"/>
+            <circle cx="1523.35" cy="179.5" r="1.5" style="stroke:#000;stroke-width:1.25px;stroke-linejoin:bevel;"/>
+            <circle cx="1499.15" cy="204" r="1.5" style="stroke:#000;stroke-width:1.25px;stroke-linejoin:bevel;"/>
+            <circle cx="1661.5" cy="136.542" r="1.5" style="stroke:#000;stroke-width:1.25px;stroke-linejoin:bevel;"/>
+            <circle cx="1661.49" cy="41.65" r="1.5" style="stroke:#000;stroke-width:1.25px;stroke-linejoin:bevel;"/>
+        </g>
+        <path d="M1612.06,87.537C1615.31,88.881 1616.85,92.607 1615.51,95.852C1614.16,99.097 1610.43,100.641 1607.19,99.296C1603.94,97.952 1602.4,94.226 1603.75,90.981C1605.09,87.736 1608.82,86.193 1612.06,87.537Z" style="fill:#fff;stroke:#488e61;stroke-width:5.99px;"/>
+    </g>
+    <g id="S-melisma" serif:id="S melisma" sound="Scale/B" loop="false">
+        <path id="Sounder" d="M1626.25,2302.55C1600.99,2346.29 1544.98,2361.3 1501.25,2336.05C1457.51,2310.8 1442.5,2254.79 1467.76,2211.05C1493.01,2167.31 1549.02,2152.3 1592.76,2177.55C1636.49,2202.8 1651.5,2258.81 1626.25,2302.55Z" style="fill:#fff;"/>
+        <g id="Ring1" serif:id="Ring" opacity="0.5">
+            <path d="M1626.25,2302.55C1600.99,2346.29 1544.98,2361.3 1501.25,2336.05C1457.51,2310.8 1442.5,2254.79 1467.76,2211.05C1493.01,2167.31 1549.02,2152.3 1592.76,2177.55C1636.49,2202.8 1651.5,2258.81 1626.25,2302.55Z" style="fill:none;stroke:#000;stroke-width:1.93px;"/>
+            <path d="M1626.25,2302.55L1621.18,2299.63" style="fill:none;stroke:#000;stroke-width:1.93px;"/>
+            <path d="M1472.82,2213.97L1467.76,2211.05" style="fill:none;stroke:#000;stroke-width:1.93px;"/>
+            <path d="M1504.17,2330.98L1501.25,2336.05" style="fill:none;stroke:#000;stroke-width:1.93px;"/>
+            <path d="M1592.76,2177.55L1589.83,2182.62" style="fill:none;stroke:#000;stroke-width:1.93px;"/>
+            <path d="M1592.75,2336.05L1589.83,2330.98" style="fill:none;stroke:#000;stroke-width:1.93px;"/>
+            <path d="M1504.17,2182.62L1501.25,2177.55" style="fill:none;stroke:#000;stroke-width:1.93px;"/>
+            <path d="M1472.82,2299.63L1467.75,2302.55" style="fill:none;stroke:#000;stroke-width:1.93px;"/>
+            <path d="M1626.25,2211.05L1621.18,2213.97" style="fill:none;stroke:#000;stroke-width:1.93px;"/>
+            <path d="M1547,2348.31L1547,2342.46" style="fill:none;stroke:#000;stroke-width:1.93px;"/>
+            <path d="M1547,2171.14L1547,2165.29" style="fill:none;stroke:#000;stroke-width:1.93px;"/>
+            <path d="M1461.34,2256.8L1455.49,2256.8" style="fill:none;stroke:#000;stroke-width:1.93px;"/>
+            <path d="M1638.51,2256.8L1632.66,2256.8" style="fill:none;stroke:#000;stroke-width:1.93px;"/>
+        </g>
+        <g id="Root-Markers1" serif:id="Root Markers">
+            <path id="_82" serif:id="8" d="M1492.71,2289.11L1504.58,2275.07L1510.81,2285.86L1492.71,2289.11ZM1501.24,2284.19L1505.55,2283.41L1504.07,2280.84L1501.24,2284.19Z" style="fill:#488e61;"/>
+        </g>
+        <g id="Notes1" serif:id="Notes">
+            <path id="_111" serif:id="11" d="M1514.49,2186.1C1510.25,2193.44 1500.83,2195.97 1493.49,2191.72C1486.14,2187.48 1483.62,2178.07 1487.86,2170.72C1492.1,2163.37 1501.51,2160.85 1508.86,2165.1C1516.21,2169.34 1518.73,2178.75 1514.49,2186.1Z" style="fill:#488e61;stroke:#fff;stroke-width:4.63px;"/>
+            <path id="_102" serif:id="10" d="M1481.91,2219.96C1477.66,2227.3 1468.25,2229.83 1460.91,2225.58C1453.56,2221.34 1451.04,2211.93 1455.28,2204.58C1459.52,2197.23 1468.93,2194.71 1476.28,2198.95C1483.63,2203.2 1486.15,2212.61 1481.91,2219.96Z" style="fill:#488e61;stroke:#fff;stroke-width:4.63px;"/>
+            <path id="_83" serif:id="8" d="M1481.36,2311.1C1477.12,2318.45 1467.71,2320.97 1460.36,2316.72C1453.01,2312.48 1450.49,2303.07 1454.73,2295.72C1458.98,2288.38 1468.39,2285.85 1475.73,2290.1C1483.08,2294.34 1485.6,2303.75 1481.36,2311.1Z" style="fill:#488e61;stroke:#fff;stroke-width:4.63px;"/>
+            <path id="_41" serif:id="4" d="M1638.94,2310.73C1634.7,2318.08 1625.29,2320.6 1617.94,2316.36C1610.59,2312.12 1608.07,2302.71 1612.32,2295.36C1616.56,2288.01 1625.97,2285.49 1633.32,2289.73C1640.66,2293.97 1643.19,2303.38 1638.94,2310.73Z" style="fill:#488e61;stroke:#fff;stroke-width:4.63px;"/>
+            <path id="_3" serif:id="3" d="M1651.45,2265.38C1647.21,2272.72 1637.8,2275.24 1630.45,2271C1623.11,2266.76 1620.58,2257.35 1624.83,2250C1629.07,2242.65 1638.48,2240.13 1645.83,2244.38C1653.18,2248.62 1655.7,2258.03 1651.45,2265.38Z" style="fill:#488e61;stroke:#fff;stroke-width:4.63px;"/>
+            <path id="_1" serif:id="1" d="M1605.45,2187.2C1601.2,2194.55 1591.79,2197.07 1584.45,2192.82C1577.1,2188.58 1574.58,2179.17 1578.82,2171.82C1583.06,2164.47 1592.47,2161.95 1599.82,2166.2C1607.17,2170.44 1609.69,2179.85 1605.45,2187.2Z" style="fill:#488e61;stroke:#fff;stroke-width:4.63px;"/>
+        </g>
+        <g id="Treble-Marker1" serif:id="Treble Marker">
+            <g id="_103" serif:id="10">
+                <path id="_104" serif:id="10" d="M1481.91,2219.96C1477.66,2227.3 1468.25,2229.83 1460.91,2225.58C1453.56,2221.34 1451.04,2211.93 1455.28,2204.58C1459.52,2197.23 1468.93,2194.71 1476.28,2198.95C1483.63,2203.2 1486.15,2212.61 1481.91,2219.96Z" style="fill:#fff;stroke:#fff;stroke-width:6.43px;"/>
+                <circle id="_10a1" serif:id="10a" cx="1468.59" cy="2212.27" r="12.348" style="fill:#fff;stroke:#488e61;stroke-width:3.22px;"/>
+            </g>
+        </g>
+    </g>
+</svg>

@@ -3,7 +3,7 @@ const router = express.Router();
 const { FORM_MESSAGES } = require("../constants");
 const fs = require("fs");
 
-const { cache } = require("../utils/sessionCache");
+const { cache, SESSION_CACHE_KEY } = require("../utils/sessionCache");
 
 let prefixDir = ".";
 const testPrefixFile = prefixDir + "/account/admin.dat";
@@ -12,13 +12,37 @@ if (!fs.existsSync(testPrefixFile)) {
 }
 const SERVER_STATE_DIR = `${prefixDir}/server_state`;
 
+router.get(
+  "/:sessionId/svgcontent.html",
+  cache("30 minutes"),
+  async function (req, res) {
+    req.apicacheGroup = SESSION_CACHE_KEY;
+
+    const sessionId = req.params.sessionId;
+    const db = req.app.get("Database");
+    const session = db.sessionTable.getById(sessionId);
+
+    if (!session) {
+      res.status(404).send("Session not found");
+      return;
+    }
+
+    res.header("data-session-folder", session.folder);
+
+    const stream = fs.createReadStream(
+      `${SERVER_STATE_DIR}/${sessionId}.content.svg`,
+    );
+    stream.pipe(res);
+  },
+);
+
 router.get("/", function (req, res) {
   const sessionName = req.query.s;
   if (sessionName == null || sessionName.length == 0) {
     res
       .status(301)
       .redirect(
-        `/?msg=${encodeURIComponent(FORM_MESSAGES.INVALID_SESSION_DATA)}`
+        `/?msg=${encodeURIComponent(FORM_MESSAGES.INVALID_SESSION_DATA)}`,
       );
     return;
   }
@@ -35,7 +59,7 @@ router.get("/", function (req, res) {
     res
       .status(301)
       .redirect(
-        `/?msg=${encodeURIComponent(FORM_MESSAGES.INVALID_SESSION_DATA)}`
+        `/?msg=${encodeURIComponent(FORM_MESSAGES.INVALID_SESSION_DATA)}`,
       );
     return;
   }
@@ -44,28 +68,21 @@ router.get("/", function (req, res) {
     session.adminPassword === password
       ? 1
       : session.playerPassword === password
-      ? 2
-      : 0;
+        ? 2
+        : 0;
 
   res
     .status(301)
     .redirect(
       `/session/${session.id}/?p=${encodeURIComponent(
-        password
-      )}&t=${encodeURIComponent(type)}`
+        password,
+      )}&t=${encodeURIComponent(type)}`,
     );
 });
 
 router.get("/*", cache("30 minutes"), async function (req, res) {
-  if (req.path.endsWith("svgcontent.html")) {
-    const path = req.path.match("/(.*?)/.*$");
-    const sessionId = path[1];
-    const stream = fs.createReadStream(
-      `${SERVER_STATE_DIR}/${sessionId}.content.svg`
-    );
-    stream.pipe(res);
-    return;
-  }
+  // API Cache will be clear in routes/sm.js
+  req.apicacheGroup = SESSION_CACHE_KEY;
 
   const path = req.path.match("/(.*?)/*$");
   const sessionId = path[1];
@@ -74,7 +91,7 @@ router.get("/*", cache("30 minutes"), async function (req, res) {
     res
       .status(301)
       .redirect(
-        `/?msg=${encodeURIComponent(FORM_MESSAGES.INVALID_SESSION_DATA)}`
+        `/?msg=${encodeURIComponent(FORM_MESSAGES.INVALID_SESSION_DATA)}`,
       );
     return;
   }
@@ -85,7 +102,7 @@ router.get("/*", cache("30 minutes"), async function (req, res) {
     res
       .status(301)
       .redirect(
-        `/?msg=${encodeURIComponent(FORM_MESSAGES.INVALID_SESSION_DATA)}`
+        `/?msg=${encodeURIComponent(FORM_MESSAGES.INVALID_SESSION_DATA)}`,
       );
     return;
   }
@@ -94,7 +111,7 @@ router.get("/*", cache("30 minutes"), async function (req, res) {
     res
       .status(301)
       .redirect(
-        `/?msg=${encodeURIComponent(FORM_MESSAGES.INVALID_SESSION_DATA)}`
+        `/?msg=${encodeURIComponent(FORM_MESSAGES.INVALID_SESSION_DATA)}`,
       );
     return;
   }

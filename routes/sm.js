@@ -2,7 +2,7 @@ const express = require("express");
 const router = express.Router();
 
 const { MESSAGES, FORM_MESSAGES } = require("../constants");
-const { apicache } = require("../utils/sessionCache");
+const { apicache, SESSION_CACHE_KEY } = require("../utils/sessionCache");
 
 /* GET home page. */
 router.get("/", async function (req, res) {
@@ -20,7 +20,7 @@ router.get("/", async function (req, res) {
     res
       .status(301)
       .redirect(
-        `/root/?msg=${encodeURIComponent(FORM_MESSAGES.INVALID_ADMIN_USER)}`
+        `/root/?msg=${encodeURIComponent(FORM_MESSAGES.INVALID_ADMIN_USER)}`,
       );
     return;
   }
@@ -38,6 +38,9 @@ router.get("/", async function (req, res) {
     const playerpassword = query.pp;
     const fadeDuration = Number(query.fadeDuration);
     const isHtml5 = Boolean(query.isHtml5);
+    const defaultVolume = Number(query.defaultVolume);
+    const defaultAutoplay = Boolean(query.defaultAutoplay);
+    const enableAutoplayByDefault = Boolean(query.enableAutoplayByDefault);
 
     if (
       sessionId != null &&
@@ -63,6 +66,7 @@ router.get("/", async function (req, res) {
           return;
         }
 
+        const isVolumeChanged = defaultVolume !== session.defaultVolume;
         const hold = parseInt(holdDur);
         const vote = parseInt(voteDur);
         const size = parseInt(votingSize);
@@ -73,28 +77,55 @@ router.get("/", async function (req, res) {
             holdDuration: hold >= 0 ? hold : session.holdDuration,
             votingDuration: vote >= 0 ? vote : session.votingDuration,
             votingSize: size >= 0 ? size : session.votingSize,
+            defaultVolume:
+              defaultVolume >= 0 ? defaultVolume : session.defaultVolume,
+            defaultAutoplay: defaultAutoplay ?? session.defaultAutoplay,
+            enableAutoplayByDefault:
+              enableAutoplayByDefault ?? session.enableAutoplayByDefault,
           },
-          true
+          true,
         );
+
+        const sendToAllClients = req.app.get("sendToAllClients");
 
         if (session.folder.trim() !== folder) {
           const listScore = db.getListScore();
           if (listScore.indexOf(folder) >= 0) {
             await session.reloadScore(folder);
             session.clearAllTimer();
+            session.resetSessionHistory();
             await session.saveSessionStateToFile();
 
-            const sendToAllClients = req.app.get("sendToAllClients");
             sendToAllClients(session, 0, {
-              m: MESSAGES.MSG_NEED_DISPLAY,
-              v1: 0,
-              v2: 0,
+              m: MESSAGES.MSG_CHANGE_FOLDER,
+              soundList: session.soundList,
+              listFiles: session.listFiles,
+              folder: session.folder,
+              sessionId: session.id,
+              wsPath: session.wsPath,
+              qrSharePath: session.qrSharePath,
+              votingSize: session.votingSize,
+              isHtml5: session.isHtml5,
+              fadeDuration: session.fadeDuration,
+              scoreHasAbout: session.aboutSvg !== null,
+              scoreTitle: session.folder,
+              defaultVolume: session.defaultVolume,
+              defaultAutoplay: session.defaultAutoplay,
+              enableAutoplayByDefault: session.enableAutoplayByDefault,
             });
           }
         } else {
           await session.buildSVGContent();
+
+          if (isVolumeChanged) {
+            sendToAllClients(session, 0, {
+              m: MESSAGES.MSG_CHANGE_VOLUME,
+              volume: defaultVolume,
+            });
+          }
         }
-        apicache.clear();
+
+        apicache.clear(SESSION_CACHE_KEY);
       } else if (command === "create-session") {
         const listScore = db.getListScore();
         if (listScore.indexOf(folder) >= 0) {
@@ -107,7 +138,10 @@ router.get("/", async function (req, res) {
             adminpassword,
             playerpassword,
             isHtml5,
-            fadeDuration
+            fadeDuration,
+            defaultVolume,
+            defaultAutoplay,
+            enableAutoplayByDefault,
           );
 
           const hold = parseInt(holdDur);
@@ -118,8 +152,11 @@ router.get("/", async function (req, res) {
               holdDuration: hold >= 0 ? hold : session.holdDuration,
               votingDuration: vote >= 0 ? vote : session.votingDuration,
               votingSize: size >= 0 ? size : session.votingSize,
+              defaultAutoplay: defaultAutoplay ?? session.defaultAutoplay,
+              enableAutoplayByDefault:
+                enableAutoplayByDefault ?? session.enableAutoplayByDefault,
             },
-            true
+            true,
           );
         }
       } else if (command === "stop-session") {
@@ -128,12 +165,13 @@ router.get("/", async function (req, res) {
           await db.sessionTable.forceSessionStop(session);
 
           const sendToAllClientsWithDelay = req.app.get(
-            "sendToAllClientsWithDelay"
+            "sendToAllClientsWithDelay",
           );
           sendToAllClientsWithDelay(session, 0, {
-            m: MESSAGES.MSG_NEED_DISPLAY,
-            v1: 0,
-            v2: 0,
+            m: MESSAGES.MSG_CHANGE_FOLDER,
+            soundList: session.soundList,
+            listFiles: session.listFiles,
+            folder: session.folder,
           });
         }
       }
@@ -144,7 +182,7 @@ router.get("/", async function (req, res) {
   }
 
   const listSession = db.sessionTable.data.filter(
-    (o) => o.ownerId == checkExist.id
+    (o) => o.ownerId == checkExist.id,
   );
   const listScore = db.getListScore();
 

@@ -212,7 +212,7 @@ const isValidVote = (vote) => {
 
 function countVoteForSession(session) {
   const listConn = wsServer.connections.filter(
-    (conn) => conn.sessionId === session.id
+    (conn) => conn.sessionId === session.id,
   );
   const voteData = listConn.map((o) => o.currentVoteTo).filter(isValidVote);
   const counts = {};
@@ -311,7 +311,7 @@ async function startVotingForSessionWithDelay(session, timeDelay, customDur) {
       }
     },
     session.synTimeInterval * 1000,
-    session
+    session,
   );
 
   await session.saveSessionStateToFile();
@@ -360,7 +360,7 @@ async function stopVotingForSession(session) {
     }
   });
 
-  session.setCurrentIndexTo(mostVoteRingId);
+  session.setCurrIdxTo(mostVoteRingId);
   //unlock
   session.standbyTimer = setTimeout(
     async (session) => {
@@ -372,7 +372,7 @@ async function stopVotingForSession(session) {
       await session.saveSessionStateToFile();
     },
     1000,
-    session
+    session,
   );
   await session.saveSessionStateToFile();
 
@@ -414,7 +414,7 @@ async function startHoldingForSessionWithDelay(session, delay) {
       await session.saveSessionStateToFile();
     },
     session.currentHoldingDuration * 1000,
-    session
+    session,
   );
   await session.saveSessionStateToFile();
 
@@ -444,7 +444,7 @@ async function jumpScoreForSession(session, value) {
   const filename = session.history[value];
   const index = session.listFilesInLowerCase.indexOf(filename.toLowerCase());
   session.historyIndex = value;
-  session.setCurrentIndexTo(index);
+  session.setCurrIdxTo(index);
   await session.saveSessionStateToFile();
 
   sendToAllAdmins(session, 0, {
@@ -483,10 +483,10 @@ async function cancelVotingTimer(session) {
 
 function updateNumberOfConnectionForSession(session) {
   const countPlayer = wsServer.connections.filter(
-    (conn) => conn.sessionId == session.id && !conn.isAdmin && conn.isStaff
+    (conn) => conn.sessionId == session.id && !conn.isAdmin && conn.isStaff,
   ).length;
   const countRider = wsServer.connections.filter(
-    (conn) => conn.sessionId == session.id && !conn.isAdmin && !conn.isStaff
+    (conn) => conn.sessionId == session.id && !conn.isAdmin && !conn.isStaff,
   ).length;
 
   sendToAllAdmins(session, 0, {
@@ -506,7 +506,7 @@ async function messageHandle(conn, message) {
 
   if (!session) {
     console.log(
-      `Session with id ${sessionId} not found while processing message`
+      `Session with id ${sessionId} not found while processing message`,
     );
     return;
   }
@@ -548,7 +548,7 @@ async function messageHandle(conn, message) {
       frameVotingDur === "false" ||
       session.votingDuration === 0
     ) {
-      session.setCurrentIndexTo(Number(nextFrameIndex));
+      session.setCurrIdxTo(Number(nextFrameIndex));
       await session.saveSessionStateToFile();
 
       sendToAllAdmins(session, 0, {
@@ -562,7 +562,7 @@ async function messageHandle(conn, message) {
       });
       const customHoldDur = parseCustomDur(
         session.holdDuration,
-        nextFrameHoldingDur
+        nextFrameHoldingDur,
       );
       if (customHoldDur > 0) {
         await startHoldingForSessionWithDelay(session, 0);
@@ -669,6 +669,13 @@ async function messageHandle(conn, message) {
   if (msg === MESSAGES.MSG_SELECT_HISTORY) {
     const { selectedIdx } = messageData;
     await jumpScoreForSession(session, selectedIdx);
+    return;
+  }
+
+  if (msg === MESSAGES.MSG_GLOBAL_REFRESH) {
+    sendToAllClients(session, 0, {
+      m: MESSAGES.MSG_GLOBAL_REFRESH,
+    });
     return;
   }
 }

@@ -56,9 +56,31 @@ a {
   font-size: 1em;
 }
 
+
 @font-face {
   font-family: "Comfortaa";
   src: url("Comfortaa-Bold.ttf");
+}
+
+@font-face {
+  font-family: "MetallophileSp8-Light";
+  src: url("MetallophileSp8-Light.ttf");
+}
+
+@font-face {
+  font-family: "MetallophileSp8-LightIt";
+  src: url("MetallophileSp8-LightItalic.ttf");
+}
+
+
+@font-face {
+  font-family: "MetallophileSp8-Medium";
+  src: url("MetallophileSp8-Medium.ttf");
+}
+
+@font-face {
+  font-family: "MetallophileSp8-MediumIt";
+  src: url("MetallophileSp8-MediumItalic.ttf");
 }
 
 html,

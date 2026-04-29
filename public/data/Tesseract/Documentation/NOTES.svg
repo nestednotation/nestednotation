@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
+<svg width="100%" height="100%" viewBox="0 0 1701 2481" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" xml:space="preserve" xmlns:serif="http://www.serif.com/" style="fill-rule:evenodd;clip-rule:evenodd;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:1.5;">
+    <rect id="NOTES" x="0.742" y="0.507" width="1700" height="2480" style="fill:none;"/>
+    <g id="descriptions">
+    </g>
+    <g id="Map">
+        <g transform="matrix(96,0,0,96,491.254,97.1954)">
+        </g>
+        <text x="36.406px" y="97.195px" style="font-family:'MetallophileSp8-Medium', 'Metallophile Sp8';font-weight:500;font-size:96px;">notes (links)</text>
+    </g>
+	<a href="WEBAPP1.svg">
+    <g id="understand-web-app" serif:id="understand web app">
+        <path d="M1388.94,1909.74L1388.94,2062.6C1388.94,2080.67 1374.26,2095.35 1356.18,2095.35L345.303,2095.35C327.225,2095.35 312.548,2080.67 312.548,2062.6L312.548,1909.74C312.548,1891.66 327.225,1876.99 345.303,1876.99L1356.18,1876.99C1374.26,1876.99 1388.94,1891.66 1388.94,1909.74Z" style="fill:#caebed;"/>
+        <g transform="matrix(74.6667,0,0,74.6667,1351.57,2003.3)">
+        </g>
+        <text x="346.257px" y="2003.3px" style="font-family:'MetallophileSp8-Medium', 'Metallophile Sp8';font-weight:500;font-size:74.667px;">I want to understand the web app</text>
+    </g>
+	</a>
+	<a href="NN1.svg">
+    <g id="understand-notation" serif:id="understand notation">
+        <path d="M1388.94,1351.75L1388.94,1504.61C1388.94,1522.69 1374.26,1537.36 1356.18,1537.36L345.303,1537.36C327.225,1537.36 312.548,1522.69 312.548,1504.61L312.548,1351.75C312.548,1333.67 327.225,1319 345.303,1319L1356.18,1319C1374.26,1319 1388.94,1333.67 1388.94,1351.75Z" style="fill:#caebed;"/>
+        <g transform="matrix(74.6667,0,0,74.6667,1345.04,1451.92)">
+        </g>
+        <text x="354.134px" y="1451.92px" style="font-family:'MetallophileSp8-Medium', 'Metallophile Sp8';font-weight:500;font-size:74.667px;">I want to understand the notation</text>
+    </g>
+	</a>
+    <g id="Tab-Bar" serif:id="Tab Bar">
+        <g>
+            <path d="M1048.79,1763.1L1048.79,1792.96C1048.79,1801.21 1042.1,1807.9 1033.86,1807.9L667.632,1807.9C659.39,1807.9 652.699,1801.21 652.699,1792.96L652.699,1763.1C652.699,1754.86 659.39,1748.16 667.632,1748.16L1033.86,1748.16C1042.1,1748.16 1048.79,1754.86 1048.79,1763.1Z" style="fill:#dadada;"/>
+        </g>
+        <g>
+            <path d="M850.742,1763.1L850.742,1792.96C850.742,1801.21 844.051,1807.9 835.809,1807.9L667.631,1807.9C659.389,1807.9 652.698,1801.21 652.698,1792.96L652.698,1763.1C652.698,1754.86 659.389,1748.16 667.631,1748.16L835.809,1748.16C844.051,1748.16 850.742,1754.86 850.742,1763.1Z" style="fill:#f70;"/>
+        </g>
+        <g>
+            <g transform="matrix(0.999999,0,0,1,0.000774212,2.27374e-13)">
+                <text x="717.057px" y="1844.4px" style="font-family:'ArialMT', 'Arial', sans-serif;font-size:33.185px;">play</text>
+            </g>
+        </g>
+        <g>
+            <g transform="matrix(0.999999,0,0,1,0.000987666,2.27374e-13)">
+                <text x="914.753px" y="1844.4px" style="font-family:'ArialMT', 'Arial', sans-serif;font-size:33.185px;">guide</text>
+            </g>
+        </g>
+    </g>
+    <g id="Drones">
+        <g id="S">
+            <g id="Ring">
+                <path id="Backer" d="M1030.62,1145.86C976.101,1240.29 855.176,1272.7 760.75,1218.18C666.325,1163.66 633.928,1042.74 688.448,948.309C742.969,853.879 863.894,821.473 958.319,875.988C1052.75,930.503 1085.14,1051.43 1030.62,1145.86Z" style="fill:#fff;"/>
+                <path d="M1030.62,1145.86C976.101,1240.29 855.176,1272.7 760.75,1218.18C666.325,1163.66 633.928,1042.74 688.448,948.309C742.969,853.879 863.894,821.473 958.319,875.988C1052.75,930.503 1085.14,1051.43 1030.62,1145.86Z" style="fill:none;stroke:#000;stroke-width:5.21px;"/>
+                <path d="M1030.62,1145.86L1019.68,1139.55" style="fill:none;stroke:#000;stroke-width:5.21px;"/>
+                <path d="M699.386,954.624L688.448,948.309" style="fill:none;stroke:#000;stroke-width:5.21px;"/>
+                <path d="M767.065,1207.24L760.75,1218.18" style="fill:none;stroke:#000;stroke-width:5.21px;"/>
+                <path d="M958.319,875.988L952.005,886.925" style="fill:none;stroke:#000;stroke-width:5.21px;"/>
+                <path d="M958.315,1218.17L952.001,1207.24" style="fill:none;stroke:#000;stroke-width:5.21px;"/>
+                <path d="M767.069,886.932L760.755,875.995" style="fill:none;stroke:#000;stroke-width:5.21px;"/>
+                <path d="M699.373,1139.55L688.436,1145.87" style="fill:none;stroke:#000;stroke-width:5.21px;"/>
+                <path d="M1030.63,948.302L1019.7,954.617" style="fill:none;stroke:#000;stroke-width:5.21px;"/>
+                <path d="M859.535,1244.65L859.535,1232.02" style="fill:none;stroke:#000;stroke-width:5.21px;"/>
+                <path d="M859.535,862.149L859.535,849.52" style="fill:none;stroke:#000;stroke-width:5.21px;"/>
+                <path d="M674.604,1047.08L661.974,1047.08" style="fill:none;stroke:#000;stroke-width:5.21px;"/>
+                <path d="M1057.1,1047.08L1044.47,1047.08" style="fill:none;stroke:#000;stroke-width:5.21px;"/>
+            </g>
+            <g id="Root-Markers" serif:id="Root Markers">
+                <path id="_8" serif:id="8" d="M726.883,1123.43L755.697,1089.34L770.817,1115.53L726.883,1123.43ZM747.292,1111.65L758.226,1109.68L754.463,1103.16L747.292,1111.65Z" style="fill:#82a494;"/>
+            </g>
+            <g id="Notes">
+                <path id="_81" serif:id="8" d="M717.822,1164.31C708.663,1180.17 688.347,1185.62 672.482,1176.46C656.617,1167.3 651.173,1146.98 660.333,1131.12C669.492,1115.25 689.809,1109.81 705.673,1118.97C721.538,1128.13 726.982,1148.44 717.822,1164.31Z" style="fill:#82a494;stroke:#fff;stroke-width:15.01px;"/>
+                <path id="_3" serif:id="3" d="M1085.05,1065.6C1075.89,1081.46 1055.57,1086.91 1039.71,1077.75C1023.85,1068.59 1018.4,1048.27 1027.56,1032.41C1036.72,1016.54 1057.04,1011.1 1072.9,1020.26C1088.77,1029.42 1094.21,1049.73 1085.05,1065.6Z" style="fill:#82a494;stroke:#fff;stroke-width:15.01px;"/>
+            </g>
+            <g id="Treble-Marker" serif:id="Treble Marker">
+                <g id="_11" serif:id="11">
+                    <path id="_111" serif:id="11" d="M789.341,894.435C780.181,910.3 759.865,915.743 744,906.584C728.135,897.425 722.692,877.109 731.851,861.244C741.011,845.38 761.327,839.936 777.192,849.096C793.056,858.255 798.5,878.571 789.341,894.435Z" style="fill:#fff;stroke:#fff;stroke-width:13.88px;"/>
+                    <circle id="_11a" serif:id="11a" cx="760.596" cy="877.84" r="26.659" style="fill:#fff;stroke:#82a494;stroke-width:6.94px;"/>
+                </g>
+            </g>
+        </g>
+    </g>
+	<a href="START.svg">
+    <g id="MENU">
+        <path d="M1670.74,2352.76L1670.74,2433.26C1670.74,2442.78 1663.01,2450.51 1653.49,2450.51L1430.99,2450.51C1421.47,2450.51 1413.74,2442.78 1413.74,2433.26L1413.74,2352.76C1413.74,2343.24 1421.47,2335.51 1430.99,2335.51L1653.49,2335.51C1663.01,2335.51 1670.74,2343.24 1670.74,2352.76Z" style="fill:#caebed;"/>
+        <g transform="matrix(74.6667,0,0,74.6667,1634.39,2413.84)">
+        </g>
+        <text x="1446.9px" y="2413.84px" style="font-family:'MetallophileSp8-Medium', 'Metallophile Sp8';font-weight:500;font-size:74.667px;">MENU</text>
+    </g>
+	</a>
+    <g transform="matrix(1,0,0,1,-4285.37,66.4979)">
+        <text x="4489px" y="338px" style="font-family:'MetallophileSp8-Medium', 'Metallophile Sp8';font-weight:500;font-size:40px;">The dots in the ring represent musical notes.</text>
+        <text x="4489px" y="418px" style="font-family:'MetallophileSp8-Medium', 'Metallophile Sp8';font-weight:500;font-size:40px;">In play mode, touching dots will cause those notes to play<tspan x="5398.2px " y="418px ">.</tspan></text>
+        <text x="4489px" y="498px" style="font-family:'MetallophileSp8-Medium', 'Metallophile Sp8';font-weight:500;font-size:40px;">The dots and ring together represent a frame, or section of music.</text>
+        <g transform="matrix(40,0,0,40,5848.2,578)">
+        </g>
+        <text x="4489px" y="578px" style="font-family:'MetallophileSp8-Medium', 'Metallophile Sp8';font-weight:500;font-size:40px;">In guide mode, touching the dots or ring can move the whole group to the next frame.</text>
+    </g>
+</svg>

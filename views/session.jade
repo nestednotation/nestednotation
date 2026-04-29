@@ -34,8 +34,11 @@ html
       window.isHtml5 = JSON.parse('!{isHtml5}');
       window.fadeDuration = JSON.parse('!{fadeDuration}')
       window.scoreHasAbout = JSON.parse('!{scoreHasAbout}');
-      window.scoreTitle = '#{scoreTitle}';
-
+      window.scoreTitle = decodeURIComponent(`#{scoreTitle}`);
+      window.defaultVolume = JSON.parse('!{defaultVolume}');
+      window.defaultAutoplay = JSON.parse('!{defaultAutoplay}');
+      window.enableAutoplayByDefault = JSON.parse('!{enableAutoplayByDefault}');
+      
       window.CONST_NO_SLEEP_DURATION = #{noSleepDuration};
       window.MSG_PING = #{msgPing};
       window.MSG_TAP = #{msgTap};
@@ -50,6 +53,9 @@ html
       window.MSG_PAUSE = #{msgPause};
       window.MSG_SELECT_HISTORY = #{msgSelectHistory};
       window.MSG_SHOW_NUMBER_CONNECTION = #{msgShowNumberConnection};
+      window.MSG_CHANGE_FOLDER = #{msgChangeFolder};
+      window.MSG_CHANGE_VOLUME = #{msgChangeVolume};
+      window.MSG_GLOBAL_REFRESH = #{msgGlobalRefresh};
 
     script(src='/javascripts/voting.js')
     script(src='/javascripts/session.js')
@@ -125,6 +131,7 @@ html
       div(id="divfinish", style="display: none;")
         button(type="button", id="finish", onclick="sendFinish(this);") end
       button(type="button",  id="SleepActivate") wake lock
+      button(type="button", id="globalRefresh", onclick="sendGlobalRefresh();") global refresh
 
     div(id="loading-sound-indicator")
       | loading audio...
@@ -150,7 +157,7 @@ html
           li(onclick="refreshSession()") refresh session
             img(src="/svg/refresh-session-icon.svg")
           li(onclick="toggleAutoplay(this)") autoplay
-            div(class="autoplay-toggler")
+            div(class="autoplay-toggler", id="autoplay-toggler")
               div(class="autoplay-toggler-knob")
           li(onclick="showAboutNestedNotationPage()") about
             img(src="/svg/about-icon.svg")

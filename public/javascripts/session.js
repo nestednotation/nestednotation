@@ -44,7 +44,7 @@ function onDOMContentLoaded() {
       noSleepTimer = setInterval(noSleepCallback, 500);
       btnSleep.setAttribute("class", "hidden");
     },
-    false
+    false,
   );
   const searchParams = new URLSearchParams(window.location.search);
   const isAdmin = searchParams.get("t");
@@ -132,7 +132,7 @@ function sendToServer(message, payload) {
       sid: window.sessionId,
       msg: message,
       ...payload,
-    })
+    }),
   );
 }
 
@@ -179,11 +179,10 @@ function parseMessage(data) {
     return;
   }
 
-  if (msg === MSG_NEED_DISPLAY) {
-    console.log("receive need to refresh");
-    clearVotingIndicator();
-    window.countDic = null;
-    refreshScore();
+  if (msg === MSG_CHANGE_FOLDER) {
+    console.log("receive change folder");
+    window.location.reload();
+
     return;
   }
 
@@ -290,6 +289,18 @@ function parseMessage(data) {
     updateNumberOfConnection(playerCount, riderCount);
     return;
   }
+
+  if (msg === MSG_CHANGE_VOLUME) {
+    const { volume } = data;
+    window.defaultVolume = volume;
+    window.sessionInstance.updateDefaultVolume();
+    return;
+  }
+
+  if (msg === MSG_GLOBAL_REFRESH) {
+    window.location.reload();
+    return;
+  }
 }
 
 function updateNumberOfConnection(numPlayer, numRider) {
@@ -337,6 +348,15 @@ function sendHold(check) {
 
 function sendHistory(select) {
   sendToServer(MSG_SELECT_HISTORY, { selectedIdx: select.selectedIndex });
+}
+
+function sendGlobalRefresh() {
+  const r = confirm("Reload all clients in this session?");
+  if (!r) {
+    return;
+  }
+
+  sendToServer(MSG_GLOBAL_REFRESH);
 }
 
 function holdingCallback() {
@@ -408,7 +428,7 @@ function setCooldownTimeTo(second) {
     for (let i = 0; i < 10; i++) {
       list[i].setAttribute(
         "class",
-        i + 1 <= secondLeft ? "circle active" : "circle active filled"
+        i + 1 <= secondLeft ? "circle active" : "circle active filled",
       );
       if (i + 1 > cooldownDuration) {
         list[i].setAttribute("class", "hidden");
@@ -428,7 +448,7 @@ function setHoldingTimeTo(second) {
     for (let i = 0; i < 10; i++) {
       list[i].setAttribute(
         "class",
-        i + 1 <= secondLeft ? "circle active" : "circle active filled"
+        i + 1 <= secondLeft ? "circle active" : "circle active filled",
       );
       if (i + 1 > holdingDuration) {
         list[i].setAttribute("class", "hidden");
@@ -467,19 +487,4 @@ function setIndicatorHold(value) {
   }
 
   document.body.classList.toggle("holding", value);
-}
-
-function refreshScore() {
-  const xmlhttp = new XMLHttpRequest();
-
-  xmlhttp.onreadystatechange = function () {
-    if (this.readyState === 4 && this.status === 200) {
-      const html = this.responseText;
-      document.getElementById("MainSVGContent").innerHTML = html;
-
-      sendToServer(MSG_NEED_DISPLAY);
-    }
-  };
-  xmlhttp.open("GET", "svgcontent.html", true);
-  xmlhttp.send();
 }
