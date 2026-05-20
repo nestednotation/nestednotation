@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
+<svg width="100%" height="100%" viewBox="0 0 1061 1542" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" xml:space="preserve" xmlns:serif="http://www.serif.com/" style="fill-rule:evenodd;clip-rule:evenodd;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:1.5;">
+    <rect id="Documentation-START" serif:id="Documentation START" x="0" y="0.107" width="1060.8" height="1541.34" style="fill:none;"/>
+    <g id="sounders-OUT-votemarker" serif:id="sounders OUT votemarker">
+    </g>
+    <g>
+        <g transform="matrix(1,0,0,1,-4.50618,-874.265)">
+            <text x="241.094px" y="986.402px" style="font-family:'Impact', sans-serif;font-stretch:condensed;font-size:96px;fill:#82c072;">UNSILENT</text>
+            <g transform="matrix(96,0,0,96,825.625,986.402)">
+            </g>
+            <text x="595.516px" y="986.402px" style="font-family:'Impact', sans-serif;font-stretch:condensed;font-size:96px;">NIGHT</text>
+        </g>
+        <g transform="matrix(48,0,0,48,678.347,175.102)">
+        </g>
+        <text x="381.769px" y="175.102px" style="font-family:'Impact', sans-serif;font-stretch:condensed;font-size:48px;">Phil Kline, 1992</text>
+        <g transform="matrix(32,0,0,32,590.556,215.301)">
+        </g>
+        <text x="470.259px" y="215.301px" style="font-family:'Impact', sans-serif;font-stretch:condensed;font-size:32px;">(excerpt)</text>
+    </g>
+    <a href="Notes.svg">
+    <g id="NOTES-FOR-MUSICIANS" serif:id="NOTES FOR MUSICIANS">
+        <path d="M800.4,804.004L800.4,900.875C800.4,907.707 794.853,913.253 788.022,913.253L272.778,913.253C265.947,913.253 260.4,907.707 260.4,900.875L260.4,804.004C260.4,797.172 265.947,791.625 272.778,791.625L788.022,791.625C794.853,791.625 800.4,797.172 800.4,804.004Z" style="fill:#82c072;stroke:#82c072;stroke-width:4px;"/>
+        <g transform="matrix(1,0,0,1,39.7116,-142.518)">
+            <text x="245.913px" y="986.402px" style="font-family:'Impact', sans-serif;font-stretch:condensed;font-size:60px;">notes for musicians</text>
+            <g transform="matrix(60,0,0,60,693.686,1046.4)">
+            </g>
+            <text x="286.284px" y="1046.4px" style="font-family:'Impact', sans-serif;font-stretch:condensed;font-size:60px;">and par<tspan x="473.579px 491.86px " y="1046.4px 1046.4px ">ti</tspan>cipants</text>
+        </g>
+    </g>
+    </a>
+    <a href="Story.svg">
+    <g id="STORY">
+        <path d="M800.4,640.682L800.4,737.553C800.4,744.385 794.853,749.932 788.022,749.932L272.778,749.932C265.947,749.932 260.4,744.385 260.4,737.553L260.4,640.682C260.4,633.85 265.947,628.304 272.778,628.304L788.022,628.304C794.853,628.304 800.4,633.85 800.4,640.682Z" style="fill:#82c072;stroke:#82c072;stroke-width:4px;"/>
+        <g transform="matrix(1,0,0,1,39.7116,-305.839)">
+            <text x="351.88px" y="986.402px" style="font-family:'Impact', sans-serif;font-stretch:condensed;font-size:60px;stroke:#82c072;stroke-width:1px;stroke-linecap:butt;stroke-miterlimit:2;">the stor<tspan x="542.602px 569.497px " y="986.402px 986.402px ">y </tspan>of</text>
+            <g transform="matrix(60,0,0,60,662.969,1046.4)">
+            </g>
+            <text x="317.002px" y="1046.4px" style="font-family:'Impact', sans-serif;font-stretch:condensed;font-size:60px;stroke:#82c072;stroke-width:1px;stroke-linecap:butt;stroke-miterlimit:2;">Unsilent Night</text>
+        </g>
+    </g>
+    </a>
+</svg>
