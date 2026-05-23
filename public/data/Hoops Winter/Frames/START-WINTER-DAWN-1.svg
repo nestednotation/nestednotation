@@ -112,7 +112,7 @@
         </g>
       </g>
 		</a>
-      <g id="Western-Notation" sound="Low-A,Mid-E,High-Db" autoplay="false" volume="30" serif:id="Western Notation">
+      <g id="Western-Notation" sound="Low-A,Mid-E,High-Db" autoplay="false" volume="50,50,50" serif:id="Western Notation">
         <g id="Western-Notation-Backer" serif:id="Western Notation Backer" transform="matrix(1.06635,0,0,0.818182,-2171.09,-2616.55)">
                     <rect x="3443.03" y="5114.25" width="130.916" height="148.923" style="fill:#fff;"/>
                 </g>
