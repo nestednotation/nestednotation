@@ -86,7 +86,12 @@ a {
 
 @font-face {
   font-family: "Impact";
-  src: url("Impact.ttf");
+  src: url("impact.ttf");
+}
+
+@font-face {
+  font-family: "Anton";
+  src: url("Anton-Regular.ttf");
 }
 
 html,

@@ -6,10 +6,10 @@
     </g>
     <g>
         <g transform="matrix(1,0,0,1,-4.26248,-874.265)">
-            <text x="241.094px" y="986.402px" style="font-family:'Impact', sans-serif;font-stretch:condensed;font-size:96px;fill:#82c072;">UNSILENT</text>
+            <text x="241.094px" y="986.402px" style="font-family:'Impact', 'Anton', sans-serif;font-stretch:condensed;font-size:96px;fill:#82c072;">UNSILENT</text>
             <g transform="matrix(96,0,0,96,825.625,986.402)">
             </g>
-            <text x="595.516px" y="986.402px" style="font-family:'Impact', sans-serif;font-stretch:condensed;font-size:96px;">NIGHT</text>
+            <text x="595.516px" y="986.402px" style="font-family:'Impact', 'Anton', sans-serif;font-stretch:condensed;font-size:96px;">NIGHT</text>
         </g>
     </g>
     <g transform="matrix(1,0,0,1,3.12631,-5519.81)">
@@ -62,7 +62,7 @@
         <path d="M630.644,1412.43L630.644,1476.15C630.644,1480.64 626.995,1484.29 622.502,1484.29L438.785,1484.29C434.292,1484.29 430.644,1480.64 430.644,1476.15L430.644,1412.43C430.644,1407.94 434.292,1404.29 438.785,1404.29L622.502,1404.29C626.995,1404.29 630.644,1407.94 630.644,1412.43Z" style="fill:#82c072;stroke:#82c072;stroke-width:4px;"/>
         <g transform="matrix(60,0,0,60,589.296,1467.66)">
         </g>
-        <text x="469.53px" y="1467.66px" style="font-family:'Impact', sans-serif;font-stretch:condensed;font-size:60px;stroke:#82c072;stroke-width:1px;stroke-linecap:butt;stroke-miterlimit:2;">back</text>
+        <text x="469.53px" y="1467.66px" style="font-family:'Impact', 'Anton', sans-serif;font-stretch:condensed;font-size:60px;stroke:#82c072;stroke-width:1px;stroke-linecap:butt;stroke-miterlimit:2;">back</text>
     </g>
     </a>
 </svg>
