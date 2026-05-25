@@ -83,6 +83,12 @@ a {
   src: url("MetallophileSp8-MediumItalic.ttf");
 }
 
+
+@font-face {
+  font-family: "Impact";
+  src: url("Impact.ttf");
+}
+
 html,
 body,
 div,
