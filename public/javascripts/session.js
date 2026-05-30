@@ -1,19 +1,7 @@
-let ws;
-let noSleep = new NoSleep();
-let noSleepTimer;
-let noSleepTimerCount;
-let pingTimer;
-
-let isReady = false;
-let pingCountToReady = 3;
 let lblVotingTime = null;
-let btnSleep = null;
-
 let divMainContent = null;
 
 window.currentIndex = 0;
-let timeStampOffset = 0;
-let timeStampRate = 1.0;
 
 let cooldownTimer = null;
 let cooldownDuration = 11;
@@ -34,18 +22,7 @@ document.addEventListener("DOMContentLoaded", onDOMContentLoaded, false);
 function onDOMContentLoaded() {
   lblVotingTime = document.getElementById("VotingTime");
   divMainContent = document.getElementById("MainContent");
-  btnSleep = document.getElementById("SleepActivate");
 
-  //sleep wake lock
-  btnSleep.addEventListener(
-    "click",
-    function () {
-      noSleepTimerCount = 0;
-      noSleepTimer = setInterval(noSleepCallback, 500);
-      btnSleep.setAttribute("class", "hidden");
-    },
-    false,
-  );
   const searchParams = new URLSearchParams(window.location.search);
   const isAdmin = searchParams.get("t");
   if (isAdmin === "1") {
@@ -56,9 +33,6 @@ function onDOMContentLoaded() {
     const divpause = document.getElementById("divpause");
     divpause.style.display = "block";
 
-    const divfinish = document.getElementById("divfinish");
-    divfinish.style.display = "block";
-
     const divhistory = document.getElementById("divhistory");
     divhistory.style.display = "block";
 
@@ -66,34 +40,8 @@ function onDOMContentLoaded() {
     tablefooter.style.display = "flex";
   }
 
-  ws = new WebSocket(wsPath);
-
-  ws.onopen = function () {
-    sendToServer(MSG_PING, { clientTime: Date.now() });
-  };
-
-  ws.onmessage = function (event) {
-    const data = JSON.parse(event.data);
-    const timeOfJob = data.t;
-
-    if (timeOfJob === 0) {
-      parseMessage(data);
-    } else {
-      const serverTime = getServerTime();
-      if (serverTime >= timeOfJob) {
-        parseMessage(data);
-      } else {
-        const delay = timeOfJob - serverTime;
-        setTimeout(parseMessage, delay, data);
-      }
-    }
-  };
-}
-
-function getServerTime() {
-  const currentTime = Date.now();
-  const serverTime = Math.round(currentTime + timeStampOffset);
-  return serverTime;
+  connectWebSocket();
+  document.addEventListener("visibilitychange", onVisibilityChange);
 }
 
 function viewDidLoad() {
@@ -103,37 +51,6 @@ function viewDidLoad() {
   pingTimer = setInterval(pingCallback, 1000 * 60);
   //request window.currentIndex
   sendToServer(MSG_NEED_DISPLAY);
-}
-
-function pingCallback() {
-  sendToServer(MSG_PING, { clientTime: Date.now() });
-}
-
-function noSleepCallback() {
-  if (noSleepTimerCount == 0) {
-    noSleep.enable();
-  } else if (noSleepTimerCount == 1) {
-    noSleep.disable();
-  } else if (noSleepTimerCount == 2 * CONST_NO_SLEEP_DURATION) {
-    noSleepTimerCount = -1;
-  }
-  noSleepTimerCount++;
-}
-
-function sendToServer(message, payload) {
-  if (ws.readyState !== ws.OPEN) {
-    return;
-  }
-
-  ws.send(
-    JSON.stringify({
-      sig: window.staffCode,
-      cid: window.currentIndex,
-      sid: window.sessionId,
-      msg: message,
-      ...payload,
-    }),
-  );
 }
 
 function parseMessage(data) {
@@ -332,14 +249,6 @@ function setCheckPause(value) {
 
 function sendPause(check) {
   sendToServer(MSG_PAUSE, { isPause: check.checked });
-}
-
-function sendFinish() {
-  const r = confirm("Are you sure you want to end ?");
-
-  if (r) {
-    sendToServer(MSG_FINISH);
-  }
 }
 
 function sendHold(check) {

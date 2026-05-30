@@ -8,7 +8,6 @@ html
     script(src='https://cdn.jsdelivr.net/gh/davidshimjs/qrcodejs/qrcode.min.js')
     script(src='/javascripts/ui.js')
     script(src='/javascripts/audio-player.js')
-    script(src='/javascripts/nosleep.js')
 
     meta( name='viewport', content='width=device-width, initial-scale=1.0' )
 
@@ -39,7 +38,6 @@ html
       window.defaultAutoplay = JSON.parse('!{defaultAutoplay}');
       window.enableAutoplayByDefault = JSON.parse('!{enableAutoplayByDefault}');
       
-      window.CONST_NO_SLEEP_DURATION = #{noSleepDuration};
       window.MSG_PING = #{msgPing};
       window.MSG_TAP = #{msgTap};
       window.MSG_SHOW = #{msgShow};
@@ -58,6 +56,7 @@ html
       window.MSG_GLOBAL_REFRESH = #{msgGlobalRefresh};
 
     script(src='/javascripts/voting.js')
+    script(src='/javascripts/ws-client.js')
     script(src='/javascripts/session.js')
 
     svg(id="filter-source", xmlns="http://www.w3.org/2000/svg", version="1.1", viewBox="0 0 1 1", width="0", height="0", style="display: block !important; height: 0;")
@@ -128,13 +127,12 @@ html
       span Rider:
       span(id="spanrider") 0
       span |
-      div(id="divfinish", style="display: none;")
-        button(type="button", id="finish", onclick="sendFinish(this);") end
-      button(type="button",  id="SleepActivate") wake lock
       button(type="button", id="globalRefresh", onclick="sendGlobalRefresh();") global refresh
 
     div(id="loading-sound-indicator")
       | loading audio...
+
+    div(id="ws-reconnect-indicator")
 
     div(id="change-mode-container", class="change-mode-container", data-mode="PLAY")
       div(class="mode-indicator-container")
