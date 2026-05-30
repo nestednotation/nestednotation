@@ -433,7 +433,6 @@ class BMSession {
     const html = fn({
       title: `Session: ${this.folder}`,
       sessionId: this.id,
-      noSleepDuration: 60,
       scoreTitle: this.folder,
 
       msgPing: MESSAGES.MSG_PING,
