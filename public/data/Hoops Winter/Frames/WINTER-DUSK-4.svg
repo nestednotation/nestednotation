@@ -4,7 +4,10 @@
     <g transform="matrix(1,0,0,1,-8062,-8416)">
         <g id="WINTER-DUSK-4" transform="matrix(0.937778,0,0,1.22222,8062,8416)">
             <rect x="0" y="0" width="1800" height="1800" style="fill:none;"/>
-            <g id="Western-Notation" sound="Low-C,Mid-A,Mid-D,High-E" autoplay="false" serif:id="Western Notation">
+            <g id="Western-Notation" sound="Low-C,Mid-A,Mid-D,High-E" autoplay="false" volume="50,50,50,50" serif:id="Western Notation">
+                <g id="Western-Notation-Backer" serif:id="Western Notation Backer" transform="matrix(1.06635,0,0,0.818182,-2171.09,-2616.55)">
+                    <rect x="3443.03" y="5114.25" width="130.916" height="148.923" style="fill:#fff;"/>
+                </g>
                 <g id="staff" transform="matrix(1.06635,0,0,0.818182,1369.18,1443.82)">
                     <g transform="matrix(0.424942,0,0,1.00627,71.3164,-1.7105)">
                         <path d="M124.016,173.622L425.196,173.622" style="fill:none;fill-rule:nonzero;stroke:#000;stroke-width:2.73px;"/>
@@ -126,15 +129,15 @@
                     </g>
                 </g>
             </g>
-            <g id="S-melisma" sound="Melisma-Winter-Dusk-4" autoplay="false" serif:id="S melisma" transform="matrix(0.21327,0,0,0.163636,735.008,645.35)">
+            <g id="S-melisma" sound="Melisma-Winter-Dusk-4" autoplay="true" serif:id="S melisma" transform="matrix(0.21327,0,0,0.163636,735.008,645.35)">
                 <g id="_03" serif:id="0" transform="matrix(1.16724,4.24124e-16,-3.22999e-16,1.04219,-80.0346,-25.436)">
                     <g id="Root-Markers1" serif:id="Root Markers">
                         <path id="_04" serif:id="0" d="M731.999,618L768,730L695.999,730L731.999,618ZM731.999,680.557L722.918,708.811L741.081,708.811L731.999,680.557Z"/>
                     </g>
                 </g>
                 <g id="Ring1" serif:id="Ring" transform="matrix(-1.09813,0,0,-1.09811,1579.66,2245.28)">
-                    <g transform="matrix(0.545852,-0.945443,0.9537,0.550619,-641.299,1170.26)">
-                        <ellipse cx="692" cy="1046" rx="458" ry="454" style="fill:none;stroke:#000;stroke-width:9.61px;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:1.5;"/>
+                    <g id="Melisma-Backer" serif:id="Melisma Backer" transform="matrix(0.545852,-0.945443,0.9537,0.550619,-641.299,1170.26)">
+                        <ellipse cx="692" cy="1046" rx="458" ry="454" style="fill:#fff;stroke:#000;stroke-width:9.61px;stroke-linecap:round;stroke-miterlimit:1.5;"/>
                     </g>
                     <g transform="matrix(0.5,-0.866025,0.629632,0.363518,-412.931,1316.59)">
                         <path d="M768,524.038L768,568" style="fill:none;stroke:#000;stroke-width:12.06px;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:1.5;"/>
@@ -311,6 +314,9 @@
                 </g>
             </g>
             <g id="Rhythm" sound="Rhythm-Winter-Dusk-4" autoplay="false" transform="matrix(1.06635,0,0,0.818182,260.19,1412.68)">
+                <g id="Rhythm-Backer" serif:id="Rhythm Backer" transform="matrix(0.99182,0,0,1.13202,-2253.5,-5574.02)">
+                    <rect x="2514.54" y="4832.26" width="725.288" height="86.784" style="fill:#fff;"/>
+                </g>
                 <g id="_8ve" serif:id="8ve" transform="matrix(2.28571,0,0,2.28571,143.143,-197.143)">
                     <g id="Line-Below" serif:id="Line Below" transform="matrix(1,2.49371e-15,2.41035e-15,1.39002,-1.60457e-13,-27.71)">
                         <path d="M350,70.833L350,79.167" style="fill:none;stroke:#1a1a1a;stroke-width:1.72px;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:5;"/>
