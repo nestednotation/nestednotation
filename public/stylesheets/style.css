@@ -83,6 +83,17 @@ a {
   src: url("MetallophileSp8-MediumItalic.ttf");
 }
 
+
+@font-face {
+  font-family: "Impact";
+  src: url("impact.ttf");
+}
+
+@font-face {
+  font-family: "Anton";
+  src: url("Anton-Regular.ttf");
+}
+
 html,
 body,
 div,
