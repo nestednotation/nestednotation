@@ -215,9 +215,20 @@ class Note {
       soundInst.on("end", () => {
         this.playingCount--;
       });
+      let retryCount = 0;
       soundInst.on("loaderror", (...e) => {
         logMismatchSound();
         console.error(`Unable to load sound ${sn}`, ...e);
+        if (retryCount < 1) {
+          retryCount++;
+          const retryDelay = 1000 + Math.random() * 4000;
+          setTimeout(() => {
+            soundInst.unload();
+            soundInst.load();
+          }, retryDelay);
+        } else {
+          window.sessionInstance?.markSoundLoadFailed(sn);
+        }
       });
 
       return soundInst;
@@ -394,6 +405,7 @@ class AudioSession {
   guideLock = false;
 
   soundLoadSet = new Set();
+  failedSounds = new Set();
 
   autoPlay = false;
 
@@ -472,9 +484,11 @@ class AudioSession {
       if (this.autoPlay) {
         initialFrame.playAllAutoplayNotes();
       }
-      initialFrame
-        .getAllSoundNameInFrame()
-        .forEach((s) => this.markSoundAsLoading(s));
+      initialFrame.getAllSoundNameInFrame().forEach((s) => {
+        if (!this.failedSounds.has(s)) {
+          this.markSoundAsLoading(s);
+        }
+      });
       Howler.stop();
       return;
     }
@@ -506,7 +520,12 @@ class AudioSession {
         });
         prevNote.stop();
       } else {
-        note.soundNames.forEach((sn) => this.markSoundAsLoading(sn));
+        note.soundNames.forEach((sn, idx) => {
+          if (this.failedSounds.has(sn)) return;
+          if (note.soundInstances[idx].state() !== "loaded") {
+            this.markSoundAsLoading(sn);
+          }
+        });
         note.loadNoteSounds();
 
         if (this.autoPlay && note.isAutoplay) {
@@ -553,10 +572,35 @@ class AudioSession {
     togglerElement.dataset.active = this.autoPlay;
   }
 
+  preloadFrameAudio(frameIdx) {
+    console.log("preload");
+    const frame = this.frameMap[`svg${frameIdx}`];
+    if (!frame) return;
+    for (const note of frame.notes) {
+      note.loadNoteSounds();
+    }
+  }
+
   markSoundAsLoading(soundKey) {
     this.soundLoadSet.add(soundKey);
 
     document.body.classList.toggle("loading-sound", true);
+  }
+
+  markSoundLoadFailed(soundKey) {
+    this.failedSounds.add(soundKey);
+    this.soundLoadSet.delete(soundKey);
+
+    document.body.classList.toggle(
+      "loading-sound",
+      this.soundLoadSet.size !== 0,
+    );
+    document.body.classList.add("loading-sound-error");
+
+    const indicator = document.getElementById("loading-sound-indicator");
+    if (indicator) {
+      indicator.textContent = "please refresh your browser";
+    }
   }
 
   handleSoundLoaded(loadedSound) {

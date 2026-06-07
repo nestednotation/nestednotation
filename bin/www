@@ -383,7 +383,7 @@ async function stopVotingForSession(session) {
   });
 
   if (!session.isPause) {
-    const timestamp = new Date().getTime() + 1000 + 100;
+    const timestamp = new Date().getTime() + session.preloadDuration;
     sendToAllClients(session, timestamp, {
       m: MESSAGES.MSG_SHOW,
       showIdx: mostVoteRingId,
@@ -454,7 +454,7 @@ async function jumpScoreForSession(session, value) {
   });
 
   if (!session.isPause) {
-    sendToAllClients(session, Date.now() + 100, {
+    sendToAllClients(session, Date.now() + session.preloadDuration, {
       m: MESSAGES.MSG_SHOW,
       showIdx: index,
     });
@@ -556,7 +556,7 @@ async function messageHandle(conn, message) {
         history: session.history,
         selectedIdx: session.historyIndex,
       });
-      sendToAllClientsWithDelay(session, 100, {
+      sendToAllClientsWithDelay(session, session.preloadDuration, {
         m: MESSAGES.MSG_SHOW,
         showIdx: session.currentIndex,
       });

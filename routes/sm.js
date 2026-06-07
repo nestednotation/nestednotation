@@ -37,6 +37,7 @@ router.get("/", async function (req, res) {
     const adminpassword = query.sp;
     const playerpassword = query.pp;
     const fadeDuration = Number(query.fadeDuration);
+    const preloadDuration = Number(query.preloadDuration);
     const isHtml5 = Boolean(query.isHtml5);
     const defaultVolume = Number(query.defaultVolume);
     const defaultAutoplay = Boolean(query.defaultAutoplay);
@@ -74,6 +75,7 @@ router.get("/", async function (req, res) {
           {
             isHtml5,
             fadeDuration,
+            preloadDuration: preloadDuration >= 0 ? preloadDuration : session.preloadDuration,
             holdDuration: hold >= 0 ? hold : session.holdDuration,
             votingDuration: vote >= 0 ? vote : session.votingDuration,
             votingSize: size >= 0 ? size : session.votingSize,
@@ -149,6 +151,7 @@ router.get("/", async function (req, res) {
           const size = parseInt(votingSize);
           await session.patchState(
             {
+              preloadDuration: preloadDuration >= 0 ? preloadDuration : session.preloadDuration,
               holdDuration: hold >= 0 ? hold : session.holdDuration,
               votingDuration: vote >= 0 ? vote : session.votingDuration,
               votingSize: size >= 0 ? size : session.votingSize,

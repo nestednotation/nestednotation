@@ -541,6 +541,16 @@ body.ipad {
   display: block;
 }
 
+.loading-sound-error #loading-sound-indicator {
+  display: block;
+  color: #c0392b;
+}
+
+.loading-sound-error #loading-sound-indicator::before {
+  animation: none;
+  width: 0;
+}
+
 #loading-sound-indicator {
   font-size: 18px;
   color: #9a9a9a;
