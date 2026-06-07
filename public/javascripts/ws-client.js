@@ -51,6 +51,9 @@ function onWsOpen() {
 function onWsMessage(event) {
   const data = JSON.parse(event.data);
   const delay = Math.max(0, data.t - getServerTime());
+  if (data.m === MSG_SHOW && delay > 0 && data.showIdx !== -1) {
+    window.sessionInstance?.preloadFrameAudio(data.showIdx);
+  }
   delay === 0 ? parseMessage(data) : setTimeout(parseMessage, delay, data);
 }
 

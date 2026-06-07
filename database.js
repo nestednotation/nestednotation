@@ -202,6 +202,7 @@ class BMSession {
   holdDuration = 0;
   votingDuration = 10;
   votingSize = 100;
+  preloadDuration = 1100;
   hasSounds = false;
 
   get qrSharePath() {
