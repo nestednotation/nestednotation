@@ -506,6 +506,17 @@ class AudioSession {
       }
     }
 
+    // Sweep all frames other than prev (already handled above) and next
+    // (about to start) to stop any sounds that leaked from earlier frames.
+    for (const [frameId, frame] of Object.entries(this.frameMap)) {
+      if (frameId === prevId || frameId === nextId) continue;
+      for (const note of frame.notes) {
+        if (note.playingCount > 0) {
+          note.fadeStop(fadeDuration);
+        }
+      }
+    }
+
     console.log(
       "Common sound notes between prev and current frame:",
       Object.keys(continueNotes),
@@ -699,11 +710,11 @@ document.addEventListener(
   false,
 );
 
-window.onbeforeunload = () => {
+window.addEventListener("pagehide", () => {
   Howler.unload();
   window.sessionInstance = null;
   window.removeEventListener("update-view", handleOnUpdateView);
-};
+});
 
 console.log("Session instance", window.sessionInstance);
 
