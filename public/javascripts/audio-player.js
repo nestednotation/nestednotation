@@ -114,6 +114,10 @@ class Note {
   frameInstance = null;
   domElement = null;
 
+  // groupsound groups this note belongs to (see Frame.initialFrameGroups).
+  // When empty, the note behaves as a normal standalone note.
+  groups = [];
+
   get viewMode() {
     return this.frameInstance.sessionInstance.mode;
   }
@@ -131,6 +135,10 @@ class Note {
     if (this._playingCount === 0) {
       this.domElement.dataset.playing = false;
     }
+
+    // Let any groupsound group this note belongs to recompute its combined
+    // playing state (and animation) whenever this note starts/stops.
+    this.groups.forEach((group) => group.refresh());
   }
 
   get isPlaying() {
@@ -313,6 +321,14 @@ class Note {
     }
 
     e.preventDefault();
+
+    // When this note is part of a groupsound, it is controlled as a unit by
+    // the group click handler (which receives this click via bubbling), so
+    // the individual note must not toggle itself.
+    if (this.groups.length > 0) {
+      return;
+    }
+
     if (this.playingCount > 0) {
       this.stop();
     } else {
@@ -347,6 +363,9 @@ class Frame {
   noteIds = [];
   noteMap = {};
 
+  // groupsound groups in this frame (see initialFrameGroups).
+  groups = [];
+
   sessionInstance = null;
   frameElement = null;
 
@@ -356,6 +375,7 @@ class Frame {
     this.id = frameElement.id;
 
     this.initialFrameNotes();
+    this.initialFrameGroups();
   }
 
   playAllAutoplayNotes() {
@@ -392,6 +412,59 @@ class Frame {
     }
 
     return this.notes;
+  }
+
+  // A groupsound element (`<g groupsound="true">`) bundles every [sound] note
+  // nested inside it so they play, stop and animate together as a single unit.
+  initialFrameGroups() {
+    const groupNodes = this.frameElement.querySelectorAll(
+      '[groupsound="true"]',
+    );
+    for (const groupNode of groupNodes) {
+      const groupNotes = this.notes.filter((note) =>
+        groupNode.contains(note.domElement),
+      );
+      if (groupNotes.length === 0) {
+        continue;
+      }
+
+      const group = {
+        element: groupNode,
+        notes: groupNotes,
+        // The group reflects the "playing" animation only when *every* member
+        // note is playing (e.g. all sounds carried over from the previous
+        // frame). The animation itself is driven by CSS via [data-playing].
+        refresh() {
+          this.element.dataset.playing = this.notes.every((n) => n.isPlaying);
+        },
+      };
+
+      // NOTE: groupsound currently ignores its own playback attributes
+      // (volume, autoplay, loop, ...) — member notes keep their individual
+      // settings. Group-level attribute handling can be added here later.
+
+      groupNode.addEventListener("click", (e) =>
+        this.onGroupClicked(e, group),
+      );
+      groupNotes.forEach((note) => note.groups.push(group));
+      this.groups.push(group);
+    }
+
+    return this.groups;
+  }
+
+  onGroupClicked(e, group) {
+    // In GUIDE mode, sound can't be interacted with (let link navigation run)
+    if (this.sessionInstance.mode === SESSION_MODES.GUIDE) {
+      return;
+    }
+
+    e.preventDefault();
+
+    // Toggle the whole group: if anything in it is playing, stop all;
+    // otherwise play all — mirroring a single note's click behaviour.
+    const anyPlaying = group.notes.some((note) => note.isPlaying);
+    group.notes.forEach((note) => (anyPlaying ? note.stop() : note.play()));
   }
 }
 
@@ -495,11 +568,38 @@ class AudioSession {
 
     const { fadeDuration = 1000 } = window;
 
-    const prevSoundData = this.frameMap[prevId].noteMap;
-    const nextSoundData = this.frameMap[nextId].noteMap;
+    const prevFrame = this.frameMap[prevId];
+    const nextFrame = this.frameMap[nextId];
+    const prevSoundData = prevFrame.noteMap;
+    const nextSoundData = nextFrame.noteMap;
+
+    // Continuation for grouped notes is all-or-nothing AND exact: a group only
+    // carries its sound across a transition when the *same set of sounds* forms
+    // a group on both sides and every member was playing. We key a group by its
+    // sorted member-note ids; a next-frame group may inherit carried-over sound
+    // only if an identical, fully-playing group existed in the previous frame.
+    //
+    // The gate is decided by the NEXT frame's grouping: ungrouped notes always
+    // continue individually, so a group that dissolves into loose notes keeps
+    // those notes ringing (and a partial/grown/shrunk group does not carry).
+    const groupSignature = (group) =>
+      group.notes
+        .map((n) => n.id)
+        .sort()
+        .join(";");
+    const prevPlayingGroupSigs = new Set(
+      prevFrame.groups
+        .filter((g) => g.notes.every((n) => n.isPlaying))
+        .map(groupSignature),
+    );
+    const canNextNoteInherit = (nextNote) =>
+      nextNote.groups.length === 0 ||
+      nextNote.groups.some((g) => prevPlayingGroupSigs.has(groupSignature(g)));
+
     const continueNotes = {};
     for (const [noteId, note] of Object.entries(prevSoundData)) {
-      if (nextSoundData[noteId] && note.playingCount > 0) {
+      const nextNote = nextSoundData[noteId];
+      if (note.playingCount > 0 && nextNote && canNextNoteInherit(nextNote)) {
         continueNotes[noteId] = note;
       } else {
         note.fadeStop(fadeDuration);

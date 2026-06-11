@@ -508,8 +508,15 @@ body.ipad {
   transform: translateY(-105%);
 }
 
-.play-mode [sound][data-playing="true"] {
+.play-mode [sound][data-playing="true"],
+.play-mode [groupsound="true"][data-playing="true"] {
   animation: playingNode 6s infinite;
+}
+
+/* A groupsound animates as a single unit, so its member notes must not
+   animate individually (that would double up the opacity animation). */
+.play-mode [groupsound="true"] [sound][data-playing="true"] {
+  animation: none;
 }
 
 /* Hide user vote in play mode */
