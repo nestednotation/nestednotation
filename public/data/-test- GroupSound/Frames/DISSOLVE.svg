@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 720">
+  <a href="INERT.svg">
+    <rect x="0" y="0" width="1000" height="720" fill="#ffffff"/>
+    <text x="500" y="54" text-anchor="middle" font-family="sans-serif" font-size="32" fill="#222" style="pointer-events:none">DISSOLVE — group becomes loose notes -> they keep ringing</text>
+
+    <!-- Edge case: the previous frame (NESTED-STRUCT) has a fully-playing group
+         {Low-B, Mid-Eb, High-Ab}. Here Mid-Eb and High-Ab are UNGROUPED, so
+         they continue individually; Low-B is absent and stops. This is the
+         "group dissolves into loose notes" case: ungrouped notes are not
+         subject to the all-or-nothing group rule. -->
+    <circle cx="350" cy="320" r="90" fill="#5a8cf5" sound="Font/2-Mid-Eb"/>
+    <text x="350" y="320" text-anchor="middle" font-family="sans-serif" font-size="22" fill="#fff" style="pointer-events:none">Mid-Eb</text>
+    <text x="350" y="348" text-anchor="middle" font-family="sans-serif" font-size="15" fill="#dbe7ff" style="pointer-events:none">(ungrouped, carries)</text>
+
+    <circle cx="650" cy="320" r="90" fill="#7aa6ff" sound="Font/2-High-Ab"/>
+    <text x="650" y="320" text-anchor="middle" font-family="sans-serif" font-size="22" fill="#fff" style="pointer-events:none">High-Ab</text>
+    <text x="650" y="348" text-anchor="middle" font-family="sans-serif" font-size="15" fill="#dbe7ff" style="pointer-events:none">(ungrouped, carries)</text>
+
+    <text x="500" y="500" text-anchor="middle" font-family="sans-serif" font-size="22" fill="#666" style="pointer-events:none">arrive from NESTED-STRUCT (group playing): these 2 keep ringing, Low-B stops</text>
+    <text x="500" y="540" text-anchor="middle" font-family="sans-serif" font-size="20" fill="#999" style="pointer-events:none">each animates on its own (no group box here)</text>
+    <text x="500" y="690" text-anchor="middle" font-family="sans-serif" font-size="20" fill="#999" style="pointer-events:none">guide mode: tap to go to INERT &#8594;</text>
+  </a>
+</svg>
