@@ -461,10 +461,20 @@ class Frame {
 
     e.preventDefault();
 
-    // Toggle the whole group: if anything in it is playing, stop all;
-    // otherwise play all — mirroring a single note's click behaviour.
-    const anyPlaying = group.notes.some((note) => note.isPlaying);
-    group.notes.forEach((note) => (anyPlaying ? note.stop() : note.play()));
+    // Toggle the whole group as a unit. The group animates as a box only when
+    // *every* member is playing, so that fully-playing state is treated as
+    // "on": tapping a fully-playing group stops it, while tapping a group that
+    // is off OR only partially playing (a partial assemble) fills in the rest
+    // so the whole group plays and animates. Already-playing members are left
+    // alone to avoid starting a second, overlapping instance of their sound.
+    const allPlaying = group.notes.every((note) => note.isPlaying);
+    group.notes.forEach((note) => {
+      if (allPlaying) {
+        note.stop();
+      } else if (!note.isPlaying) {
+        note.play();
+      }
+    });
   }
 }
 
@@ -570,44 +580,43 @@ class AudioSession {
 
     const prevFrame = this.frameMap[prevId];
     const nextFrame = this.frameMap[nextId];
-    const prevSoundData = prevFrame.noteMap;
-    const nextSoundData = nextFrame.noteMap;
 
-    // Continuation for grouped notes is all-or-nothing AND exact: a group only
-    // carries its sound across a transition when the *same set of sounds* forms
-    // a group on both sides and every member was playing. We key a group by its
-    // sorted member-note ids; a next-frame group may inherit carried-over sound
-    // only if an identical, fully-playing group existed in the previous frame.
+    // Sound continuity is per-note and NOT gated by groups: a note that is
+    // playing in the previous frame carries its sound into the next frame
+    // wherever a note with the same sound id appears. Dissolve (group -> loose
+    // notes) and assemble (loose notes -> group) are therefore the *same* rule
+    // applied in opposite directions — whether either side is grouped, and
+    // whether the match is full or partial, no longer affects carry-over.
     //
-    // The gate is decided by the NEXT frame's grouping: ungrouped notes always
-    // continue individually, so a group that dissolves into loose notes keeps
-    // those notes ringing (and a partial/grown/shrunk group does not carry).
-    const groupSignature = (group) =>
-      group.notes
-        .map((n) => n.id)
-        .sort()
-        .join(";");
-    const prevPlayingGroupSigs = new Set(
-      prevFrame.groups
-        .filter((g) => g.notes.every((n) => n.isPlaying))
-        .map(groupSignature),
-    );
-    const canNextNoteInherit = (nextNote) =>
-      nextNote.groups.length === 0 ||
-      nextNote.groups.some((g) => prevPlayingGroupSigs.has(groupSignature(g)));
+    // This leaves a groupsound responsible for only two things: toggling
+    // play/stop on click (onGroupClicked) and animating when *all* of its
+    // members are playing (group.refresh + the [groupsound] CSS rules). A
+    // partial match keeps just the matching member notes ringing/animating;
+    // a full match additionally lights up the group as a whole.
 
-    const continueNotes = {};
-    for (const [noteId, note] of Object.entries(prevSoundData)) {
-      const nextNote = nextSoundData[noteId];
-      if (note.playingCount > 0 && nextNote && canNextNoteInherit(nextNote)) {
-        continueNotes[noteId] = note;
-      } else {
+    // A sound id can repeat within a frame (the same sound placed in several
+    // notes/groups). Iterate the notes arrays — not noteMap, which collapses
+    // duplicate ids to a single entry — so every occurrence is handled and the
+    // right SVG elements light up (e.g. a group reassembling that shares a
+    // sound with a decoy note elsewhere on the page).
+    const playingPrevById = {};
+    for (const note of prevFrame.notes) {
+      if (note.playingCount > 0 && !playingPrevById[note.id]) {
+        playingPrevById[note.id] = note;
+      }
+    }
+
+    const nextHasNoteId = new Set(nextFrame.noteIds);
+
+    // Fade out every previously-playing note whose sound does not continue.
+    for (const note of prevFrame.notes) {
+      if (note.playingCount > 0 && !nextHasNoteId.has(note.id)) {
         note.fadeStop(fadeDuration);
       }
     }
 
-    // Sweep all frames other than prev (already handled above) and next
-    // (about to start) to stop any sounds that leaked from earlier frames.
+    // Sweep all frames other than prev (handled above) and next (about to
+    // start) to stop any sounds that leaked from earlier frames.
     for (const [frameId, frame] of Object.entries(this.frameMap)) {
       if (frameId === prevId || frameId === nextId) continue;
       for (const note of frame.notes) {
@@ -617,19 +626,22 @@ class AudioSession {
       }
     }
 
+    const continuingIds = Object.keys(playingPrevById).filter((id) =>
+      nextHasNoteId.has(id),
+    );
     console.log(
-      "Common sound notes between prev and current frame:",
-      Object.keys(continueNotes),
+      "Continuing sound notes between prev and current frame:",
+      continuingIds,
     );
 
-    for (const [noteId, note] of Object.entries(nextSoundData)) {
-      if (continueNotes[noteId]) {
-        const prevNote = continueNotes[noteId];
+    // Start (or carry over) every next-frame note.
+    for (const note of nextFrame.notes) {
+      const prevNote = playingPrevById[note.id];
+      if (prevNote) {
         note.fadeInFrom(prevNote.volumes, {
           fadeDuration,
           seekTimestamp: prevNote.getCurrTimestamp(),
         });
-        prevNote.stop();
       } else {
         note.soundNames.forEach((sn, idx) => {
           if (this.failedSounds.has(sn)) return;
@@ -643,6 +655,12 @@ class AudioSession {
           note.fadeStart(fadeDuration);
         }
       }
+    }
+
+    // Hard-stop the carried-over previous notes now that the next frame's
+    // copies have taken over the sound (handoff complete).
+    for (const id of continuingIds) {
+      playingPrevById[id].stop();
     }
 
     // Switch back to play mode after changing frame if not in guide lock

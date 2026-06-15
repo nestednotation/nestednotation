@@ -6,8 +6,8 @@
     <!-- Edge case: the previous frame (NESTED-STRUCT) has a fully-playing group
          {Low-B, Mid-Eb, High-Ab}. Here Mid-Eb and High-Ab are UNGROUPED, so
          they continue individually; Low-B is absent and stops. This is the
-         "group dissolves into loose notes" case: ungrouped notes are not
-         subject to the all-or-nothing group rule. -->
+         "group dissolves into loose notes" case: carry-over is per-note, so
+         each matching sound keeps ringing regardless of grouping. -->
     <circle cx="350" cy="320" r="90" fill="#5a8cf5" sound="Font/2-Mid-Eb"/>
     <text x="350" y="320" text-anchor="middle" font-family="sans-serif" font-size="22" fill="#fff" style="pointer-events:none">Mid-Eb</text>
     <text x="350" y="348" text-anchor="middle" font-family="sans-serif" font-size="15" fill="#dbe7ff" style="pointer-events:none">(ungrouped, carries)</text>

@@ -513,9 +513,12 @@ body.ipad {
   animation: playingNode 6s infinite;
 }
 
-/* A groupsound animates as a single unit, so its member notes must not
-   animate individually (that would double up the opacity animation). */
-.play-mode [groupsound="true"] [sound][data-playing="true"] {
+/* A groupsound animates as a single unit only when *all* of its members are
+   playing (data-playing lands on the group itself). While fully playing,
+   suppress the members' individual animation so the opacity pulse isn't
+   doubled up. When the group is only partially playing (a "partial assemble")
+   the box stays still and the playing member notes animate on their own. */
+.play-mode [groupsound="true"][data-playing="true"] [sound][data-playing="true"] {
   animation: none;
 }
 
