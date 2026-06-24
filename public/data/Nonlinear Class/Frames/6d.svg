@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
+<svg width="100%" height="100%" viewBox="0 0 1701 2050" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" xml:space="preserve" xmlns:serif="http://www.serif.com/" style="fill-rule:evenodd;clip-rule:evenodd;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:1.5;">
+    <g transform="matrix(1,0,0,1,-13653,-7249)">
+        <g id="_6d" serif:id="6d" transform="matrix(0.944444,0,0,1.13889,13653.3,7249)">
+            <rect x="0" y="0" width="1800" height="1800" style="fill:none;"/>
+            <g transform="matrix(1.05882,0,0,0.878049,-249.079,-48.0363)">
+                <text x="275.647px" y="391.833px" style="font-family:'ArialMT', 'Arial', sans-serif;font-size:128px;">And at the risk of cacophony<tspan x="1881.34px " y="391.833px ">,</tspan></text>
+                <text x="275.647px" y="524.021px" style="font-family:'ArialMT', 'Arial', sans-serif;font-size:128px;">here are all three to mix</text>
+                <text x="275.647px" y="656.208px" style="font-family:'ArialMT', 'Arial', sans-serif;font-size:128px;">together<tspan x="738.272px " y="656.208px ">.</tspan></text>
+                <g transform="matrix(128,0,0,128,1371.4,788.396)">
+                </g>
+                <text x="275.647px" y="788.396px" style="font-family:'ArialMT', 'Arial', sans-serif;font-size:128px;">What do you think?</text>
+            </g>
+            <g id="Navigation">
+            <a href="6e.svg">
+                <g id="next" transform="matrix(0.704225,0,0,0.704225,546.47,583.779)">
+                    <g transform="matrix(1.05882,0,0,0.878049,0.595588,3.5122)">
+                        <path d="M1584,1782.4L1584,1858.6C1584,1872.62 1572.62,1884 1558.6,1884L1325.4,1884C1311.38,1884 1300,1872.62 1300,1858.6L1300,1782.4C1300,1768.38 1311.38,1757 1325.4,1757L1558.6,1757C1572.62,1757 1584,1768.38 1584,1782.4Z" style="fill:#d5a9a9;"/>
+                    </g>
+                    <g transform="matrix(1.05882,0,0,0.878049,-76.1691,-110.319)">
+                        <g transform="matrix(1.42,-0,-0,1.42,-661.423,-818.46)">
+                            <path d="M1531.1,1925.67L1603.11,1949.62L1531.13,1973.67L1531.1,1925.67Z"/>
+                            <path d="M1461.57,1949.72C1461.57,1949.72 1506.33,1949.69 1545.52,1949.66" style="fill:none;stroke:#000;stroke-width:16px;"/>
+                        </g>
+                    </g>
+                </g>
+                </a>
+                <a href="6c.svg">
+                <g id="previous" transform="matrix(-0.704225,0,0,0.704225,1251.41,583.692)">
+                    <g transform="matrix(1.05882,0,0,0.878049,0.595588,3.5122)">
+                        <path d="M1584,1782.4L1584,1858.6C1584,1872.62 1572.62,1884 1558.6,1884L1325.4,1884C1311.38,1884 1300,1872.62 1300,1858.6L1300,1782.4C1300,1768.38 1311.38,1757 1325.4,1757L1558.6,1757C1572.62,1757 1584,1768.38 1584,1782.4Z" style="fill:#d5a9a9;"/>
+                    </g>
+                    <g transform="matrix(1.05882,0,0,0.878049,-76.1691,-110.319)">
+                        <g transform="matrix(-1.42,0,0,1.42,1750.7,-818.319)">
+                            <path d="M167.548,1973.57L95.565,1949.52L167.582,1925.57L167.548,1973.57Z"/>
+                            <path d="M237.114,1949.62C237.114,1949.62 192.348,1949.59 153.165,1949.56" style="fill:none;stroke:#000;stroke-width:16px;"/>
+                        </g>
+                    </g>
+                </g>
+                </a>
+            </g>
+            <g id="Gong-Music" sound="gongmusic" serif:id="Gong Music" transform="matrix(1,0,0,1,112.235,287.849)">
+                <g transform="matrix(4.74234,0,0,0.878049,-6055.98,-626.776)">
+                    <path d="M1584,1782.4L1584,1858.6C1584,1872.62 1581.46,1884 1578.33,1884L1305.67,1884C1302.54,1884 1300,1872.62 1300,1858.6L1300,1782.4C1300,1768.38 1302.54,1757 1305.67,1757L1578.33,1757C1581.46,1757 1584,1768.38 1584,1782.4Z" style="fill:#d5a9a9;"/>
+                </g>
+                <g transform="matrix(1.05882,0,0,0.878049,-163.116,649.477)">
+                    <g transform="matrix(96,0,0,96,1508.37,391.833)">
+                    </g>
+                    <text x="275.647px" y="391.833px" style="font-family:'ArialMT', 'Arial', sans-serif;font-size:96px;">Southeast <tspan x="729.351px 793.382px " y="391.833px 391.833px ">As</tspan>ian Gong Music</text>
+                </g>
+            </g>
+            <g id="Plainchant" sound="plainchant" transform="matrix(1,0,0,1,518.646,119.264)">
+                <g transform="matrix(1.88029,0,0,0.878049,-2335.32,-626.776)">
+                    <path d="M1584,1782.4L1584,1858.6C1584,1872.62 1577.59,1884 1569.7,1884L1314.3,1884C1306.41,1884 1300,1872.62 1300,1858.6L1300,1782.4C1300,1768.38 1306.41,1757 1314.3,1757L1569.7,1757C1577.59,1757 1584,1768.38 1584,1782.4Z" style="fill:#d5a9a9;"/>
+                </g>
+                <g transform="matrix(1.05882,0,0,0.878049,-163.116,649.477)">
+                    <g transform="matrix(96,0,0,96,723.96,391.833)">
+                    </g>
+                    <text x="275.647px" y="391.833px" style="font-family:'ArialMT', 'Arial', sans-serif;font-size:96px;">Plainchant</text>
+                </g>
+            </g>
+            <g id="Bayaka-Eboka" sound="bayakaeboka" serif:id="Bayaka Eboka" transform="matrix(1,0,0,1,432,466.093)">
+                <g transform="matrix(2.49047,0,0,0.878049,-3128.56,-626.776)">
+                    <path d="M1584,1782.4L1584,1858.6C1584,1872.62 1579.16,1884 1573.2,1884L1310.8,1884C1304.84,1884 1300,1872.62 1300,1858.6L1300,1782.4C1300,1768.38 1304.84,1757 1310.8,1757L1573.2,1757C1579.16,1757 1584,1768.38 1584,1782.4Z" style="fill:#d5a9a9;"/>
+                </g>
+                <g transform="matrix(1.05882,0,0,0.878049,-163.116,649.477)">
+                    <g transform="matrix(96,0,0,96,894.726,391.833)">
+                    </g>
+                    <text x="275.647px" y="391.833px" style="font-family:'ArialMT', 'Arial', sans-serif;font-size:96px;">Bayaka Eboka</text>
+                </g>
+            </g>
+        </g>
+    </g>
+</svg>

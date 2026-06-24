@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
+<svg width="100%" height="100%" viewBox="0 0 1700 2050" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" xml:space="preserve" xmlns:serif="http://www.serif.com/" style="fill-rule:evenodd;clip-rule:evenodd;stroke-linejoin:round;stroke-miterlimit:2;">
+    <g transform="matrix(1,0,0,1,-25470,-2791)">
+        <g id="_10tree" serif:id="10tree" transform="matrix(0.944444,0,0,1.13889,25470,2791)">
+            <rect x="0" y="0" width="1800" height="1800" style="fill:none;"/>
+            <g transform="matrix(1.05882,0,0,0.878049,-132.939,-14.2315)">
+                <text x="275.647px" y="391.833px" style="font-family:'ArialMT', 'Arial', sans-serif;font-size:128px;">The group chose</text>
+                <text x="1271.84px" y="391.833px" style="font-family:'Arial-BoldMT', 'Arial', sans-serif;font-weight:700;font-size:128px;">a tree</text>
+                <text x="1648.96px" y="391.833px" style="font-family:'ArialMT', 'Arial', sans-serif;font-size:128px;">!</text>
+                <g transform="matrix(128,0,0,128,1556.21,656.208)">
+                </g>
+                <text x="275.647px" y="656.208px" style="font-family:'ArialMT', 'Arial', sans-serif;font-size:128px;">What color is the tree?</text>
+            </g>
+            <a href="10treeorange.svg">
+            <g id="orange" transform="matrix(1,0,0,1,828,348.873)">
+                <g transform="matrix(1.94615,0,0,1.04744,-2420.93,-945.902)">
+                    <path d="M1584,1782.4L1584,1858.6C1584,1872.62 1576.61,1884 1567.52,1884L1316.49,1884C1307.39,1884 1300,1872.62 1300,1858.6L1300,1782.4C1300,1768.38 1307.39,1757 1316.49,1757L1567.52,1757C1576.61,1757 1584,1768.38 1584,1782.4Z" style="fill:#daa760;"/>
+                </g>
+                <g transform="matrix(1.05882,0,0,0.878049,-127.877,634.88)">
+                    <g transform="matrix(128,0,0,128,702.397,391.833)">
+                    </g>
+                    <text x="275.647px" y="391.833px" style="font-family:'Arial-BoldMT', 'Arial', sans-serif;font-weight:700;font-size:128px;">orange</text>
+                </g>
+            </g>
+            </a>
+            <a href="10treegreen.svg">
+            <g id="green" transform="matrix(1,0,0,1,91.0588,348.873)">
+                <g transform="matrix(1.60533,0,0,1.04744,-1977.87,-945.902)">
+                    <path d="M1584,1782.4L1584,1858.6C1584,1872.62 1575.05,1884 1564.02,1884L1319.99,1884C1308.95,1884 1300,1872.62 1300,1858.6L1300,1782.4C1300,1768.38 1308.95,1757 1319.99,1757L1564.02,1757C1575.05,1757 1584,1768.38 1584,1782.4Z" style="fill:#52b23f;"/>
+                </g>
+                <g transform="matrix(1.05882,0,0,0.878049,-137.592,634.88)">
+                    <g transform="matrix(128,0,0,128,624.21,391.833)">
+                    </g>
+                    <text x="275.647px" y="391.833px" style="font-family:'Arial-BoldMT', 'Arial', sans-serif;font-weight:700;font-size:128px;">green</text>
+                </g>
+            </g>
+            </a>
+            <g transform="matrix(1.05882,0,0,0.878049,59.7998,533.726)">
+                <text x="275.647px" y="391.833px" style="font-family:'ArialMT', 'Arial', sans-serif;font-size:96px;">remember to tap &quot;guide&quot;</text>
+                <g transform="matrix(96,0,0,96,857.366,490.974)">
+                </g>
+                <text x="275.647px" y="490.974px" style="font-family:'ArialMT', 'Arial', sans-serif;font-size:96px;">before voting.</text>
+            </g>
+        </g>
+    </g>
+</svg>

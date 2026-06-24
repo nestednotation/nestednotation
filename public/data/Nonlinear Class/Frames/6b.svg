@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
+<svg width="100%" height="100%" viewBox="0 0 1701 2050" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" xml:space="preserve" xmlns:serif="http://www.serif.com/" style="fill-rule:evenodd;clip-rule:evenodd;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:1.5;">
+    <g transform="matrix(1,0,0,1,-13664,-2391)">
+        <g id="_6b" serif:id="6b" transform="matrix(0.944444,0,0,1.13889,13664.4,2391)">
+            <rect x="0" y="0" width="1800" height="1800" style="fill:none;"/>
+            <g transform="matrix(1.05882,0,0,0.878049,-249.079,-48.0363)">
+                <text x="275.647px" y="391.833px" style="font-family:'ArialMT', 'Arial', sans-serif;font-size:128px;">Here&apos;s another<tspan x="1104.15px " y="391.833px ">.</tspan></text>
+                <text x="275.647px" y="656.208px" style="font-family:'ArialMT', 'Arial', sans-serif;font-size:128px;">Let&apos;s hear how Gamelan</text>
+                <text x="275.647px" y="788.396px" style="font-family:'ArialMT', 'Arial', sans-serif;font-size:128px;">music sounds</text>
+                <g transform="matrix(128,0,0,128,1895.58,920.583)">
+                </g>
+                <text x="275.647px" y="920.583px" style="font-family:'ArialMT', 'Arial', sans-serif;font-size:128px;">when heard asynchronously<tspan x="1860.02px " y="920.583px ">.</tspan></text>
+            </g>
+            <g id="Navigation">
+            <a href="6c.svg">
+                <g id="next" transform="matrix(0.704225,0,0,0.704225,546.47,583.779)">
+                    <g transform="matrix(1.05882,0,0,0.878049,0.595588,3.5122)">
+                        <path d="M1584,1782.4L1584,1858.6C1584,1872.62 1572.62,1884 1558.6,1884L1325.4,1884C1311.38,1884 1300,1872.62 1300,1858.6L1300,1782.4C1300,1768.38 1311.38,1757 1325.4,1757L1558.6,1757C1572.62,1757 1584,1768.38 1584,1782.4Z" style="fill:#d5a9a9;"/>
+                    </g>
+                    <g transform="matrix(1.05882,0,0,0.878049,-76.1691,-110.319)">
+                        <g transform="matrix(1.42,-0,-0,1.42,-661.517,-818.46)">
+                            <path d="M1531.16,1925.67L1603.18,1949.62L1531.2,1973.67L1531.16,1925.67Z"/>
+                            <path d="M1461.63,1949.72C1461.63,1949.72 1506.4,1949.69 1545.58,1949.66" style="fill:none;stroke:#000;stroke-width:16px;"/>
+                        </g>
+                    </g>
+                </g>
+                </a>
+                <a href="6a.svg">
+                <g id="previous" transform="matrix(-0.704225,0,0,0.704225,1251.41,583.692)">
+                    <g transform="matrix(1.05882,0,0,0.878049,0.595588,3.5122)">
+                        <path d="M1584,1782.4L1584,1858.6C1584,1872.62 1572.62,1884 1558.6,1884L1325.4,1884C1311.38,1884 1300,1872.62 1300,1858.6L1300,1782.4C1300,1768.38 1311.38,1757 1325.4,1757L1558.6,1757C1572.62,1757 1584,1768.38 1584,1782.4Z" style="fill:#d5a9a9;"/>
+                    </g>
+                    <g transform="matrix(1.05882,0,0,0.878049,-76.1691,-110.319)">
+                        <g transform="matrix(-1.42,0,0,1.42,1750.8,-818.319)">
+                            <path d="M167.615,1973.57L95.632,1949.52L167.648,1925.57L167.615,1973.57Z"/>
+                            <path d="M237.181,1949.62C237.181,1949.62 192.414,1949.59 153.232,1949.56" style="fill:none;stroke:#000;stroke-width:16px;"/>
+                        </g>
+                    </g>
+                </g>
+                </a>
+            </g>
+            <g id="Gong-Music" sound="gongmusic" serif:id="Gong Music" transform="matrix(1,0,0,1,112.235,287.849)">
+                <g transform="matrix(4.74234,0,0,0.878049,-6055.98,-626.776)">
+                    <path d="M1584,1782.4L1584,1858.6C1584,1872.62 1581.46,1884 1578.33,1884L1305.67,1884C1302.54,1884 1300,1872.62 1300,1858.6L1300,1782.4C1300,1768.38 1302.54,1757 1305.67,1757L1578.33,1757C1581.46,1757 1584,1768.38 1584,1782.4Z" style="fill:#d5a9a9;"/>
+                </g>
+                <g transform="matrix(1.05882,0,0,0.878049,-163.116,649.477)">
+                    <g transform="matrix(96,0,0,96,1508.37,391.833)">
+                    </g>
+                    <text x="275.647px" y="391.833px" style="font-family:'ArialMT', 'Arial', sans-serif;font-size:96px;">Southeast <tspan x="729.351px 793.382px " y="391.833px 391.833px ">As</tspan>ian Gong Music</text>
+                </g>
+            </g>
+        </g>
+    </g>
+</svg>

@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
+<svg width="100%" height="100%" viewBox="0 0 1700 2050" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" xml:space="preserve" xmlns:serif="http://www.serif.com/" style="fill-rule:evenodd;clip-rule:evenodd;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:1.5;">
+    <g transform="matrix(1,0,0,1,-22749,-4671)">
+        <g id="_10" serif:id="10" transform="matrix(0.944444,0,0,1.13889,22749,4671)">
+            <rect x="0" y="0" width="1800" height="1800" style="fill:none;"/>
+            <g transform="matrix(1.05882,0,0,0.878049,-78.6993,-134.442)">
+                <text x="275.647px" y="391.833px" style="font-family:'ArialMT', 'Arial', sans-serif;font-size:96px;">Let&apos;s ask the group a question.</text>
+                <text x="275.647px" y="590.114px" style="font-family:'ArialMT', 'Arial', sans-serif;font-size:96px;">Which is more interesting,</text>
+                <text x="275.647px" y="689.255px" style="font-family:'ArialMT', 'Arial', sans-serif;font-size:96px;">a tree or an octopus?</text>
+                <text x="275.647px" y="887.536px" style="font-family:'ArialMT', 'Arial', sans-serif;font-size:96px;">Please tap &quot;guide&quot; and then</text>
+                <text x="275.647px" y="986.677px" style="font-family:'ArialMT', 'Arial', sans-serif;font-size:96px;">tap your selection.</text>
+                <text x="275.647px" y="1184.96px" style="font-family:'ArialMT', 'Arial', sans-serif;font-size:96px;">Y<tspan x="330.866px 384.257px " y="1184.96px 1184.96px ">ou</tspan>&apos;ll see a timer on top of the</text>
+                <text x="275.647px" y="1284.1px" style="font-family:'ArialMT', 'Arial', sans-serif;font-size:96px;">screen to show how much time</text>
+                <g transform="matrix(96,0,0,96,1006.8,1383.24)">
+                </g>
+                <text x="275.647px" y="1383.24px" style="font-family:'ArialMT', 'Arial', sans-serif;font-size:96px;">you have to vote.</text>
+            </g>
+            <g id="previous" transform="matrix(-0.704225,0,0,0.704225,1251.41,583.692)">
+                <g id="Navigation">
+                <a href="9.svg">
+                    <g id="previous1" serif:id="previous">
+                        <g transform="matrix(1.05882,0,0,0.878049,0.595588,3.5122)">
+                            <path d="M1584,1782.4L1584,1858.6C1584,1872.62 1572.62,1884 1558.6,1884L1325.4,1884C1311.38,1884 1300,1872.62 1300,1858.6L1300,1782.4C1300,1768.38 1311.38,1757 1325.4,1757L1558.6,1757C1572.62,1757 1584,1768.38 1584,1782.4Z" style="fill:#d5a9a9;"/>
+                        </g>
+                        <g transform="matrix(1.05882,0,0,0.878049,-76.1691,-110.319)">
+                            <g transform="matrix(-1.42,0,0,1.42,1750.22,-818.319)">
+                                <path d="M167.209,1973.57L95.225,1949.52L167.242,1925.57L167.209,1973.57Z"/>
+                                <path d="M236.775,1949.62C236.775,1949.62 192.008,1949.59 152.825,1949.56" style="fill:none;stroke:#000;stroke-width:16px;"/>
+                            </g>
+                        </g>
+                    </g>
+                    </a>
+                </g>
+            </g>
+            <a href="10octopus.svg">
+            <g id="Tap-this-Link-Practice" serif:id="Tap this Link Practice" transform="matrix(1,0,0,1,790.941,348.873)">
+                <g transform="matrix(2.70671,0,0,1.04744,-3409.67,-945.902)">
+                    <path d="M1584,1782.4L1584,1858.6C1584,1872.62 1578.69,1884 1572.15,1884L1311.85,1884C1305.31,1884 1300,1872.62 1300,1858.6L1300,1782.4C1300,1768.38 1305.31,1757 1311.85,1757L1572.15,1757C1578.69,1757 1584,1768.38 1584,1782.4Z" style="fill:#a9b4d5;"/>
+                </g>
+                <g transform="matrix(1.05882,0,0,0.878049,-159.046,649.519)">
+                    <g transform="matrix(128,0,0,128,958.335,391.833)">
+                    </g>
+                    <text x="275.647px" y="391.833px" style="font-family:'Arial-BoldMT', 'Arial', sans-serif;font-weight:700;font-size:128px;">an octopus</text>
+                </g>
+            </g>
+            </a>
+            <a href="10tree.svg">
+            <g id="a-tree" serif:id="a tree" transform="matrix(1,0,0,1,91.0588,348.873)">
+                <g transform="matrix(1.60533,0,0,1.04744,-1977.87,-945.902)">
+                    <path d="M1584,1782.4L1584,1858.6C1584,1872.62 1575.05,1884 1564.02,1884L1319.99,1884C1308.95,1884 1300,1872.62 1300,1858.6L1300,1782.4C1300,1768.38 1308.95,1757 1319.99,1757L1564.02,1757C1575.05,1757 1584,1768.38 1584,1782.4Z" style="fill:#a9b4d5;"/>
+                </g>
+                <g transform="matrix(1.05882,0,0,0.878049,-126.239,649.519)">
+                    <g transform="matrix(128,0,0,128,617.21,391.833)">
+                    </g>
+                    <text x="275.647px" y="391.833px" style="font-family:'Arial-BoldMT', 'Arial', sans-serif;font-weight:700;font-size:128px;">a tree</text>
+                </g>
+            </g>
+            </a>
+        </g>
+    </g>
+</svg>

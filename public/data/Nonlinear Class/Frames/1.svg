@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
+<svg width="100%" height="100%" viewBox="0 0 1700 2051" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" xml:space="preserve" xmlns:serif="http://www.serif.com/" style="fill-rule:evenodd;clip-rule:evenodd;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:1.5;">
+    <g transform="matrix(1,0,0,1,-2076,-4671)">
+        <g id="_1" serif:id="1" transform="matrix(0.944444,0,0,1.13889,2076,4671.28)">
+            <rect x="0" y="0" width="1800" height="1800" style="fill:none;"/>
+            <g transform="matrix(1.05882,0,0,0.878049,-221.219,120.522)">
+                <text x="275.647px" y="391.833px" style="font-family:'ArialMT', 'Arial', sans-serif;font-size:128px;">&quot;Nonlinear Composition&quot;</text>
+                <text x="275.647px" y="656.208px" style="font-family:'ArialMT', 'Arial', sans-serif;font-size:128px;">What does that even mean?</text>
+                <text x="275.647px" y="920.583px" style="font-family:'ArialMT', 'Arial', sans-serif;font-size:128px;">Ultimately<tspan x="828.022px 863.585px " y="920.583px 920.583px ">, </tspan>we experience</text>
+                <text x="275.647px" y="1052.77px" style="font-family:'ArialMT', 'Arial', sans-serif;font-size:128px;">a linear succession of</text>
+                <text x="275.647px" y="1184.96px" style="font-family:'ArialMT', 'Arial', sans-serif;font-size:128px;">present moments.</text>
+                <text x="275.647px" y="1449.33px" style="font-family:'ArialMT', 'Arial', sans-serif;font-size:128px;">But is time really a line?</text>
+            </g>
+            <g transform="matrix(1.05882,0,0,0.878049,-98.2958,-112.957)">
+                <g transform="matrix(128,0,0,128,859.022,391.833)">
+                </g>
+                <text x="275.647px" y="391.833px" style="font-family:'ArialMT', 'Arial', sans-serif;font-size:128px;">OK, great.</text>
+            </g>
+            <g id="Navigation">
+            <a href="2.svg">
+                <g id="next" transform="matrix(0.704225,0,0,0.704225,546.47,583.779)">
+                    <g transform="matrix(1.05882,0,0,0.878049,0.595588,3.5122)">
+                        <path d="M1584,1782.4L1584,1858.6C1584,1872.62 1572.62,1884 1558.6,1884L1325.4,1884C1311.38,1884 1300,1872.62 1300,1858.6L1300,1782.4C1300,1768.38 1311.38,1757 1325.4,1757L1558.6,1757C1572.62,1757 1584,1768.38 1584,1782.4Z" style="fill:#d5a9a9;"/>
+                    </g>
+                    <g transform="matrix(1.05882,0,0,0.878049,-76.1691,-110.319)">
+                        <g transform="matrix(1.42,-0,-0,1.42,-660.94,-818.859)">
+                            <path d="M1530.76,1925.95L1602.78,1949.9L1530.79,1973.95L1530.76,1925.95Z"/>
+                            <path d="M1461.23,1950C1461.23,1950 1505.99,1949.97 1545.17,1949.94" style="fill:none;stroke:#000;stroke-width:16px;"/>
+                        </g>
+                    </g>
+                </g>
+                </a>
+                <a href="START.svg">
+                <g id="previous" transform="matrix(-0.704225,0,0,0.704225,1251.41,583.692)">
+                    <g transform="matrix(1.05882,0,0,0.878049,0.595588,3.5122)">
+                        <path d="M1584,1782.4L1584,1858.6C1584,1872.62 1572.62,1884 1558.6,1884L1325.4,1884C1311.38,1884 1300,1872.62 1300,1858.6L1300,1782.4C1300,1768.38 1311.38,1757 1325.4,1757L1558.6,1757C1572.62,1757 1584,1768.38 1584,1782.4Z" style="fill:#d5a9a9;"/>
+                    </g>
+                    <g transform="matrix(1.05882,0,0,0.878049,-76.1691,-110.319)">
+                        <g transform="matrix(-1.42,0,0,1.42,1750.22,-818.719)">
+                            <path d="M167.209,1973.85L95.225,1949.8L167.242,1925.85L167.209,1973.85Z"/>
+                            <path d="M236.775,1949.9C236.775,1949.9 192.008,1949.87 152.825,1949.84" style="fill:none;stroke:#000;stroke-width:16px;"/>
+                        </g>
+                    </g>
+                </g>
+                </a>
+            </g>
+        </g>
+    </g>
+</svg>
