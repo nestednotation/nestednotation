@@ -6,6 +6,12 @@ const jade = require("jade");
 // Session Lines: pure graph builder (no behavior change for vanilla scores).
 const { parseFrameAttrs } = require("./lib/session-lines/parse");
 const { buildGraph } = require("./lib/session-lines/graph");
+// Session Lines: per-playhead line model + backward-compat shim + persistence.
+const {
+  BMLine,
+  installLineShim,
+  migrateState,
+} = require("./lib/session-lines/line");
 
 const IGNORE_STATE_KEYS = ["svgContent", "htmlContent"];
 const HREF_REGX = /(?<=href=")(.*?)(?=")/;
@@ -176,30 +182,22 @@ class BMAdminTable {
 }
 
 class BMSession {
-  history = [];
-  historyIndex = 0;
+  // Session Lines: the playhead(s). A session always has >= 1 line; until a
+  // split occurs it has exactly one (`lines[0]`) and the prototype shim
+  // (installLineShim, below the class) makes `session.currentIndex` etc.
+  // delegate to it — so the per-line fields that used to live here are now
+  // owned by BMLine. NOTE: those fields must NOT be re-declared here or an own
+  // data property would shadow the shim accessor.
+  lines = [new BMLine(this)];
+  nextLineId = 1;
+  deviceRegistry = {};
 
   selectedScoreIndex = -1;
   selectedCooldownTimeIndex = -1;
   selectedHoldTimeIndex = -1;
 
-  currentEndTimeStamp = 0;
-  currentVotingDuration = 0;
-
-  currentEndHoldTimeStamp = 0;
-  currentHoldingDuration = 0;
-
-  currentIndex = 0;
-
-  isHolding = false;
   isPause = false;
-  isVoting = false;
-  isStandby = false;
   isSessionDeleted = false;
-
-  holdingTimer = null;
-  standbyTimer = null;
-  votingTimer = null;
 
   synTimeInterval = 0.5;
   standbyDuration = 3;
@@ -229,6 +227,19 @@ class BMSession {
   async patchState(stateData, saveToFile = false) {
     for (const [key, val] of Object.entries(stateData)) {
       if (IGNORE_STATE_KEYS.includes(key)) {
+        continue;
+      }
+
+      // `version` is re-emitted by toJSON; nothing reads it off the instance.
+      if (key === "version") {
+        continue;
+      }
+
+      // Rehydrate persisted lines into BMLine instances (with this session as
+      // their back-ref). Partial patches from bin/www/routes never carry
+      // `lines`, so they fall through to the plain assignment below.
+      if (key === "lines" && Array.isArray(val)) {
+        this.lines = val.map((lineObj) => BMLine.fromJSON(this, lineObj));
         continue;
       }
 
@@ -295,45 +306,18 @@ class BMSession {
     this.setCurrIdxToStart();
   }
 
+  // Session Lines: playhead operations delegate to the (single, until split)
+  // first line. The shim keeps `session.currentIndex`/`history`/… in sync.
   setCurrIdxToStart() {
-    //random pick first index (files begin with Pre or Start)
-    const listPreFile = this.listFiles.filter((o) => o.startsWith("PRE"));
-    const listStartFile = this.listFiles.filter((o) => o.startsWith("START"));
-    const startedFile = this.randomItem(
-      listStartFile.length > 0 ? listStartFile : listPreFile,
-    );
-
-    this.setCurrIdxTo(this.listFiles.indexOf(startedFile));
+    this.lines[0].setCurrIdxToStart();
   }
 
   resetSessionHistory() {
-    this.history = [];
-
-    this.setCurrIdxToStart();
+    this.lines[0].resetHistory();
   }
 
   setCurrIdxTo(index) {
-    this.currentIndex = parseInt(index);
-    this.isVoting = false;
-    this.isStandby = false;
-
-    if (this.history.length > 0) {
-      const countRemove = Math.max(
-        0,
-        this.history.length - (this.historyIndex + 1),
-      );
-      const indexRemove = Math.min(
-        this.history.length - 1,
-        this.historyIndex + 1,
-      );
-
-      if (countRemove > 0) {
-        this.history.splice(indexRemove - 1, countRemove + 1);
-      }
-    }
-
-    this.history.push(this.listFiles[index]);
-    this.historyIndex = this.history.length - 1;
+    this.lines[0].setCurrIdxTo(index);
   }
 
   async getSoundList(folder) {
@@ -521,21 +505,47 @@ class BMSession {
   }
 
   clearAllTimer() {
-    //stop holding timer
-    if (this.holdingTimer != null) {
-      clearTimeout(this.holdingTimer);
-      this.holdingTimer = null;
+    // Clear every line's timers (single line until a split).
+    for (const line of this.lines) {
+      line.clearAllTimer();
     }
-    //stop standby timer
-    if (this.standbyTimer != null) {
-      clearTimeout(this.standbyTimer);
-      this.standbyTimer = null;
-    }
-    //stop voting timer
-    if (this.votingTimer != null) {
-      clearInterval(this.votingTimer);
-      this.votingTimer = null;
-    }
+  }
+
+  // Versioned persistence allowlist (v2). Serializes session-global fields +
+  // lines[] + deviceRegistry, and drops fields buildSVGContent re-derives on
+  // load (listFiles*, graph). Timer-nulling / voting-reset happen per-line in
+  // BMLine.toJSON.
+  toJSON() {
+    return {
+      version: 2,
+      id: this.id,
+      ownerId: this.ownerId,
+      sessionName: this.sessionName,
+      adminPassword: this.adminPassword,
+      playerPassword: this.playerPassword,
+      folder: this.folder,
+      isHtml5: this.isHtml5,
+      fadeDuration: this.fadeDuration,
+      defaultVolume: this.defaultVolume,
+      defaultAutoplay: this.defaultAutoplay,
+      enableAutoplayByDefault: this.enableAutoplayByDefault,
+      hasSounds: this.hasSounds,
+      soundList: this.soundList,
+      isPause: this.isPause,
+      isSessionDeleted: this.isSessionDeleted,
+      votingDuration: this.votingDuration,
+      holdDuration: this.holdDuration,
+      votingSize: this.votingSize,
+      standbyDuration: this.standbyDuration,
+      synTimeInterval: this.synTimeInterval,
+      preloadDuration: this.preloadDuration,
+      selectedScoreIndex: this.selectedScoreIndex,
+      selectedCooldownTimeIndex: this.selectedCooldownTimeIndex,
+      selectedHoldTimeIndex: this.selectedHoldTimeIndex,
+      nextLineId: this.nextLineId,
+      deviceRegistry: this.deviceRegistry,
+      lines: this.lines.map((line) => line.toJSON()),
+    };
   }
 
   async saveSessionStateToFile() {
@@ -543,14 +553,10 @@ class BMSession {
       return;
     }
 
-    const clonedData = { ...this };
-    clonedData.votingTimer = null;
-    clonedData.standbyTimer = null;
-    clonedData.holdingTimer = null;
-    clonedData.isVoting = false;
+    const stateData = this.toJSON();
 
     const stateFilePath = `${SERVER_STATE_DIR}/${this.id}.json`;
-    await fs.promises.writeFile(stateFilePath, JSON.stringify(clonedData));
+    await fs.promises.writeFile(stateFilePath, JSON.stringify(stateData));
 
     console.log(
       `Write session ${this.sessionName} state to file: ${stateFilePath}`,
@@ -583,6 +589,11 @@ class BMSession {
     );
   }
 }
+
+// Session Lines: install the prototype shim so `session.<per-line field>` reads
+// and writes delegate to `lines[0]` (keeps bin/www untouched while the data
+// moves onto BMLine). Must run after the class is defined, before any instance.
+installLineShim(BMSession);
 
 class BMSessionTable {
   data = [];
@@ -662,7 +673,8 @@ class BMSessionTable {
       const state = JSON.parse(
         await fs.promises.readFile(`${SERVER_STATE_DIR}/${file.name}`, "utf8"),
       );
-      await newSession.patchState(state);
+      // Bring legacy v1 (flat) state up to v2 (lines:[one]) before applying.
+      await newSession.patchState(migrateState(state));
       await newSession.buildSVGContent();
 
       this.data.push(newSession);

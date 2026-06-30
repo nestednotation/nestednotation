@@ -12,6 +12,11 @@ const fs = require("fs");
 const os = require("os");
 const BMDatabase = require("../database.js");
 const { MESSAGES } = require("../constants.js");
+// Session Lines: pure connection routing (line selection / late-join policy).
+const {
+  lineConnections,
+  smallestLineId,
+} = require("../lib/session-lines/routing");
 
 let prefixDir = ".";
 const testPrefixFile = prefixDir + "/account/admin.dat";
@@ -189,8 +194,78 @@ function sendToAllAdmins(session, time, payload) {
   });
 }
 
-function sendUpdateVotingToClient(conn, session) {
-  const countDic = countVoteForSession(session);
+// ── Session Lines: per-line messaging ────────────────────────────────────────
+// Same as sendToAllClients/sendToAllAdmins, but addressed to one line's
+// connections (conn.lineId === lineId). With a single line every connection is
+// on L0, so these reduce to the session-wide sends above.
+
+function sendToLine(session, lineId, time, payload) {
+  const obj = {
+    t: time,
+    ...payload,
+  };
+  wsServer.connections.forEach(function each(conn) {
+    if (conn.sessionId === session.id && conn.lineId === lineId) {
+      conn.sendUTF(JSON.stringify(obj));
+    }
+  });
+}
+
+function sendToLineWithDelay(session, lineId, timeDelay, payload) {
+  const time = new Date().getTime() + timeDelay;
+  sendToLine(session, lineId, time, payload);
+}
+
+function sendToLineAdmins(session, lineId, time, payload) {
+  const obj = {
+    t: time,
+    ...payload,
+  };
+  wsServer.connections.forEach(function each(conn) {
+    if (conn.sessionId === session.id && conn.lineId === lineId && conn.isAdmin) {
+      conn.sendUTF(JSON.stringify(obj));
+    }
+  });
+}
+
+// Resolve the line a connection currently belongs to (defaults to lines[0]).
+function lineForConn(session, conn) {
+  return session.lines.find((l) => l.id === conn.lineId) || session.lines[0];
+}
+
+// Bind a connection to its line + device id. Restores a known device's line via
+// deviceRegistry; otherwise assigns the smallest live-or-dormant line (#13).
+// With one line this always resolves to lines[0].
+function ensureLineAssignment(session, conn, deviceId) {
+  if (deviceId) {
+    conn.deviceId = deviceId;
+  }
+
+  let lineId = deviceId ? session.deviceRegistry[deviceId] : conn.lineId;
+  let line = lineId ? session.lines.find((l) => l.id === lineId) : null;
+
+  if (!line) {
+    lineId = smallestLineId(session.lines, wsServer.connections, session.id);
+    line = lineId ? session.lines.find((l) => l.id === lineId) : null;
+  }
+  if (!line) {
+    line = session.lines[0];
+    lineId = line.id;
+  }
+
+  conn.lineId = lineId;
+  if (deviceId) {
+    session.deviceRegistry[deviceId] = lineId;
+  }
+  // Joining a dormant line revives it (Phase 3 resumes its lifecycle).
+  if (line.status === "dormant") {
+    line.status = "active";
+  }
+  return line;
+}
+
+function sendUpdateVotingToClient(conn, session, line) {
+  const countDic = countVoteForLine(session, line);
   const timestamp = new Date().getTime();
   sendToClient(conn, 0, {
     m: MESSAGES.MSG_UPDATE_VOTING,
@@ -210,10 +285,11 @@ const isValidVote = (vote) => {
   );
 };
 
-function countVoteForSession(session) {
-  const listConn = wsServer.connections.filter(
-    (conn) => conn.sessionId === session.id,
-  );
+// Tally votes for one line: only connections bound to line.id count, and the
+// leader-stabilization state lives on the line. With a single line this is
+// exactly today's session-wide tally.
+function countVoteForLine(session, line) {
+  const listConn = lineConnections(wsServer.connections, session.id, line.id);
   const voteData = listConn.map((o) => o.currentVoteTo).filter(isValidVote);
   const counts = {};
 
@@ -235,18 +311,18 @@ function countVoteForSession(session) {
 
   // Select random winning note in case 2 or more notes have the same vote count
   if (
-    session.currWinningId &&
-    winningVoteIds.includes(session.currWinningId) &&
-    session.previousWinningCount === winningVoteIds.length
+    line.currWinningId &&
+    winningVoteIds.includes(line.currWinningId) &&
+    line.previousWinningCount === winningVoteIds.length
   ) {
-    counts.winningVoteId = session.currWinningId;
+    counts.winningVoteId = line.currWinningId;
   } else {
     const randomWinningIdx = Math.floor(Math.random() * winningVoteIds.length);
     counts.winningVoteId = winningVoteIds[randomWinningIdx];
   }
 
-  session.previousWinningCount = winningVoteIds.length;
-  session.currWinningId = counts.winningVoteId;
+  line.previousWinningCount = winningVoteIds.length;
+  line.currWinningId = counts.winningVoteId;
 
   return counts;
 }
@@ -265,216 +341,222 @@ const parseCustomDur = (defaultDur, customDur) => {
   }
 };
 
-async function startVotingForSessionWithDelay(session, timeDelay, customDur) {
+async function startVotingForSessionWithDelay(session, line, timeDelay, customDur) {
   const sessionId = session.id;
-  session.currentVotingDuration = customDur
+  line.currentVotingDuration = customDur
     ? parseCustomDur(session.votingDuration, customDur)
     : session.votingDuration;
-  session.currentBeginTimeStamp = Date.now() + timeDelay;
-  session.currentEndTimeStamp =
-    session.currentBeginTimeStamp + session.currentVotingDuration * 1000;
-  session.isVoting = true;
-  session.isStandby = false;
+  line.currentBeginTimeStamp = Date.now() + timeDelay;
+  line.currentEndTimeStamp =
+    line.currentBeginTimeStamp + line.currentVotingDuration * 1000;
+  line.isVoting = true;
+  line.isStandby = false;
 
   //start voting data timer
-  session.votingTimeStamp = 0;
-  session.didSendStopVoting = false;
-  session.votingTimer = setInterval(
-    async (session) => {
-      session.votingTimeStamp += session.synTimeInterval * 1000;
+  line.votingTimeStamp = 0;
+  line.didSendStopVoting = false;
+  line.votingTimer = setInterval(
+    async (session, line) => {
+      line.votingTimeStamp += session.synTimeInterval * 1000;
 
-      if (session.didSendStopVoting) {
-        clearInterval(session.votingTimer);
-        session.votingTimer = null;
+      if (line.didSendStopVoting) {
+        clearInterval(line.votingTimer);
+        line.votingTimer = null;
         return;
       }
 
-      const countDic = countVoteForSession(session);
+      const countDic = countVoteForLine(session, line);
       const timestamp = new Date().getTime();
-      sendToAllClients(session, 0, {
+      sendToLine(session, line.id, 0, {
         m: MESSAGES.MSG_UPDATE_VOTING,
         countDic,
         timestamp,
       });
 
       if (
-        !session.didSendStopVoting &&
-        session.votingTimeStamp >= (session.currentVotingDuration - 1) * 1000
+        !line.didSendStopVoting &&
+        line.votingTimeStamp >= (line.currentVotingDuration - 1) * 1000
       ) {
-        await stopVotingForSession(session);
-        session.didSendStopVoting = true;
+        await stopVotingForSession(session, line);
+        line.didSendStopVoting = true;
       }
 
-      if (session.votingTimeStamp >= session.currentVotingDuration * 1000) {
-        clearInterval(session.votingTimer);
-        session.votingTimer = null;
+      if (line.votingTimeStamp >= line.currentVotingDuration * 1000) {
+        clearInterval(line.votingTimer);
+        line.votingTimer = null;
       }
     },
     session.synTimeInterval * 1000,
     session,
+    line,
   );
 
   await session.saveSessionStateToFile();
 
   wsServer.connections.forEach((conn) => {
-    if (conn.sessionId === sessionId) {
+    if (conn.sessionId === sessionId && conn.lineId === line.id) {
       conn.currentVoteTo = -1;
     }
   });
 
-  sendToAllClients(session, 0, {
+  sendToLine(session, line.id, 0, {
     m: MESSAGES.MSG_BEGIN_VOTING,
-    endTime: session.currentEndTimeStamp,
-    duration: session.currentVotingDuration,
+    endTime: line.currentEndTimeStamp,
+    duration: line.currentVotingDuration,
   });
 }
 
-async function stopVotingForSession(session) {
+async function stopVotingForSession(session, line) {
   // Clear the voting timer immediately to stop sending MSG_UPDATE_VOTING
-  if (session.votingTimer) {
-    clearInterval(session.votingTimer);
-    session.votingTimer = null;
+  if (line.votingTimer) {
+    clearInterval(line.votingTimer);
+    line.votingTimer = null;
   }
 
   // Additional safety: ensure voting state is properly reset
-  session.isVoting = false;
-  session.didSendStopVoting = true;
+  line.isVoting = false;
+  line.didSendStopVoting = true;
 
-  session.isStandby = true;
+  line.isStandby = true;
   if (session.holdDuration > 0) {
-    session.isHolding = true;
+    line.isHolding = true;
   }
 
   //stand by signal
-  const votingData = countVoteForSession(session);
+  const votingData = countVoteForLine(session, line);
   const mostVoteRingId =
     votingData.winningVoteId === "stay"
-      ? session.currentIndex
+      ? line.currentIndex
       : // ID should follow format: nextVoteId#currFileName#aEleIndex
-        Number(votingData.winningVoteId?.split("#")[0] ?? session.currentIndex);
+        Number(votingData.winningVoteId?.split("#")[0] ?? line.currentIndex);
 
-  // Reset all client votes
+  // Reset this line's client votes
   wsServer.connections.forEach((conn) => {
-    if (conn.sessionId === session.id) {
+    if (conn.sessionId === session.id && conn.lineId === line.id) {
       conn.currentVoteTo = -1;
     }
   });
 
-  session.setCurrIdxTo(mostVoteRingId);
+  line.setCurrIdxTo(mostVoteRingId);
   //unlock
-  session.standbyTimer = setTimeout(
-    async (session) => {
-      session.isStandby = false;
+  line.standbyTimer = setTimeout(
+    async (session, line) => {
+      line.isStandby = false;
       if (session.holdDuration > 0) {
-        await startHoldingForSessionWithDelay(session, 0);
+        await startHoldingForSessionWithDelay(session, line, 0);
       }
-      session.standbyTimer = null;
+      line.standbyTimer = null;
       await session.saveSessionStateToFile();
     },
     1000,
     session,
+    line,
   );
   await session.saveSessionStateToFile();
 
-  sendToAllAdmins(session, 0, {
+  sendToLineAdmins(session, line.id, 0, {
     m: MESSAGES.MSG_SELECT_HISTORY,
-    history: session.history,
-    selectedIdx: session.historyIndex,
+    history: line.history,
+    selectedIdx: line.historyIndex,
   });
 
   if (!session.isPause) {
     const timestamp = new Date().getTime() + session.preloadDuration;
-    sendToAllClients(session, timestamp, {
+    sendToLine(session, line.id, timestamp, {
       m: MESSAGES.MSG_SHOW,
       showIdx: mostVoteRingId,
     });
   }
 }
 
-async function startHoldingForSessionWithDelay(session, delay) {
-  session.isHolding = true;
+async function startHoldingForSessionWithDelay(session, line, delay) {
+  line.isHolding = true;
   //holding cooldown
-  session.currentHoldingDuration = session.nextFrameHoldingDur
-    ? parseCustomDur(session.holdDuration, session.nextFrameHoldingDur)
+  line.currentHoldingDuration = line.nextFrameHoldingDur
+    ? parseCustomDur(session.holdDuration, line.nextFrameHoldingDur)
     : session.holdDuration;
-  session.nextFrameHoldingDur = null;
-  session.currentBeginHoldTimeStamp = new Date().getTime() + delay;
-  session.currentEndHoldTimeStamp =
-    session.currentBeginHoldTimeStamp + session.currentHoldingDuration * 1000;
+  line.nextFrameHoldingDur = null;
+  line.currentBeginHoldTimeStamp = new Date().getTime() + delay;
+  line.currentEndHoldTimeStamp =
+    line.currentBeginHoldTimeStamp + line.currentHoldingDuration * 1000;
 
   //unlock
-  session.holdingTimer = setTimeout(
-    async (session) => {
-      session.isHolding = false;
+  line.holdingTimer = setTimeout(
+    async (session, line) => {
+      line.isHolding = false;
       sendToAllAdmins(session, 0, {
         m: MESSAGES.MSG_CHECK_HOLD,
-        isHold: session.isHolding,
+        isHold: line.isHolding,
       });
-      session.holdingTimer = null;
+      line.holdingTimer = null;
       await session.saveSessionStateToFile();
     },
-    session.currentHoldingDuration * 1000,
+    line.currentHoldingDuration * 1000,
     session,
+    line,
   );
   await session.saveSessionStateToFile();
 
   sendToAllAdmins(session, 0, {
     m: MESSAGES.MSG_CHECK_HOLD,
-    isHold: session.isHolding,
+    isHold: line.isHolding,
   });
-  sendToAllClients(session, 0, {
+  sendToLine(session, line.id, 0, {
     m: MESSAGES.MSG_BEGIN_HOLDING,
-    endTime: session.currentEndHoldTimeStamp,
-    duration: session.currentHoldingDuration,
+    endTime: line.currentEndHoldTimeStamp,
+    duration: line.currentHoldingDuration,
   });
 }
 
-async function jumpScoreForSession(session, value) {
-  if (session.isHolding && session.holdingTimer != null) {
-    await cancelHoldingTimer(session, 1);
+async function jumpScoreForSession(session, line, value) {
+  if (line.isHolding && line.holdingTimer != null) {
+    await cancelHoldingTimer(session, line, 1);
   }
-  if (session.standbyTimer) {
-    clearTimeout(session.standbyTimer);
-    await session.patchState({ standbyTimer: null }, true);
+  if (line.standbyTimer) {
+    clearTimeout(line.standbyTimer);
+    line.standbyTimer = null;
+    await session.saveSessionStateToFile();
   }
-  if (session.isVoting && session.votingTimer != null) {
-    await cancelVotingTimer(session);
+  if (line.isVoting && line.votingTimer != null) {
+    await cancelVotingTimer(session, line);
   }
   //---------
-  const filename = session.history[value];
+  const filename = line.history[value];
   const index = session.listFilesInLowerCase.indexOf(filename.toLowerCase());
-  session.historyIndex = value;
-  session.setCurrIdxTo(index);
+  line.historyIndex = value;
+  line.setCurrIdxTo(index);
   await session.saveSessionStateToFile();
 
-  sendToAllAdmins(session, 0, {
+  sendToLineAdmins(session, line.id, 0, {
     m: MESSAGES.MSG_SELECT_HISTORY,
-    history: session.history,
-    selectedIdx: session.historyIndex,
+    history: line.history,
+    selectedIdx: line.historyIndex,
   });
 
   if (!session.isPause) {
-    sendToAllClients(session, Date.now() + session.preloadDuration, {
+    sendToLine(session, line.id, Date.now() + session.preloadDuration, {
       m: MESSAGES.MSG_SHOW,
       showIdx: index,
     });
   }
 }
 
-async function cancelHoldingTimer(session, onOff) {
-  clearTimeout(session.holdingTimer);
-  await session.patchState({ holdingTimer: null }, true);
-  sendToAllClients(session, 0, {
+async function cancelHoldingTimer(session, line, onOff) {
+  clearTimeout(line.holdingTimer);
+  line.holdingTimer = null;
+  await session.saveSessionStateToFile();
+  sendToLine(session, line.id, 0, {
     m: MESSAGES.MSG_BEGIN_HOLDING,
     endTime: 0,
     duration: onOff,
   });
 }
 
-async function cancelVotingTimer(session) {
-  clearInterval(session.votingTimer);
-  await session.patchState({ votingTimer: null }, true);
-  sendToAllClients(session, 0, {
+async function cancelVotingTimer(session, line) {
+  clearInterval(line.votingTimer);
+  line.votingTimer = null;
+  await session.saveSessionStateToFile();
+  sendToLine(session, line.id, 0, {
     m: MESSAGES.MSG_BEGIN_VOTING,
     endTime: 0,
     duration: 0,
@@ -513,11 +595,14 @@ async function messageHandle(conn, message) {
 
   const isAdmin = password === session.adminPassword;
   if (msg === MESSAGES.MSG_PING) {
-    const { clientTime } = messageData;
+    const { clientTime, did } = messageData;
     conn.sessionId = sessionId;
     conn.isAdmin = isAdmin;
     conn.isStaff =
       password === session.playerPassword || password === session.adminPassword;
+    // Session Lines: bind this connection to its device id + line (restores the
+    // device's line on reconnect; one line ⇒ lines[0]).
+    ensureLineAssignment(session, conn, did);
 
     sendToClient(conn, 0, {
       m: MESSAGES.MSG_PING,
@@ -528,10 +613,11 @@ async function messageHandle(conn, message) {
   }
 
   if (msg === MESSAGES.MSG_TAP) {
+    const line = lineForConn(session, conn);
     const { selectedId } = messageData;
     if (
-      clientIndex !== session.currentIndex ||
-      session.isHolding ||
+      clientIndex !== line.currentIndex ||
+      line.isHolding ||
       session.isPause ||
       !Boolean(selectedId)
     ) {
@@ -539,7 +625,7 @@ async function messageHandle(conn, message) {
     }
 
     const { frameVotingDur, nextFrameHoldingDur } = messageData;
-    session.nextFrameHoldingDur = nextFrameHoldingDur;
+    line.nextFrameHoldingDur = nextFrameHoldingDur;
     // selectedId should have format: nextVoteId#currFileName#aEleIndex
     const [nextFrameIndex] = selectedId.split("#");
     if (
@@ -548,82 +634,86 @@ async function messageHandle(conn, message) {
       frameVotingDur === "false" ||
       session.votingDuration === 0
     ) {
-      session.setCurrIdxTo(Number(nextFrameIndex));
+      line.setCurrIdxTo(Number(nextFrameIndex));
       await session.saveSessionStateToFile();
 
-      sendToAllAdmins(session, 0, {
+      sendToLineAdmins(session, line.id, 0, {
         m: MESSAGES.MSG_SELECT_HISTORY,
-        history: session.history,
-        selectedIdx: session.historyIndex,
+        history: line.history,
+        selectedIdx: line.historyIndex,
       });
-      sendToAllClientsWithDelay(session, session.preloadDuration, {
+      sendToLineWithDelay(session, line.id, session.preloadDuration, {
         m: MESSAGES.MSG_SHOW,
-        showIdx: session.currentIndex,
+        showIdx: line.currentIndex,
       });
       const customHoldDur = parseCustomDur(
         session.holdDuration,
         nextFrameHoldingDur,
       );
       if (customHoldDur > 0) {
-        await startHoldingForSessionWithDelay(session, 0);
+        await startHoldingForSessionWithDelay(session, line, 0);
       }
       return;
     }
 
     //change vote of client to new value
-    if (!session.isStandby) {
-      if (!session.isVoting) {
-        await startVotingForSessionWithDelay(session, 100, frameVotingDur);
+    if (!line.isStandby) {
+      if (!line.isVoting) {
+        await startVotingForSessionWithDelay(session, line, 100, frameVotingDur);
       }
 
       conn.currentVoteTo = selectedId;
-      sendUpdateVotingToClient(conn, session);
+      sendUpdateVotingToClient(conn, session, line);
     }
     return;
   }
 
   if (msg === MESSAGES.MSG_NEED_DISPLAY) {
+    // Re-bind the device to its line (a reconnect re-pings then needs display;
+    // restores membership via deviceRegistry — one line ⇒ lines[0]).
+    const line = ensureLineAssignment(session, conn, messageData.did);
+
     if (!session.isPause) {
       sendToClient(conn, 0, {
         m: MESSAGES.MSG_SHOW,
-        showIdx: session.currentIndex,
+        showIdx: line.currentIndex,
       });
     }
 
-    if (session.isVoting) {
+    if (line.isVoting) {
       conn.currentVoteTo = -1;
       sendToClient(conn, 0, {
         m: MESSAGES.MSG_BEGIN_VOTING,
-        endTime: session.currentEndTimeStamp,
-        duration: session.currentVotingDuration,
+        endTime: line.currentEndTimeStamp,
+        duration: line.currentVotingDuration,
       });
     }
 
-    if (session.isHolding) {
+    if (line.isHolding) {
       sendToClient(conn, 0, {
         m: MESSAGES.MSG_BEGIN_HOLDING,
-        endTime: session.currentEndHoldTimeStamp,
-        duration: session.currentHoldingDuration,
+        endTime: line.currentEndHoldTimeStamp,
+        duration: line.currentHoldingDuration,
       });
     }
 
     if (isAdmin) {
       sendToClient(conn, 0, {
         m: MESSAGES.MSG_SELECT_HISTORY,
-        history: session.history,
-        selectedIdx: session.historyIndex,
+        history: line.history,
+        selectedIdx: line.historyIndex,
       });
     }
 
     updateNumberOfConnectionForSession(session);
     sendToAllClients(session, 0, {
       m: MESSAGES.MSG_CHECK_HOLD,
-      isHold: session.isHolding,
+      isHold: line.isHolding,
     });
     sendToAllClients(session, 0, {
       m: MESSAGES.MSG_PAUSE,
       isPause: session.isPause,
-      showIdx: session.currentIndex,
+      showIdx: line.currentIndex,
     });
     return;
   }
@@ -634,12 +724,14 @@ async function messageHandle(conn, message) {
   }
 
   if (msg === MESSAGES.MSG_CHECK_HOLD) {
-    if (session.isHolding && session.holdingTimer != null) {
-      await cancelHoldingTimer(session, 0);
+    const line = lineForConn(session, conn);
+    if (line.isHolding && line.holdingTimer != null) {
+      await cancelHoldingTimer(session, line, 0);
     }
 
     const { isHold } = messageData;
-    await session.patchState({ isHolding: isHold }, true);
+    line.isHolding = isHold;
+    await session.saveSessionStateToFile();
     sendToAllClients(session, 0, {
       m: MESSAGES.MSG_CHECK_HOLD,
       isHold,
@@ -656,19 +748,21 @@ async function messageHandle(conn, message) {
   }
 
   if (msg === MESSAGES.MSG_PAUSE) {
+    const line = lineForConn(session, conn);
     const { isPause } = messageData;
     await session.patchState({ isPause }, true);
     sendToAllClients(session, 0, {
       m: MESSAGES.MSG_PAUSE,
       isPause,
-      showIdx: session.currentIndex,
+      showIdx: line.currentIndex,
     });
     return;
   }
 
   if (msg === MESSAGES.MSG_SELECT_HISTORY) {
+    const line = lineForConn(session, conn);
     const { selectedIdx } = messageData;
-    await jumpScoreForSession(session, selectedIdx);
+    await jumpScoreForSession(session, line, selectedIdx);
     return;
   }
 

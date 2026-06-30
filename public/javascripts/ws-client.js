@@ -6,6 +6,69 @@ let pingCountToReady = 3;
 let timeStampOffset = 0;
 let timeStampRate = 1.0;
 
+// ── Device identity (Session Lines) ──────────────────────────────────────────
+// A stable per-device UUID, persisted in localStorage as "did", so a refreshed
+// or reconnected device rejoins ITS line. Generated client-side (never baked
+// into the shared, apicache-cached ${id}.html). localStorage survives refresh,
+// tab close, and mobile tab eviction; if it is blocked we keep an in-memory id
+// for the page's life. http LAN deploys aren't a secure context (so
+// crypto.randomUUID may be absent) — fall back to getRandomValues, then Math.
+let inMemoryDeviceId = null;
+
+function bytesToUuid(buf) {
+  const h = [];
+  for (let i = 0; i < 16; i++) {
+    h.push((buf[i] + 0x100).toString(16).slice(1));
+  }
+  return (
+    h[0] + h[1] + h[2] + h[3] + "-" +
+    h[4] + h[5] + "-" +
+    h[6] + h[7] + "-" +
+    h[8] + h[9] + "-" +
+    h[10] + h[11] + h[12] + h[13] + h[14] + h[15]
+  );
+}
+
+function generateUuid() {
+  try {
+    if (typeof crypto !== "undefined" && crypto.randomUUID) {
+      return crypto.randomUUID();
+    }
+    if (typeof crypto !== "undefined" && crypto.getRandomValues) {
+      const buf = new Uint8Array(16);
+      crypto.getRandomValues(buf);
+      buf[6] = (buf[6] & 0x0f) | 0x40; // version 4
+      buf[8] = (buf[8] & 0x3f) | 0x80; // variant 10x
+      return bytesToUuid(buf);
+    }
+  } catch (e) {
+    // fall through to Math.random
+  }
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === "x" ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+}
+
+function ensureDeviceId() {
+  if (window.deviceId) {
+    return window.deviceId;
+  }
+  let id = null;
+  try {
+    id = localStorage.getItem("did");
+    if (!id) {
+      id = generateUuid();
+      localStorage.setItem("did", id);
+    }
+  } catch (e) {
+    id = inMemoryDeviceId || (inMemoryDeviceId = generateUuid());
+  }
+  window.deviceId = id;
+  return id;
+}
+
 // ── WebSocket reconnect ─────────────────────────────────────────────
 const WS_BASE_DELAY = 1000; // 1 s
 const WS_MAX_DELAY = 5000; // 5 s
@@ -17,6 +80,7 @@ let wsCountdownTimer = null;
 // ── WebSocket lifecycle ──────────────────────────────────────────────
 
 function connectWebSocket() {
+  ensureDeviceId();
   cancelReconnectTimer();
   teardownSocket();
   ws = new WebSocket(wsPath);
@@ -156,6 +220,7 @@ function sendToServer(message, payload) {
       cid: window.currentIndex,
       sid: window.sessionId,
       msg: message,
+      did: window.deviceId,
       ...payload,
     }),
   );
