@@ -3,6 +3,10 @@ const fs = require("fs");
 
 const jade = require("jade");
 
+// Session Lines: pure graph builder (no behavior change for vanilla scores).
+const { parseFrameAttrs } = require("./lib/session-lines/parse");
+const { buildGraph } = require("./lib/session-lines/graph");
+
 const IGNORE_STATE_KEYS = ["svgContent", "htmlContent"];
 const HREF_REGX = /(?<=href=")(.*?)(?=")/;
 const LINK_REGEX = /((xlink:href)|(href))="(.*?)"/;
@@ -362,6 +366,10 @@ class BMSession {
 
     this.listMultiChooseImages = [];
 
+    // Session Lines: collect each frame's session-* attributes (parsed from the
+    // raw content, before the <a> href rewrite below strips href values).
+    const sessionFrameAttrs = [];
+
     const svgFilePath = `${SERVER_STATE_DIR}/${this.id}.content.svg`;
     if (fs.existsSync(svgFilePath)) {
       await fs.promises.rm(svgFilePath);
@@ -370,6 +378,10 @@ class BMSession {
     for (const filename of this.listFiles) {
       const filePath = `${dir}/${filename}`;
       const content = await fs.promises.readFile(filePath, "utf8");
+      sessionFrameAttrs.push({
+        name: filename,
+        attrs: parseFrameAttrs(content),
+      });
       let svg = regexWithPattern(content, /<svg.*?<\/svg>/is, 0);
       const svgIndex = this.listFilesInLowerCase.indexOf(
         filename.toLowerCase(),
@@ -411,6 +423,16 @@ class BMSession {
         `${SERVER_STATE_DIR}/${this.id}.content.svg`,
         svg,
       );
+    }
+
+    // Session Lines: build the relationship graph and flag the session ONLY when
+    // the score actually uses session-* markup. A vanilla score leaves
+    // this.graph / this.hasSessionLines unset, so behavior and persisted state
+    // are unchanged. The graph is inert in Phase 1 (nothing consults it yet).
+    const sessionGraph = buildGraph(sessionFrameAttrs);
+    if (sessionGraph.hasSessionLines) {
+      this.graph = sessionGraph;
+      this.hasSessionLines = true;
     }
 
     const aboutSvg = await buildAboutSvgAsync(
@@ -712,3 +734,7 @@ class BMDatabase {
 }
 
 module.exports = BMDatabase;
+// Additive named exports for offline tooling/tests (no behavior change).
+module.exports.BMSession = BMSession;
+module.exports.SERVER_STATE_DIR = SERVER_STATE_DIR;
+module.exports.DATA_DIR = DATA_DIR;
