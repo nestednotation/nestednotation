@@ -3,7 +3,7 @@ window.soundFileList= JSON.parse('[]');
 window.listFiles = JSON.parse('["1.svg","10.svg","11.svg","2.svg","3.svg","4.svg","5.svg","6.svg","7.svg","8.svg","9.svg","DONE.svg","PRE-1.svg","PRE-10.svg","PRE-11.svg","PRE-2.svg","PRE-3.svg","PRE-4.svg","PRE-5.svg","PRE-6.svg","PRE-7.svg","PRE-8.svg","PRE-9.svg","PRE-RELOOP.svg","PRE-RELOOP10.svg","PRE-RELOOP11.svg","PRE-RELOOP2.svg","PRE-RELOOP3.svg","PRE-RELOOP4.svg","PRE-RELOOP5.svg","PRE-RELOOP6.svg","PRE-RELOOP7.svg","PRE-RELOOP8.svg","PRE-RELOOP9.svg","RELOOP1.svg","RELOOP10.svg","RELOOP11.svg","RELOOP2.svg","RELOOP3.svg","RELOOP4.svg","RELOOP5.svg","RELOOP6.svg","RELOOP7.svg","RELOOP8.svg","RELOOP9.svg","START.svg"]');
 window.staffCode = search.get('p');
 window.sessionId = '__baseline__';
-window.wsPath = 'wss://undefined'
+window.wsPath = 'ws://192.168.0.2:2382'
 
 window.qrSharePath = '/session/__baseline__/?p=player&amp;t=2';
 window.votingSize =  JSON.parse('100');
@@ -31,6 +31,13 @@ window.MSG_SHOW_NUMBER_CONNECTION = 12;
 window.MSG_CHANGE_FOLDER = 13;
 window.MSG_CHANGE_VOLUME = 14;
 window.MSG_GLOBAL_REFRESH = 15;
+
+window.MSG_LINE_ASSIGNED = 16;
+window.MSG_BEGIN_SPLIT = 17;
+window.MSG_BARRIER_WAITING = 18;
+window.MSG_BARRIER_RELEASED = 19;
+window.MSG_SUB_ENTER = 20;
+window.MSG_SUB_EXIT = 21;
 </script><script src="/javascripts/voting.js"></script><script src="/javascripts/ws-client.js"></script><script src="/javascripts/session.js"></script><svg id="filter-source" xmlns="http://www.w3.org/2000/svg" version="1.1" viewBox="0 0 1 1" width="0" height="0" style="display: block !important; height: 0;"><defs><filter id="grayscale"><feColorMatrix type="saturate" values="0"></feColorMatrix></filter></defs></svg><div class="control-container"><div class="session-control-container"><div id="divhold" style="display: none;"><input type="checkbox" id="hold" onclick="sendHold(this);" checked="true"/><label for="hold">&nbsp;hold</label></div><div id="divpause" style="display: none;"><input type="checkbox" id="pause" onclick="sendPause(this);" checked="true"/><label for="pause">&nbsp;pause</label></div><div id="divhistory" style="display: none;"><select id="history" onchange="sendHistory(this);"></select></div></div><button id="stay" onclick="handleSelectLink(this)" data-file-idx="stay" class="stay-btn">stay<div class="stay-indicator"> </div></button><div class="user-control-container"><div class="count-down-container"><div id="circle_10" class="circle"></div><div id="circle_9" class="circle"></div><div id="circle_8" class="circle"></div><div id="circle_7" class="circle"></div><div id="circle_6" class="circle"></div><div id="circle_5" class="circle"></div><div id="circle_4" class="circle"></div><div id="circle_3" class="circle"></div><div id="circle_2" class="circle"></div><div id="circle_1" class="circle"></div></div><img id="cooldown-icon" src="/svg/cooldown-icon.svg"/><img id="hold-icon" src="/svg/hold-icon.svg"/><button id="side-menu-trigger" onclick="toggleSideMenu(event)" type="button" title="open side menu" class="side-menu-trigger"> <img src="/svg/side-menu-icon.svg" style="pointer-events: none;"/></button></div></div><div style="clear: both;"></div><div id="MainContent"><div id="divOverlay"></div><div id="MainSVGContent"><svg id="svg0" class="hidden" file="1.svg"  width="100%" height="100%" viewBox="0 0 1801 1801" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" xml:space="preserve" xmlns:serif="http://www.serif.com/" style="fill-rule:evenodd;clip-rule:evenodd;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:1.5;">
     <g transform="matrix(1,0,0,1,-2172,-15)">
         <g id="_1" serif:id="1" transform="matrix(1,0,0,1,2172.33,15.1807)">

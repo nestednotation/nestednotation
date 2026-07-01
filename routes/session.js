@@ -36,6 +36,33 @@ router.get(
   },
 );
 
+// Session Lines: on-demand sub-score frames. Read-only; mirrors the apicache of
+// the main content route. Returns the rewritten frames + frame/sound lists the
+// client injects when a line dives into a sub-session.
+router.get(
+  "/:sessionId/sub/:subName",
+  cache("30 minutes"),
+  function (req, res) {
+    req.apicacheGroup = SESSION_CACHE_KEY;
+
+    const { sessionId, subName } = req.params;
+    const db = req.app.get("Database");
+    const session = db.sessionTable.getById(sessionId);
+
+    if (!session || !session.subFrames || !session.subFrames[subName]) {
+      res.status(404).json({ error: "Sub-score not found" });
+      return;
+    }
+
+    const sub = session.subFrames[subName];
+    res.json({
+      framesHtml: sub.framesHtml,
+      frameList: sub.frameList,
+      soundList: sub.soundList,
+    });
+  },
+);
+
 router.get("/", function (req, res) {
   const sessionName = req.query.s;
   if (sessionName == null || sessionName.length == 0) {

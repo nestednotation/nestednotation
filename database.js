@@ -415,9 +415,22 @@ class BMSession {
     // are unchanged. The graph is inert in Phase 1 (nothing consults it yet).
     const sessionGraph = buildGraph(sessionFrameAttrs);
     if (sessionGraph.hasSessionLines) {
+      // Session Lines: per-frame ordered link target indices (resolved against
+      // the main frame list). The runtime maps a device's tap on a split frame
+      // to a child slot via these. Gated — never built for vanilla scores.
+      sessionGraph.frameLinks = {};
+      for (const { name, attrs } of sessionFrameAttrs) {
+        sessionGraph.frameLinks[name] = (attrs.hrefs || []).map((href) =>
+          this.listFilesInLowerCase.indexOf(href.toLowerCase()),
+        );
+      }
       this.graph = sessionGraph;
       this.hasSessionLines = true;
     }
+
+    // Session Lines: build sub-score frames on demand cache (gated; the file is
+    // removed for vanilla scores so build output stays byte-identical).
+    await this.buildSubFramesContent(sessionGraph);
 
     const aboutSvg = await buildAboutSvgAsync(
       `${this.folder}/Documentation`,
@@ -459,6 +472,14 @@ class BMSession {
       msgChangeVolume: MESSAGES.MSG_CHANGE_VOLUME,
       msgGlobalRefresh: MESSAGES.MSG_GLOBAL_REFRESH,
 
+      // Session Lines orchestration protocol (inert for vanilla scores).
+      msgLineAssigned: MESSAGES.MSG_LINE_ASSIGNED,
+      msgBeginSplit: MESSAGES.MSG_BEGIN_SPLIT,
+      msgBarrierWaiting: MESSAGES.MSG_BARRIER_WAITING,
+      msgBarrierReleased: MESSAGES.MSG_BARRIER_RELEASED,
+      msgSubEnter: MESSAGES.MSG_SUB_ENTER,
+      msgSubExit: MESSAGES.MSG_SUB_EXIT,
+
       defaultAutoplay: JSON.stringify(this.defaultAutoplay),
       enableAutoplayByDefault: JSON.stringify(
         this.enableAutoplayByDefault ?? false,
@@ -485,6 +506,116 @@ class BMSession {
     console.log(
       `Finish building svg content... for ${this.folder} with ID ${this.id}`,
     );
+  }
+
+  // Session Lines: build the on-demand sub-score frame cache. For each sub-score
+  // referenced by a session-sub-start, rewrite its frames the same way the main
+  // loop does (id/<a> rewrite, resolved WITHIN the sub) and keep them in memory
+  // (this.subFrames) plus a ${id}.subs.json the sub route streams. Gated: a
+  // vanilla score builds NO subs file (removed if stale), so HTML stays
+  // byte-identical.
+  async buildSubFramesContent(graph) {
+    const subsFile = `${SERVER_STATE_DIR}/${this.id}.subs.json`;
+    this.subFrames = {};
+
+    if (!graph || !graph.hasSessionLines) {
+      if (fs.existsSync(subsFile)) {
+        await fs.promises.rm(subsFile);
+      }
+      return;
+    }
+
+    const scores = [
+      ...new Set(Object.values(graph.subStart || {}).map((s) => s.score)),
+    ];
+
+    for (const score of scores) {
+      const built = await this.buildOneSubScore(score);
+      if (built) {
+        this.subFrames[score] = built;
+      }
+    }
+
+    if (Object.keys(this.subFrames).length > 0) {
+      // Persist only what the sub route serves (framesHtml/frameList/soundList);
+      // the per-sub graph stays in-memory for the runtime.
+      const payload = {};
+      for (const [score, sub] of Object.entries(this.subFrames)) {
+        payload[score] = {
+          framesHtml: sub.framesHtml,
+          frameList: sub.frameList,
+          soundList: sub.soundList,
+        };
+      }
+      await fs.promises.writeFile(subsFile, JSON.stringify(payload));
+    } else if (fs.existsSync(subsFile)) {
+      await fs.promises.rm(subsFile);
+    }
+  }
+
+  async buildOneSubScore(score) {
+    const base = `${DATA_DIR}/${this.folder}/Subscores/${score}`;
+    const framesDir = fs.existsSync(`${base}/Frames`) ? `${base}/Frames` : base;
+    if (!fs.existsSync(framesDir)) {
+      console.log(`Sub-score frames not found at ${framesDir}`);
+      return null;
+    }
+
+    const frameList = (await fs.promises.readdir(framesDir)).filter((f) =>
+      f.toLowerCase().endsWith(".svg"),
+    );
+    if (frameList.length <= 0) {
+      return null;
+    }
+    const frameListLower = frameList.map((f) => f.toLowerCase());
+
+    let soundList = [];
+    const soundsDir = `${base}/Sounds`;
+    if (fs.existsSync(soundsDir)) {
+      const files = await fs.promises.readdir(soundsDir, { recursive: true });
+      soundList = files.map((f) => f.replace("\\", "/"));
+    }
+
+    const subAttrs = [];
+    let framesHtml = "";
+
+    for (const filename of frameList) {
+      const content = await fs.promises.readFile(
+        `${framesDir}/${filename}`,
+        "utf8",
+      );
+      subAttrs.push({ name: filename, attrs: parseFrameAttrs(content) });
+
+      let svg = regexWithPattern(content, /<svg.*?<\/svg>/is, 0);
+      const svgIndex = frameListLower.indexOf(filename.toLowerCase());
+      svg = svg?.replace(
+        "<svg",
+        `<svg id="sub-${score}-${svgIndex}" class="hidden" file="${filename}" `,
+      );
+
+      const listA = svg?.match(/<a.*?>/g);
+      listA?.forEach((a, idx) => {
+        const matchedHref = HREF_REGX.exec(a)?.[0];
+        const aIndex = frameListLower.indexOf(matchedHref?.toLowerCase());
+        const newA = a
+          .replace(
+            "<a",
+            `<a id="${aIndex}#${filename}#${idx}" data-next-file-idx="${aIndex}" `,
+          )
+          .replace(LINK_REGEX, `onclick="handleSelectLink(this)"`);
+        svg = svg.replace(a, newA);
+      });
+
+      framesHtml += `${svg}\n`;
+    }
+
+    return {
+      frameList,
+      frameListLower,
+      soundList,
+      framesHtml,
+      graph: buildGraph(subAttrs),
+    };
   }
 
   regexWithPattern(str, pattern, groupId) {

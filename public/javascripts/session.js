@@ -218,6 +218,128 @@ function parseMessage(data) {
     window.location.reload();
     return;
   }
+
+  // Session Lines: this device was (re)assigned to a line on split/merge. The
+  // frame it should show still arrives via MSG_SHOW (line-scoped) — we just
+  // remember our line id for any line-aware UI.
+  if (msg === MSG_LINE_ASSIGNED) {
+    window.lineId = data.lineId;
+    console.log("assigned to line " + window.lineId);
+    return;
+  }
+
+  if (msg === MSG_BEGIN_SPLIT) {
+    window.lineId = data.lineId;
+    return;
+  }
+
+  // Session Lines: this line is parked at a hold-until barrier, waiting for the
+  // other lines to converge.
+  if (msg === MSG_BARRIER_WAITING) {
+    showBarrierWaiting(true);
+    return;
+  }
+
+  if (msg === MSG_BARRIER_RELEASED) {
+    showBarrierWaiting(false);
+    return;
+  }
+
+  // Session Lines: this line dived into a sub-score. Fetch + inject its frames
+  // (cached per sub), swap the active frame list, then show the sub frame.
+  if (msg === MSG_SUB_ENTER) {
+    const { sub, showIdx } = data;
+    enterSubSessionView(sub)
+      .then(() => showImageAtIndex(showIdx))
+      .catch((e) => console.error("sub-enter failed", e));
+    return;
+  }
+
+  // Session Lines: the sub ended — pop back to the main flow landing frame.
+  if (msg === MSG_SUB_EXIT) {
+    const { showIdx } = data;
+    exitSubSessionView();
+    showImageAtIndex(showIdx);
+    return;
+  }
+}
+
+// ── Sub-session view (Session Lines) ─────────────────────────────────────────
+window.__subCache = window.__subCache || {};
+
+function ensureSubContainer() {
+  let inner = document.getElementById("SubSVGContent");
+  if (!inner) {
+    const wrap = document.createElement("div");
+    wrap.id = "SubSessionContent";
+    wrap.style.display = "none";
+    inner = document.createElement("div");
+    inner.id = "SubSVGContent";
+    wrap.appendChild(inner);
+    const main = document.getElementById("MainContent");
+    main.parentNode.insertBefore(wrap, main.nextSibling);
+  }
+  return inner;
+}
+
+function showSubContainer(show) {
+  const wrap = document.getElementById("SubSessionContent");
+  const mainSvg = document.getElementById("MainSVGContent");
+  if (wrap) wrap.style.display = show ? "block" : "none";
+  if (mainSvg) mainSvg.style.display = show ? "none" : "block";
+}
+
+async function enterSubSessionView(subName) {
+  if (!window.parentListFiles) {
+    window.parentListFiles = window.listFiles;
+  }
+
+  let data = window.__subCache[subName];
+  if (!data) {
+    const res = await fetch(
+      `/session/${window.sessionId}/sub/${encodeURIComponent(subName)}`,
+    );
+    if (!res.ok) throw new Error(`sub fetch ${res.status}`);
+    data = await res.json();
+    window.__subCache[subName] = data;
+
+    const container = ensureSubContainer();
+    if (!container.querySelector(`svg[id^="sub-${subName}-"]`)) {
+      const wrapper = document.createElement("div");
+      wrapper.innerHTML = data.framesHtml;
+      while (wrapper.firstChild) {
+        container.appendChild(wrapper.firstChild);
+      }
+      window.sessionInstance?.registerSubFrames(subName, data.soundList);
+    }
+  }
+
+  window.listFiles = data.frameList;
+  window.frameContext = { type: "sub", name: subName };
+  showSubContainer(true);
+}
+
+function exitSubSessionView() {
+  if (window.parentListFiles) {
+    window.listFiles = window.parentListFiles;
+  }
+  window.frameContext = { type: "main" };
+  showSubContainer(false);
+}
+
+// The barrier banner is created on demand so it never appears in the shared,
+// apicache-cached HTML (vanilla scores stay byte-identical).
+function showBarrierWaiting(show) {
+  let el = document.getElementById("barrier-waiting-indicator");
+  if (!el) {
+    el = document.createElement("div");
+    el.id = "barrier-waiting-indicator";
+    el.textContent = "waiting for other lines…";
+    el.style.display = "none";
+    document.body.appendChild(el);
+  }
+  el.style.display = show ? "block" : "none";
+  document.body.classList.toggle("barrier-waiting", show);
 }
 
 function updateNumberOfConnection(numPlayer, numRider) {
@@ -309,17 +431,40 @@ function hideAllCooldownCircles() {
   }
 }
 
-function showImageAtIndex(index) {
-  const listImg = getListSvg();
+// Session Lines: which frame list / DOM is currently presented. On the main flow
+// this is the inlined #MainContent svgs; inside a sub-session it is the fetched
+// #SubSVGContent svgs (ids "sub-<name>-<idx>").
+window.frameContext = { type: "main" };
 
-  for (let i = 0; i < listImg.length; i++) {
-    const id = parseInt(listImg[i].id.substr(3));
-    listImg[i].setAttribute("class", id === index ? "" : "hidden");
+function subFrameIndexOf(domId) {
+  const m = /-(\d+)$/.exec(domId || "");
+  return m ? parseInt(m[1], 10) : -1;
+}
+
+function showImageAtIndex(index) {
+  const ctx = window.frameContext || { type: "main" };
+  let frameDomId;
+
+  if (ctx.type === "sub") {
+    const listImg = document.querySelectorAll('#SubSVGContent svg[id^="sub-"]');
+    for (const img of listImg) {
+      const i = subFrameIndexOf(img.id);
+      img.setAttribute("class", i === index ? "" : "hidden");
+    }
+    frameDomId = `sub-${ctx.name}-${index}`;
+  } else {
+    const listImg = getListSvg();
+    for (let i = 0; i < listImg.length; i++) {
+      const id = parseInt(listImg[i].id.substr(3));
+      listImg[i].setAttribute("class", id === index ? "" : "hidden");
+    }
+    frameDomId = index === -1 ? "svg-1" : `svg${index}`;
   }
 
   const updateView = new CustomEvent("update-view", {
     detail: {
       newIndex: index,
+      frameDomId,
     },
   });
 

@@ -15,6 +15,14 @@ const MESSAGES = {
   MSG_CHANGE_FOLDER: 13,
   MSG_CHANGE_VOLUME: 14,
   MSG_GLOBAL_REFRESH: 15,
+  // Session Lines orchestration protocol (Phase 3). Inert for vanilla scores —
+  // only emitted when session.hasSessionLines.
+  MSG_LINE_ASSIGNED: 16, // tell a device its (new) line id on split/merge
+  MSG_BEGIN_SPLIT: 17, // a split frame's choice window opened
+  MSG_BARRIER_WAITING: 18, // line parked at a hold-until barrier
+  MSG_BARRIER_RELEASED: 19, // barrier satisfied — line may proceed
+  MSG_SUB_ENTER: 20, // line dived into a sub-score
+  MSG_SUB_EXIT: 21, // line popped back to the main flow
 };
 
 const FORM_MESSAGES = {
