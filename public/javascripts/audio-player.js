@@ -589,7 +589,7 @@ class AudioSession {
   // Session Lines: register a sub-score's injected frames (ids "sub-<name>-<idx>")
   // so the playhead can show + play them; their sounds resolve to the sub's dir.
   registerSubFrames(subName, soundList) {
-    const container = document.getElementById("SubSVGContent");
+    const container = document.getElementById("SubSessionContent");
     if (!container) {
       return;
     }

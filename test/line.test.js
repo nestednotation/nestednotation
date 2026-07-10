@@ -1,9 +1,11 @@
 /**
- * Chunk E tests — BMLine extraction + shim + versioned persistence.
+ * Chunk E / N tests — BMLine extraction + versioned persistence.
  *
  * Covers: BMLine toJSON/fromJSON round-trip, v1(flat)→v2(lines:[one]) migration,
- * the BMSession prototype shim delegating per-line field access to lines[0], and
- * clearAllTimer clearing every line's timers.
+ * BMSession playhead-helper delegation + versioned toJSON, and clearAllTimer
+ * clearing every line's timers. (The BMSession per-line prototype shim was
+ * removed in Chunk N once bin/www read/wrote the line objects directly — the
+ * "no shim" case asserts the session no longer exposes per-line fields.)
  */
 
 const assert = require("node:assert");
@@ -124,29 +126,24 @@ module.exports = {
     assert.strictEqual(again, v2, "already-v2 state should pass through unchanged");
   },
 
-  "BMSession shim delegates per-line field read/write to lines[0]": () => {
+  "BMSession has no per-line shim; playhead helpers + toJSON still work": () => {
     const session = new BMSession();
     assert.strictEqual(session.lines.length, 1, "fresh session has one line");
 
-    session.currentIndex = 42;
-    assert.strictEqual(session.lines[0].currentIndex, 42, "write delegates");
-    assert.ok(
-      !Object.prototype.hasOwnProperty.call(session, "currentIndex"),
-      "shim must not create an own data property",
+    // Chunk N removed the prototype shim: per-line fields are NOT exposed on the
+    // session anymore — they live only on the line object.
+    assert.strictEqual(
+      session.currentIndex,
+      undefined,
+      "session must not expose per-line fields after the shim removal",
     );
 
-    session.lines[0].historyIndex = 9;
-    assert.strictEqual(session.historyIndex, 9, "read delegates");
-
-    session.isVoting = true;
-    assert.strictEqual(session.lines[0].isVoting, true);
-
-    // delegating methods write through to lines[0]:
+    // The BMSession playhead helpers still delegate to lines[0].
     session.listFiles = ["PRE_a.svg", "B.svg", "C.svg"];
     session.setCurrIdxTo(1);
-    assert.strictEqual(session.currentIndex, 1);
-    assert.strictEqual(session.lines[0].currentIndex, 1);
-    assert.strictEqual(session.history[session.history.length - 1], "B.svg");
+    const line0 = session.lines[0];
+    assert.strictEqual(line0.currentIndex, 1);
+    assert.strictEqual(line0.history[line0.history.length - 1], "B.svg");
 
     // toJSON is the versioned allowlist, with no top-level per-line fields.
     const json = session.toJSON();
@@ -155,6 +152,42 @@ module.exports = {
     assert.strictEqual(json.lines[0].currentIndex, 1);
     assert.ok(!("currentIndex" in json), "no flat per-line field in v2 toJSON");
     assert.ok("deviceRegistry" in json);
+  },
+
+  "enterSub/exitSub preserve the main-flow history across the dive": () => {
+    const session = {
+      listFiles: ["START.svg", "Right.svg", "Barrier.svg"],
+      subFrames: {
+        Tetra: { frameList: ["Echo.svg", "START.svg"] },
+      },
+    };
+    const line = new BMLine(session, "L1");
+    line.setCurrIdxTo(0);
+    line.setCurrIdxTo(1); // main history: START.svg, Right.svg
+
+    line.enterSub("Tetra", "Barrier.svg");
+    line.setCurrIdxTo(1); // sub START
+    line.setCurrIdxTo(0); // sub Echo (sub-end)
+
+    // Sub runs on its own fresh history + records qualified visits.
+    assert.deepStrictEqual(line.history, ["START.svg", "Echo.svg"]);
+    assert.deepStrictEqual(line.visitedSubFrames, [
+      "tetra/start.svg",
+      "tetra/echo.svg",
+    ]);
+
+    const popped = line.exitSub();
+    assert.deepStrictEqual(popped, { score: "Tetra", returnHref: "Barrier.svg" });
+    // Main history restored (NOT wiped) — barrier coverage + SM modal survive.
+    assert.deepStrictEqual(line.history, ["START.svg", "Right.svg"]);
+    line.setCurrIdxTo(2); // land on the return frame
+    assert.deepStrictEqual(line.history, [
+      "START.svg",
+      "Right.svg",
+      "Barrier.svg",
+    ]);
+    assert.strictEqual(line.historyIndex, 2);
+    assert.strictEqual(line.savedHistories.length, 0);
   },
 
   "clearAllTimer clears every line's timers": () => {

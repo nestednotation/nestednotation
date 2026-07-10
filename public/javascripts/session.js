@@ -25,6 +25,7 @@ function onDOMContentLoaded() {
 
   const searchParams = new URLSearchParams(window.location.search);
   const isAdmin = searchParams.get("t");
+  window.isAdminView = isAdmin === "1";
   if (isAdmin === "1") {
     console.log("This is Admin");
     const divhold = document.getElementById("divhold");
@@ -196,14 +197,14 @@ function parseMessage(data) {
   }
 
   if (msg === MSG_SELECT_HISTORY) {
-    const { history, selectedIdx } = data;
-    updateSelectHistory(history, selectedIdx);
+    const { history, selectedIdx, available } = data;
+    updateSelectHistory(history, selectedIdx, available);
     return;
   }
 
   if (msg === MSG_SHOW_NUMBER_CONNECTION) {
-    const { playerCount, riderCount } = data;
-    updateNumberOfConnection(playerCount, riderCount);
+    const { playerCount, riderCount, lines } = data;
+    updateNumberOfConnection(playerCount, riderCount, lines);
     return;
   }
 
@@ -234,9 +235,14 @@ function parseMessage(data) {
   }
 
   // Session Lines: this line is parked at a hold-until barrier, waiting for the
-  // other lines to converge.
+  // other lines to converge. The admin-flagged variant (data.admin) carries the
+  // full set of waiting barriers so the operator can force-release a stuck one.
   if (msg === MSG_BARRIER_WAITING) {
-    showBarrierWaiting(true);
+    if (data.admin) {
+      renderAdminBarrierPanel(data.barriers || []);
+    } else {
+      showBarrierWaiting(true);
+    }
     return;
   }
 
@@ -249,6 +255,11 @@ function parseMessage(data) {
   // (cached per sub), swap the active frame list, then show the sub frame.
   if (msg === MSG_SUB_ENTER) {
     const { sub, showIdx } = data;
+    // showIdx now indexes the SUB frame list. Keep window.currentIndex in sync
+    // (as MSG_SHOW does) — outgoing taps send it as `cid`, and the server
+    // rejects a tap whose cid !== line.currentIndex. Skipping this leaves cid on
+    // the stale main-flow index, so every tap inside the sub is dropped.
+    window.currentIndex = showIdx;
     enterSubSessionView(sub)
       .then(() => showImageAtIndex(showIdx))
       .catch((e) => console.error("sub-enter failed", e));
@@ -258,6 +269,8 @@ function parseMessage(data) {
   // Session Lines: the sub ended — pop back to the main flow landing frame.
   if (msg === MSG_SUB_EXIT) {
     const { showIdx } = data;
+    // Back on the main frame list — resync window.currentIndex (see MSG_SUB_ENTER).
+    window.currentIndex = showIdx;
     exitSubSessionView();
     showImageAtIndex(showIdx);
     return;
@@ -267,25 +280,13 @@ function parseMessage(data) {
 // ── Sub-session view (Session Lines) ─────────────────────────────────────────
 window.__subCache = window.__subCache || {};
 
-function ensureSubContainer() {
-  let inner = document.getElementById("SubSVGContent");
-  if (!inner) {
-    const wrap = document.createElement("div");
-    wrap.id = "SubSessionContent";
-    wrap.style.display = "none";
-    inner = document.createElement("div");
-    inner.id = "SubSVGContent";
-    wrap.appendChild(inner);
-    const main = document.getElementById("MainContent");
-    main.parentNode.insertBefore(wrap, main.nextSibling);
-  }
-  return inner;
-}
-
+// #SubSessionContent is a constant child of #MainContent (session.jade), hidden
+// by the stylesheet. Shown as display:contents so injected sub frames lay out
+// directly in #MainContent's box, same as the main frames.
 function showSubContainer(show) {
   const wrap = document.getElementById("SubSessionContent");
   const mainSvg = document.getElementById("MainSVGContent");
-  if (wrap) wrap.style.display = show ? "block" : "none";
+  if (wrap) wrap.style.display = show ? "contents" : "none";
   if (mainSvg) mainSvg.style.display = show ? "none" : "block";
 }
 
@@ -303,7 +304,7 @@ async function enterSubSessionView(subName) {
     data = await res.json();
     window.__subCache[subName] = data;
 
-    const container = ensureSubContainer();
+    const container = document.getElementById("SubSessionContent");
     if (!container.querySelector(`svg[id^="sub-${subName}-"]`)) {
       const wrapper = document.createElement("div");
       wrapper.innerHTML = data.framesHtml;
@@ -342,14 +343,17 @@ function showBarrierWaiting(show) {
   document.body.classList.toggle("barrier-waiting", show);
 }
 
-function updateNumberOfConnection(numPlayer, numRider) {
+function updateNumberOfConnection(numPlayer, numRider, lines) {
   const player = document.getElementById("spanplayer");
   const rider = document.getElementById("spanrider");
   player.innerHTML = `${numPlayer}`;
   rider.innerHTML = `${numRider}`;
+  // Session Lines (Chunk M): render the per-line device distribution when the
+  // server includes it (admins on a session-lines score only).
+  renderLineDistribution(lines);
 }
 
-function updateSelectHistory(historyData, selectedIdx) {
+function updateSelectHistory(historyData, selectedIdx, available) {
   const select = document.getElementById("history");
   let content = "";
   for (let i = 0; i < historyData.length; i++) {
@@ -357,6 +361,111 @@ function updateSelectHistory(historyData, selectedIdx) {
   }
   select.innerHTML = content;
   select.selectedIndex = selectedIdx;
+
+  // Session Lines (Chunk M): the SM history modal is disabled ("history
+  // impossible") while the room is diverged — the server sends available:false.
+  // `undefined` (vanilla scores / no session lines) leaves it enabled, exactly
+  // as today.
+  const disabled = available === false;
+  select.disabled = disabled;
+  const wrap = document.getElementById("divhistory");
+  if (wrap) {
+    wrap.classList.toggle("history-unavailable", disabled);
+    wrap.title = disabled ? "history unavailable — lines have diverged" : "";
+  }
+}
+
+// ── SM controls across lines (Chunk M) ───────────────────────────────────────
+// All of the following admin UI is created dynamically (never added to
+// session.jade), so vanilla built HTML stays byte-identical. The server only
+// addresses these messages to admins on a session-lines score, so a vanilla
+// score never renders them.
+
+// Per-line device distribution — lets the operator see the room's split and spot
+// stalled (dormant / barrier-waiting) lines.
+function ensureLinePanel() {
+  let panel = document.getElementById("line-distribution");
+  if (!panel) {
+    panel = document.createElement("div");
+    panel.id = "line-distribution";
+    panel.className = "session-status-container line-distribution";
+    const footer = document.getElementById("tablefooter");
+    if (footer && footer.parentNode) {
+      footer.parentNode.insertBefore(panel, footer.nextSibling);
+    } else {
+      document.body.appendChild(panel);
+    }
+  }
+  return panel;
+}
+
+function renderLineDistribution(lines) {
+  if (!window.isAdminView || !Array.isArray(lines)) {
+    return;
+  }
+  const panel = ensureLinePanel();
+  if (lines.length === 0) {
+    panel.style.display = "none";
+    return;
+  }
+  panel.style.display = "flex";
+  let html = "<span>Lines:</span>";
+  for (const l of lines) {
+    const flags = [];
+    if (l.status === "dormant") flags.push("dormant");
+    if (l.waiting) flags.push("waiting");
+    if (l.inSub) flags.push("sub");
+    const flagStr = flags.length ? ` (${flags.join(",")})` : "";
+    const stalled = l.status === "dormant" || l.waiting;
+    html +=
+      `<span class="line-info${stalled ? " line-stalled" : ""}">` +
+      `${l.id}: ${l.devices} dev @ ${l.frame || "?"}${flagStr}</span>`;
+  }
+  panel.innerHTML = html;
+}
+
+// Barrier force-release panel — the defensive valve for a stuck / rider-only
+// barrier (decision #12).
+function ensureBarrierPanel() {
+  let panel = document.getElementById("admin-barrier-panel");
+  if (!panel) {
+    panel = document.createElement("div");
+    panel.id = "admin-barrier-panel";
+    panel.className = "session-status-container admin-barrier-panel";
+    panel.style.display = "none";
+    document.body.appendChild(panel);
+  }
+  return panel;
+}
+
+function renderAdminBarrierPanel(barriers) {
+  if (!window.isAdminView) {
+    return;
+  }
+  const panel = ensureBarrierPanel();
+  if (!barriers || barriers.length === 0) {
+    panel.style.display = "none";
+    panel.innerHTML = "";
+    return;
+  }
+  panel.style.display = "flex";
+  let html = "<span>Barriers waiting:</span>";
+  for (const b of barriers) {
+    const parked = (b.parked || []).join(",") || "none";
+    html +=
+      `<span class="barrier-info">${b.frame} [parked: ${parked}] ` +
+      `<button type="button" onclick="sendForceReleaseBarrier('${b.frame}')">release</button>` +
+      `</span>`;
+  }
+  html += `<button type="button" onclick="sendForceReleaseBarrier()">release all</button>`;
+  panel.innerHTML = html;
+}
+
+// Ask the server to force-release a chosen barrier (by frame) or all waiting
+// barriers (no argument). Reuses the MSG_BARRIER_RELEASED constant as an inbound
+// admin command (server → Chunk J release path).
+function sendForceReleaseBarrier(frame) {
+  sendToServer(MSG_BARRIER_RELEASED, frame ? { frame } : {});
 }
 
 function setCheckHold(value) {
@@ -432,26 +541,24 @@ function hideAllCooldownCircles() {
 }
 
 // Session Lines: which frame list / DOM is currently presented. On the main flow
-// this is the inlined #MainContent svgs; inside a sub-session it is the fetched
-// #SubSVGContent svgs (ids "sub-<name>-<idx>").
+// this is the inlined #MainSVGContent svgs; inside a sub-session it is the
+// fetched #SubSessionContent svgs (ids "sub-<name>-<idx>").
 window.frameContext = { type: "main" };
-
-function subFrameIndexOf(domId) {
-  const m = /-(\d+)$/.exec(domId || "");
-  return m ? parseInt(m[1], 10) : -1;
-}
 
 function showImageAtIndex(index) {
   const ctx = window.frameContext || { type: "main" };
   let frameDomId;
 
   if (ctx.type === "sub") {
-    const listImg = document.querySelectorAll('#SubSVGContent svg[id^="sub-"]');
-    for (const img of listImg) {
-      const i = subFrameIndexOf(img.id);
-      img.setAttribute("class", i === index ? "" : "hidden");
-    }
+    // Match on the FULL id (sub name + index): frames of another injected
+    // sub-score share trailing indices and must stay hidden.
     frameDomId = `sub-${ctx.name}-${index}`;
+    const listImg = document.querySelectorAll(
+      '#SubSessionContent svg[id^="sub-"]',
+    );
+    for (const img of listImg) {
+      img.setAttribute("class", img.id === frameDomId ? "" : "hidden");
+    }
   } else {
     const listImg = getListSvg();
     for (let i = 0; i < listImg.length; i++) {

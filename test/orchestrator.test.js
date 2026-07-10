@@ -12,7 +12,10 @@ const {
   planSplitPartition,
   parseVoteTargetIndex,
   holdUntilSatisfied,
-  barrierCoveredTargets,
+  markReached,
+  registryCoveredTargets,
+  beginReachedGeneration,
+  unparkLine,
   rejoinSatisfied,
   planRecombine,
   groupOfFrame,
@@ -113,7 +116,7 @@ module.exports = {
     assert.strictEqual(parseVoteTargetIndex("nope#x", 7), 7);
   },
 
-  // ── holdUntilSatisfied / barrierCoveredTargets ──────────────────────────
+  // ── holdUntilSatisfied / markReached / registryCoveredTargets ───────────
   "holdUntilSatisfied requires all targets (case-insensitive)": () => {
     assert.strictEqual(holdUntilSatisfied(["A.svg", "B.svg"], ["a.svg"]), false);
     assert.strictEqual(
@@ -123,17 +126,56 @@ module.exports = {
     assert.strictEqual(holdUntilSatisfied([], []), true);
   },
 
-  "barrierCoveredTargets covers only frames in parked lines' histories": () => {
-    const parked = [{ history: ["START.svg", "Left.svg"] }];
-    let covered = barrierCoveredTargets(parked, ["Left.svg", "Right.svg"]);
+  "markReached phases forward only; done-edge reported once": () => {
+    const reg = {};
+    assert.strictEqual(markReached(reg, "E.svg"), false); // arrived
+    assert.strictEqual(reg["e.svg"], "arrived");
+    assert.strictEqual(markReached(reg, "e.SVG", true), true); // done edge
+    assert.strictEqual(markReached(reg, "E.svg", true), false); // idempotent
+    assert.strictEqual(markReached(reg, "E.svg"), false); // never downgrades
+    assert.strictEqual(reg["e.svg"], "done");
+  },
+
+  "registryCoveredTargets counts only done targets (case-insensitive)": () => {
+    const reg = {};
+    markReached(reg, "Left.svg", true);
+    markReached(reg, "Right.svg"); // arrived, hold not ended
+    let covered = registryCoveredTargets(reg, ["Left.svg", "Right.svg"]);
     assert.deepStrictEqual([...covered], ["Left.svg"]);
-    // Only once BOTH lines (Left + Right travellers) park is it satisfied.
-    parked.push({ history: ["START.svg", "Right.svg"] });
-    covered = barrierCoveredTargets(parked, ["Left.svg", "Right.svg"]);
+    markReached(reg, "RIGHT.svg", true);
+    covered = registryCoveredTargets(reg, ["Left.svg", "Right.svg"]);
     assert.strictEqual(
       holdUntilSatisfied(["Left.svg", "Right.svg"], covered),
       true,
     );
+  },
+
+  // ── rendezvous: the FigJam mutual barrier (E⇄F⇄G) must not deadlock ─────
+  "mutual hold-until barriers all satisfy from the shared registry": () => {
+    // E holds-until F,G; F holds-until E,G; G holds-until E,F. Each line
+    // parks at its OWN landing; the registry (not convergence) releases all.
+    const reg = {};
+    for (const f of ["E.svg", "F.svg", "G.svg"]) {
+      markReached(reg, f); // three lines land on their landings
+    }
+    assert.strictEqual(
+      holdUntilSatisfied(["F.svg", "G.svg"], registryCoveredTargets(reg, ["F.svg", "G.svg"])),
+      false,
+      "arrival alone must not release (holds still running)",
+    );
+    for (const f of ["E.svg", "F.svg", "G.svg"]) {
+      markReached(reg, f, true); // each landing's hold ends
+    }
+    for (const targets of [
+      ["F.svg", "G.svg"],
+      ["E.svg", "G.svg"],
+      ["E.svg", "F.svg"],
+    ]) {
+      assert.strictEqual(
+        holdUntilSatisfied(targets, registryCoveredTargets(reg, targets)),
+        true,
+      );
+    }
   },
 
   // ── rejoin / recombine ──────────────────────────────────────────────────
@@ -319,25 +361,138 @@ module.exports = {
   },
 
   // ── full hybrid barrier→rejoin (split→3→barrier→rejoin) ─────────────────
-  "hybrid: barrier holds until 3 parked, then recombines to survivor": () => {
-    // Three lines parked at a barrier, each having travelled a distinct frame.
-    const parked = [
-      { id: "L1", history: ["M0.svg", "M1.svg", "B1.svg"] },
-      { id: "L2", history: ["M0.svg", "M2.svg", "B1.svg"] },
-    ];
+  "hybrid: barrier holds until all 3 branches done, then recombines": () => {
+    // Three lines fan out over M1/M2/M3 and reconverge on B1
+    // (hold-until="M1,M2,M3"). The registry accumulates as each branch's
+    // frame completes its hold — wherever its line currently is.
+    const reg = {};
     const targets = ["M1.svg", "M2.svg", "M3.svg"];
 
-    // Only 2 of 3 parked → not satisfied.
-    let covered = barrierCoveredTargets(parked, targets);
-    assert.strictEqual(holdUntilSatisfied(targets, covered), false);
+    markReached(reg, "M1.svg", true);
+    markReached(reg, "M2.svg", true);
+    // Only 2 of 3 branches done → not satisfied.
+    assert.strictEqual(
+      holdUntilSatisfied(targets, registryCoveredTargets(reg, targets)),
+      false,
+    );
 
-    // Third arrives → satisfied → recombine to lowest id.
-    parked.push({ id: "L3", history: ["M0.svg", "M3.svg", "B1.svg"] });
-    covered = barrierCoveredTargets(parked, targets);
-    assert.strictEqual(holdUntilSatisfied(targets, covered), true);
+    // Third branch completes → satisfied → recombine to lowest id.
+    markReached(reg, "M3.svg", true);
+    assert.strictEqual(
+      holdUntilSatisfied(targets, registryCoveredTargets(reg, targets)),
+      true,
+    );
 
-    const { survivorId, absorbedIds } = planRecombine(parked.map((l) => l.id));
+    const { survivorId, absorbedIds } = planRecombine(["L1", "L2", "L3"]);
     assert.strictEqual(survivorId, "L1");
     assert.deepStrictEqual(absorbedIds, ["L2", "L3"]);
+  },
+
+  // ── applySplit: offline deviceRegistry sweep (decision #13) ──────────────
+  "applySplit sweeps offline registry entries off the retired parent": () => {
+    const session = fakeSession();
+    const parent = fakeLine(session, "L0");
+    session.lines.push(parent);
+    // dOff was on the parent but is OFFLINE during the split (no connection).
+    session.deviceRegistry = { dA: "L0", dB: "L0", dOff: "L0" };
+    const members = [
+      { conn: { lineId: "L0" }, key: "dA", choice: 0 },
+      { conn: { lineId: "L0" }, key: "dB", choice: 0 },
+    ];
+
+    const o = createOrchestrator(fakeTransport());
+    const { children } = o.applySplit({
+      session,
+      parentLine: parent,
+      childFrameIndices: [1, 2],
+      members,
+    });
+
+    assert.strictEqual(parent.status, "retired");
+    // The offline device must NOT stay registered to the retired parent…
+    assert.notStrictEqual(session.deviceRegistry.dOff, "L0");
+    // …and lands on the smallest child (both choosers went to child 0).
+    assert.strictEqual(session.deviceRegistry.dOff, children[1].id);
+  },
+
+  // ── SM jump rewind semantics (S2 option (b) + R4, decided 2026-07-07) ─────
+  "beginReachedGeneration restarts the registry, pre-satisfying only the landing barrier": () => {
+    const session = {
+      reachedTargets: {},
+      reachedGeneration: 0,
+    };
+    markReached(session.reachedTargets, "Left.svg", true);
+    markReached(session.reachedTargets, "Right.svg", true);
+
+    // Jump lands on a barrier frame waiting on M1/M2: the rewind-point barrier
+    // stays unlocked, everything else gates again like a first pass.
+    beginReachedGeneration(session, ["M1.svg", "M2.svg"]);
+
+    assert.strictEqual(session.reachedGeneration, 1);
+    const covered = registryCoveredTargets(session.reachedTargets, [
+      "Left.svg",
+      "Right.svg",
+      "M1.svg",
+      "M2.svg",
+    ]);
+    assert.deepStrictEqual([...covered].sort(), ["M1.svg", "M2.svg"]);
+
+    // A non-barrier landing restarts the registry to empty.
+    beginReachedGeneration(session, undefined);
+    assert.strictEqual(session.reachedGeneration, 2);
+    assert.deepStrictEqual(session.reachedTargets, {});
+  },
+
+  "unparkLine clears barrier state and deletes emptied entries": () => {
+    const line = {
+      id: "L1",
+      isBarrierWaiting: true,
+      pendingHoldUntil: ["Left.svg"],
+    };
+    const session = {
+      _barrier: {
+        byFrame: {
+          "Barrier.svg": {
+            frame: "Barrier.svg",
+            parked: new Set(["L1"]),
+          },
+          "Other.svg": {
+            frame: "Other.svg",
+            parked: new Set(["L2"]),
+          },
+        },
+      },
+    };
+
+    assert.strictEqual(unparkLine(session, line), true);
+    assert.strictEqual(line.isBarrierWaiting, false);
+    assert.deepStrictEqual(line.pendingHoldUntil, []);
+    // L1's emptied entry is gone; the unrelated entry is untouched.
+    assert.strictEqual(session._barrier.byFrame["Barrier.svg"], undefined);
+    assert.ok(session._barrier.byFrame["Other.svg"].parked.has("L2"));
+
+    // Un-parked already → nothing changes, and that is reported.
+    assert.strictEqual(unparkLine(session, line), false);
+  },
+
+  // ── registry: qualified sub refs ─────────────────────────────────────────
+  "registry covers qualified sub refs, never bare↔qualified cross-matches": () => {
+    const targets = ["Left.svg", "Tetra/Echo.svg"];
+    const reg = {};
+    markReached(reg, "Left.svg", true);
+    // A line inside sub Tetra reaches Echo (recorded qualified, lowercased).
+    markReached(reg, "tetra/echo.svg", true);
+
+    const covered = registryCoveredTargets(reg, targets);
+    assert.ok(covered.has("Left.svg"));
+    assert.ok(covered.has("Tetra/Echo.svg"), "sub ref must be covered");
+    assert.strictEqual(holdUntilSatisfied(targets, covered), true);
+
+    // A bare main-flow visit never satisfies a qualified sub ref.
+    const uncovered = registryCoveredTargets(
+      { "echo.svg": "done" },
+      ["Tetra/Echo.svg"],
+    );
+    assert.strictEqual(uncovered.size, 0);
   },
 };

@@ -7,12 +7,15 @@ let timeStampOffset = 0;
 let timeStampRate = 1.0;
 
 // ── Device identity (Session Lines) ──────────────────────────────────────────
-// A stable per-device UUID, persisted in localStorage as "did", so a refreshed
-// or reconnected device rejoins ITS line. Generated client-side (never baked
-// into the shared, apicache-cached ${id}.html). localStorage survives refresh,
-// tab close, and mobile tab eviction; if it is blocked we keep an in-memory id
-// for the page's life. http LAN deploys aren't a secure context (so
-// crypto.randomUUID may be absent) — fall back to getRandomValues, then Math.
+// A stable per-TAB UUID, persisted in sessionStorage as "did", so a refreshed
+// or reconnected tab rejoins ITS line. Generated client-side (never baked
+// into the shared, apicache-cached ${id}.html). sessionStorage is per-tab —
+// unlike localStorage, which collapses every tab of one browser into a single
+// line — and survives refresh and mobile tab-eviction restore; a closed tab
+// mints a new did and falls back to smallest-line assignment (dormant revived
+// first). If storage is blocked we keep an in-memory id for the page's life.
+// http LAN deploys aren't a secure context (so crypto.randomUUID may be
+// absent) — fall back to getRandomValues, then Math.
 let inMemoryDeviceId = null;
 
 function bytesToUuid(buf) {
@@ -57,10 +60,10 @@ function ensureDeviceId() {
   }
   let id = null;
   try {
-    id = localStorage.getItem("did");
+    id = sessionStorage.getItem("did");
     if (!id) {
       id = generateUuid();
-      localStorage.setItem("did", id);
+      sessionStorage.setItem("did", id);
     }
   } catch (e) {
     id = inMemoryDeviceId || (inMemoryDeviceId = generateUuid());

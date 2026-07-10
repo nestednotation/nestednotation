@@ -94,6 +94,54 @@ module.exports = {
     assert.ok(codes(errors).includes("hold-until-unresolved"), JSON.stringify(errors));
   },
 
+  "rejoin-at target that is not one of the frame's own links is an error": () => {
+    // C announces a merge at D, but its only link goes to X — the merge frame
+    // is not reachable in one step (owner rule 2026-07-08: rejoin-at = "this
+    // line merges at the target on its NEXT step").
+    const frames = [
+      frame("START.svg", {}, ["C.svg"]),
+      frame("C.svg", { "session-rejoin-at": "D.svg" }, ["X.svg"]),
+      frame("X.svg", {}, ["D.svg"]),
+      frame("D.svg", {}, []),
+    ];
+    const g = buildGraph(frames);
+    const { errors } = validateScore(g, frames.map((f) => f.name), () => null);
+    assert.ok(codes(errors).includes("rejoin-not-linked"), JSON.stringify(errors));
+  },
+
+  "rejoin-at on pre-merge frames linking their merge frame passes": () => {
+    // The owner's canonical shape: C and F both announce + link the merge at D.
+    const frames = [
+      frame("START.svg", { "session-split": "2" }, ["B.svg", "E.svg"]),
+      frame("B.svg", {}, ["C.svg"]),
+      frame("E.svg", {}, ["F.svg"]),
+      frame("C.svg", { "session-rejoin-at": "D.svg" }, ["D.svg"]),
+      frame("F.svg", { "session-rejoin-at": "D.svg" }, ["D.svg"]),
+      frame("D.svg", {}, []),
+    ];
+    const g = buildGraph(frames);
+    const { errors } = validateScore(g, frames.map((f) => f.name), () => null);
+    assert.deepStrictEqual(errors, [], JSON.stringify(errors));
+  },
+
+  "rejoin-at coexists with split on the same frame (no pairing rule)": () => {
+    // Owner-clarified 2026-07-08: the attributes are independent — a frame may
+    // split while also announcing a merge among its next steps (e.g. staged
+    // merges, 3 lines → 2 → 1). No count relationship is enforced.
+    const frames = [
+      frame(
+        "START.svg",
+        { "session-split": "2", "session-rejoin-at": "D.svg" },
+        ["B.svg", "D.svg"],
+      ),
+      frame("B.svg", {}, ["D.svg"]),
+      frame("D.svg", {}, []),
+    ];
+    const g = buildGraph(frames);
+    const { errors } = validateScore(g, frames.map((f) => f.name), () => null);
+    assert.deepStrictEqual(errors, [], JSON.stringify(errors));
+  },
+
   "sub-start referencing a missing sub-score is an error": () => {
     const frames = [
       frame("START.svg", { "session-sub-start": "DoesNotExist" }, ["B.svg"]),
@@ -137,6 +185,51 @@ module.exports = {
     const g = buildGraph(frames);
     const { errors } = validateScore(g, frames.map((f) => f.name), goodSubLoader);
     assert.ok(codes(errors).includes("sub-start-no-return"), JSON.stringify(errors));
+  },
+
+  "sub frame with no path to a sub-end is an error (stranded line)": () => {
+    const frames = [
+      frame("START.svg", { "session-sub-start": "Trap" }, ["Landing.svg"]),
+      frame("Landing.svg", {}, []),
+    ];
+    const g = buildGraph(frames);
+    // START links to A (which exits) and D (a dead end: no hrefs, not a
+    // sub-end). A line voting into D can never leave the sub.
+    const trapSubLoader = (name) => {
+      if (name !== "Trap") return null;
+      const subFrames = [
+        frame("START.svg", {}, ["A.svg", "D.svg"]),
+        frame("A.svg", {}, ["End.svg"]),
+        frame("D.svg", {}, []),
+        frame("End.svg", { "session-sub-end": "Trap" }, []),
+      ];
+      return { frameNames: subFrames.map((f) => f.name), graph: buildGraph(subFrames) };
+    };
+    const { errors } = validateScore(g, frames.map((f) => f.name), trapSubLoader);
+    const deadEnds = errors.filter((e) => e.code === "sub-dead-end");
+    assert.strictEqual(deadEnds.length, 1, JSON.stringify(errors));
+    assert.strictEqual(deadEnds[0].frame, "D.svg");
+  },
+
+  "sub cycle that can always exit passes the dead-end check": () => {
+    const frames = [
+      frame("START.svg", { "session-sub-start": "Loop" }, ["Landing.svg"]),
+      frame("Landing.svg", {}, []),
+    ];
+    const g = buildGraph(frames);
+    // A ↔ B cycle, but B links onward to the sub-end — no frame is stranded.
+    const loopSubLoader = (name) => {
+      if (name !== "Loop") return null;
+      const subFrames = [
+        frame("START.svg", {}, ["A.svg"]),
+        frame("A.svg", {}, ["B.svg"]),
+        frame("B.svg", {}, ["A.svg", "End.svg"]),
+        frame("End.svg", { "session-sub-end": "Loop" }, []),
+      ];
+      return { frameNames: subFrames.map((f) => f.name), graph: buildGraph(subFrames) };
+    };
+    const { errors } = validateScore(g, frames.map((f) => f.name), loopSubLoader);
+    assert.deepStrictEqual(errors, [], JSON.stringify(errors));
   },
 
   "hold-until sub-ref resolves through the sub-loader": () => {

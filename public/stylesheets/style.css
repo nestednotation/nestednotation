@@ -56,7 +56,6 @@ a {
   font-size: 1em;
 }
 
-
 @font-face {
   font-family: "Comfortaa";
   src: url("Comfortaa-Bold.ttf");
@@ -72,7 +71,6 @@ a {
   src: url("MetallophileSp8-LightItalic.ttf");
 }
 
-
 @font-face {
   font-family: "MetallophileSp8-Medium";
   src: url("MetallophileSp8-Medium.ttf");
@@ -82,7 +80,6 @@ a {
   font-family: "MetallophileSp8-MediumIt";
   src: url("MetallophileSp8-MediumItalic.ttf");
 }
-
 
 @font-face {
   font-family: "Impact";
@@ -284,6 +281,12 @@ body.ipad {
 #MainContent {
   flex: 1;
   min-height: 0;
+}
+
+/* Session Lines: sub-score frames live inside #MainContent; shown state is
+   display:contents (set from JS) so they lay out as if direct children. */
+#SubSessionContent {
+  display: none;
 }
 
 .guide-mode .grayscale-on-guide,
@@ -518,7 +521,9 @@ body.ipad {
    suppress the members' individual animation so the opacity pulse isn't
    doubled up. When the group is only partially playing (a "partial assemble")
    the box stays still and the playing member notes animate on their own. */
-.play-mode [groupsound="true"][data-playing="true"] [sound][data-playing="true"] {
+.play-mode
+  [groupsound="true"][data-playing="true"]
+  [sound][data-playing="true"] {
   animation: none;
 }
 
@@ -701,8 +706,8 @@ body.ipad {
   font-size: 4vmin;
   background: #fff;
   cursor: pointer;
-  font-family: "Roboto", "SF Pro Text", "Helvetica Neue", "Helvetica", "Arial",
-    sans-serif;
+  font-family:
+    "Roboto", "SF Pro Text", "Helvetica Neue", "Helvetica", "Arial", sans-serif;
   position: fixed;
   top: 0;
   left: 0;
@@ -713,7 +718,9 @@ body.ipad {
 .vote-indicator.current-vote {
   background: #ff7700;
   color: #fff;
-  box-shadow: 0 0 0 0 #ffa400, 0 0 0 0 #ffa400;
+  box-shadow:
+    0 0 0 0 #ffa400,
+    0 0 0 0 #ffa400;
 }
 
 .vote-indicator.winning {
@@ -790,7 +797,9 @@ body.ipad {
 .stay-btn.current-vote .stay-indicator {
   background: #ff7700;
   color: #fff;
-  box-shadow: 0 0 0 0 #ffa400, 0 0 0 0 #ffa400;
+  box-shadow:
+    0 0 0 0 #ffa400,
+    0 0 0 0 #ffa400;
 }
 
 .play-mode .stay-btn {
@@ -801,11 +810,15 @@ body.ipad {
 @keyframes guide-mode-winning-pulse {
   0%,
   100% {
-    box-shadow: 0 0 0 0 rgba(255, 164, 0, 0), 0 0 0 0 rgba(255, 164, 0, 0);
+    box-shadow:
+      0 0 0 0 rgba(255, 164, 0, 0),
+      0 0 0 0 rgba(255, 164, 0, 0);
   }
 
   50% {
-    box-shadow: 0 0 0 2vmin #ffa400, 0 0 4vmin 4vmin #ffa400;
+    box-shadow:
+      0 0 0 2vmin #ffa400,
+      0 0 4vmin 4vmin #ffa400;
   }
 }
 
@@ -830,10 +843,45 @@ body.ipad {
 @keyframes stay-winning-pulse {
   0%,
   100% {
-    box-shadow: 0 0 0 0 rgba(255, 164, 0, 0), 0 0 0 0 #ffa400;
+    box-shadow:
+      0 0 0 0 rgba(255, 164, 0, 0),
+      0 0 0 0 #ffa400;
   }
 
   50% {
-    box-shadow: 0 0 0 0.8vh #ffa400, 0 0 1.6vh 1.6vh #ffa400;
+    box-shadow:
+      0 0 0 0.8vh #ffa400,
+      0 0 1.6vh 1.6vh #ffa400;
   }
+}
+
+/* Session Lines (Chunk M) — admin SM controls across lines. All of this UI is
+   created dynamically by session.js (never in session.jade), so it only ever
+   appears for an admin on a session-lines score; vanilla built HTML is
+   unaffected. */
+.line-distribution,
+.admin-barrier-panel {
+  flex-wrap: wrap;
+  gap: 0.4em;
+  font-size: 0.8em;
+  align-items: center;
+}
+.line-distribution .line-info,
+.admin-barrier-panel .barrier-info {
+  padding: 0.1em 0.5em;
+  border: 1px solid #ccc;
+  border-radius: 0.4em;
+  white-space: nowrap;
+}
+.line-distribution .line-stalled {
+  border-color: #ffa400;
+  background: #fff6e6;
+  font-weight: bold;
+}
+.admin-barrier-panel {
+  border-top: 1px solid #ffa400;
+}
+.divhistory.history-unavailable,
+#divhistory.history-unavailable {
+  opacity: 0.45;
 }

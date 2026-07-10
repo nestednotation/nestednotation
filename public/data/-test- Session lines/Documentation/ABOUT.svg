@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg width="100%" height="100%" viewBox="0 0 1701 2480" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+  <rect x="0" y="0" width="1701" height="2480" style="fill:#20242c"/>
+  <text x="850" y="300" font-size="110" text-anchor="middle" fill="#fff" font-family="sans-serif">-test- Session lines</text>
+  <text x="120" y="520" font-size="46" fill="#e8e8f4" font-family="monospace" xml:space="preserve">Demo of every session-lines markup attribute</text>
+  <text x="120" y="596" font-size="46" fill="#e8e8f4" font-family="monospace" xml:space="preserve">(docs/session-lines.md), on the FigJam hybrid</text>
+  <text x="120" y="672" font-size="46" fill="#e8e8f4" font-family="monospace" xml:space="preserve">use case: tracked lines + sub-sessions.</text>
+  <text x="120" y="748" font-size="46" fill="#e8e8f4" font-family="monospace" xml:space="preserve">Literal FigJam markup (node 23-1232);</text>
+  <text x="120" y="824" font-size="46" fill="#e8e8f4" font-family="monospace" xml:space="preserve">tail J>K/M added 2026-07-08 (rejoin rules).</text>
+  <text x="120" y="900" font-size="46" fill="#e8e8f4" font-family="monospace" xml:space="preserve">START > A  session-split=3 -> lines B / C / D</text>
+  <text x="120" y="976" font-size="46" fill="#e8e8f4" font-family="monospace" xml:space="preserve">B,C,D      session-sub-start dives into</text>
+  <text x="120" y="1052" font-size="46" fill="#e8e8f4" font-family="monospace" xml:space="preserve">           Tetra1 / Tetra2 / Cube1;</text>
+  <text x="120" y="1128" font-size="46" fill="#e8e8f4" font-family="monospace" xml:space="preserve">           href = return landing E / F / G</text>
+  <text x="120" y="1204" font-size="46" fill="#e8e8f4" font-family="monospace" xml:space="preserve">E,F,G      mutual session-hold-until</text>
+  <text x="120" y="1280" font-size="46" fill="#e8e8f4" font-family="monospace" xml:space="preserve">           (E waits F,G; F waits E,G;</text>
+  <text x="120" y="1356" font-size="46" fill="#e8e8f4" font-family="monospace" xml:space="preserve">            G waits E,F) — RENDEZVOUS:</text>
+  <text x="120" y="1432" font-size="46" fill="#e8e8f4" font-family="monospace" xml:space="preserve">           released once the named frames</text>
+  <text x="120" y="1508" font-size="46" fill="#e8e8f4" font-family="monospace" xml:space="preserve">           are reached anywhere + held</text>
+  <text x="120" y="1584" font-size="46" fill="#e8e8f4" font-family="monospace" xml:space="preserve">E > H      session-rejoin-at=H</text>
+  <text x="120" y="1660" font-size="46" fill="#e8e8f4" font-family="monospace" xml:space="preserve">F > H|I    session-rejoin-at=H,I (vote route)</text>
+  <text x="120" y="1736" font-size="46" fill="#e8e8f4" font-family="monospace" xml:space="preserve">G > I      session-rejoin-at=I</text>
+  <text x="120" y="1812" font-size="46" fill="#e8e8f4" font-family="monospace" xml:space="preserve">H, I       session-track-group=justTrackGroup</text>
+  <text x="120" y="1888" font-size="46" fill="#e8e8f4" font-family="monospace" xml:space="preserve">           (synced voting, group-wide stay)</text>
+  <text x="120" y="1964" font-size="46" fill="#e8e8f4" font-family="monospace" xml:space="preserve">           session-rejoin-at=J</text>
+  <text x="120" y="2040" font-size="46" fill="#e8e8f4" font-family="monospace" xml:space="preserve">J          rejoin target: H+I lines merge;</text>
+  <text x="120" y="2116" font-size="46" fill="#e8e8f4" font-family="monospace" xml:space="preserve">           then split=2 + rejoin-at=M coexist</text>
+  <text x="120" y="2192" font-size="46" fill="#e8e8f4" font-family="monospace" xml:space="preserve">J > K|M    one group detours K, one lands M</text>
+  <text x="120" y="2268" font-size="46" fill="#e8e8f4" font-family="monospace" xml:space="preserve">K > M      session-rejoin-at=M (announce)</text>
+  <text x="120" y="2344" font-size="46" fill="#e8e8f4" font-family="monospace" xml:space="preserve">M > END    meeting frame; merge, one line</text>
+</svg>

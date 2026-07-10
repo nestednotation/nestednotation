@@ -6,12 +6,9 @@ const jade = require("jade");
 // Session Lines: pure graph builder (no behavior change for vanilla scores).
 const { parseFrameAttrs } = require("./lib/session-lines/parse");
 const { buildGraph } = require("./lib/session-lines/graph");
-// Session Lines: per-playhead line model + backward-compat shim + persistence.
-const {
-  BMLine,
-  installLineShim,
-  migrateState,
-} = require("./lib/session-lines/line");
+const { validateScore } = require("./lib/session-lines/validate");
+// Session Lines: per-playhead line model + persistence helpers.
+const { BMLine, migrateState } = require("./lib/session-lines/line");
 
 const IGNORE_STATE_KEYS = ["svgContent", "htmlContent"];
 const HREF_REGX = /(?<=href=")(.*?)(?=")/;
@@ -183,14 +180,21 @@ class BMAdminTable {
 
 class BMSession {
   // Session Lines: the playhead(s). A session always has >= 1 line; until a
-  // split occurs it has exactly one (`lines[0]`) and the prototype shim
-  // (installLineShim, below the class) makes `session.currentIndex` etc.
-  // delegate to it — so the per-line fields that used to live here are now
-  // owned by BMLine. NOTE: those fields must NOT be re-declared here or an own
-  // data property would shadow the shim accessor.
+  // split occurs it has exactly one (`lines[0]`). The per-line fields that used
+  // to live flat on BMSession are now owned entirely by BMLine — the runtime
+  // (bin/www) reads/writes them through the line object (`line.currentIndex`
+  // etc.), and BMSession's own playhead helpers below delegate to `lines[0]`.
   lines = [new BMLine(this)];
   nextLineId = 1;
   deviceRegistry = {};
+  // Rendezvous barriers (#6): session-global registry of frame refs reached by
+  // any line — { "<lower ref>": "arrived" | "done" }. Sub frames use the
+  // qualified "score/frame" form. Only written on session-lines scores.
+  reachedTargets = {};
+  // SM-jump rewind generation (S2 option (b), decided 2026-07-07): bumped on
+  // every session-lines history jump, when the registry above is restarted so
+  // replayed barriers gate like first passes.
+  reachedGeneration = 0;
 
   selectedScoreIndex = -1;
   selectedCooldownTimeIndex = -1;
@@ -426,11 +430,38 @@ class BMSession {
       }
       this.graph = sessionGraph;
       this.hasSessionLines = true;
+    } else {
+      // A reloaded score may have DROPPED its session-* markup — clear the
+      // stale graph/flag (and the reached registry) so the runtime doesn't
+      // keep orchestrating on it.
+      this.graph = null;
+      this.hasSessionLines = false;
+      this.reachedTargets = {};
     }
 
     // Session Lines: build sub-score frames on demand cache (gated; the file is
     // removed for vanilla scores so build output stays byte-identical).
     await this.buildSubFramesContent(sessionGraph);
+
+    // Session Lines: validation pass before the score is used (spec —
+    // "a validator runs before a score is used in a session"). Surfaced to the
+    // server console; non-blocking (the CLI covers pre-upload linting).
+    if (this.hasSessionLines) {
+      const { errors, warnings } = validateScore(
+        this.graph,
+        this.listFiles,
+        (score) => {
+          const sub = this.subFrames[score];
+          return sub ? { frameNames: sub.frameList, graph: sub.graph } : null;
+        },
+      );
+      for (const w of warnings) {
+        console.warn(`[session-lines] ${this.folder}: WARN ${w.message}`);
+      }
+      for (const e of errors) {
+        console.error(`[session-lines] ${this.folder}: ERROR ${e.message}`);
+      }
+    }
 
     const aboutSvg = await buildAboutSvgAsync(
       `${this.folder}/Documentation`,
@@ -573,7 +604,9 @@ class BMSession {
     const soundsDir = `${base}/Sounds`;
     if (fs.existsSync(soundsDir)) {
       const files = await fs.promises.readdir(soundsDir, { recursive: true });
-      soundList = files.map((f) => f.replace("\\", "/"));
+      // Normalize EVERY path separator (a single .replace only fixes the first
+      // level of nesting on Windows).
+      soundList = files.map((f) => String(f).replace(/\\/g, "/"));
     }
 
     const subAttrs = [];
@@ -675,6 +708,8 @@ class BMSession {
       selectedHoldTimeIndex: this.selectedHoldTimeIndex,
       nextLineId: this.nextLineId,
       deviceRegistry: this.deviceRegistry,
+      reachedTargets: this.reachedTargets,
+      reachedGeneration: this.reachedGeneration,
       lines: this.lines.map((line) => line.toJSON()),
     };
   }
@@ -720,11 +755,6 @@ class BMSession {
     );
   }
 }
-
-// Session Lines: install the prototype shim so `session.<per-line field>` reads
-// and writes delegate to `lines[0]` (keeps bin/www untouched while the data
-// moves onto BMLine). Must run after the class is defined, before any instance.
-installLineShim(BMSession);
 
 class BMSessionTable {
   data = [];
@@ -881,3 +911,4 @@ module.exports = BMDatabase;
 module.exports.BMSession = BMSession;
 module.exports.SERVER_STATE_DIR = SERVER_STATE_DIR;
 module.exports.DATA_DIR = DATA_DIR;
+module.exports.wsPath = wsPath;
