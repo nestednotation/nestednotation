@@ -104,6 +104,7 @@ Session Lines turns the single shared playhead (`BMSession.currentIndex`) into *
 - [bin/www](../bin/www) — per-line voting/holding/messaging, split/barrier/rejoin/sub orchestration, device identity.
 - [routes/session.js](../routes/session.js) — sub-frame route. [constants.js](../constants.js) — new `MSG_*`.
 - Client: [views/session.jade](../views/session.jade) (`#SubSessionContent`, MSG wiring, device id), [public/javascripts/ws-client.js](../public/javascripts/ws-client.js), [public/javascripts/session.js](../public/javascripts/session.js), [public/javascripts/audio-player.js](../public/javascripts/audio-player.js), [public/javascripts/voting.js](../public/javascripts/voting.js).
+- **Score map (experimental, post-plan — see [score-map.md](score-map.md))**: `public/javascripts/session-map.js` + `views/session-map.jade` (new); `/graph` + `/map` routes in routes/session.js; `database.js` always assigns `session.graph` (vanilla included, orchestration still `hasSessionLines`-gated) and exports `wsPath`; bin/www `payload.lines[].sub` + per-landing admin positions broadcast (`afterLineArrivedInner` wrapper).
 
 ## Verification summary
 

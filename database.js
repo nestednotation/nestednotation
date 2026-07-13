@@ -106,7 +106,7 @@ let hostAddress = null;
 const aboutNestedNotationSvg = buildAboutSvg(ABOUT_DATA_DIR, "-about-nn");
 
 const serverIp = process.env.SERVER_IP;
-const wsPath = `wss://${serverIp}`;
+const wsPath = `ws://192.168.0.2:2382`;
 console.log(`Websocket path is ${wsPath}`);
 
 class BMAdmin {
@@ -413,11 +413,14 @@ class BMSession {
       );
     }
 
-    // Session Lines: build the relationship graph and flag the session ONLY when
-    // the score actually uses session-* markup. A vanilla score leaves
-    // this.graph / this.hasSessionLines unset, so behavior and persisted state
-    // are unchanged. The graph is inert in Phase 1 (nothing consults it yet).
+    // Session Lines: the relationship graph is built for EVERY score (the
+    // admin score map treats a vanilla score as a single-line session), but
+    // orchestration is flagged ONLY when the score actually uses session-*
+    // markup. All runtime orchestration gates on hasSessionLines, never on
+    // graph presence, and `graph` is not persisted (toJSON allowlist) — so
+    // vanilla behavior and persisted state are unchanged.
     const sessionGraph = buildGraph(sessionFrameAttrs);
+    this.graph = sessionGraph;
     if (sessionGraph.hasSessionLines) {
       // Session Lines: per-frame ordered link target indices (resolved against
       // the main frame list). The runtime maps a device's tap on a split frame
@@ -428,13 +431,11 @@ class BMSession {
           this.listFilesInLowerCase.indexOf(href.toLowerCase()),
         );
       }
-      this.graph = sessionGraph;
       this.hasSessionLines = true;
     } else {
       // A reloaded score may have DROPPED its session-* markup — clear the
-      // stale graph/flag (and the reached registry) so the runtime doesn't
-      // keep orchestrating on it.
-      this.graph = null;
+      // stale flag (and the reached registry) so the runtime doesn't keep
+      // orchestrating on it; the fresh graph above replaces any stale one.
       this.hasSessionLines = false;
       this.reachedTargets = {};
     }

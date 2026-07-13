@@ -1,0 +1,653 @@
+// Session Lines — standalone live score-map page (experimental).
+//
+// Loaded only by views/session-map.jade (GET /session/:id/map), never by the
+// session page. Draws the whole score — main flow + sub-scores — as a DAG
+// (cytoscape + dagre from the same jsdelivr CDN the app already uses) and marks
+// each line's current frame live. It opens its own ws connection via
+// ws-client.js and implements the minimal parseMessage contract: MSG_PING time
+// calibration (mirrors session.js) and MSG_SHOW_NUMBER_CONNECTION, whose
+// admin-only `lines` payload the server refreshes on every line landing.
+
+(function () {
+  const CDN_SCRIPTS = [
+    "https://cdn.jsdelivr.net/npm/cytoscape@3/dist/cytoscape.min.js",
+    "https://cdn.jsdelivr.net/npm/dagre@0.8.5/dist/dagre.min.js",
+    "https://cdn.jsdelivr.net/npm/cytoscape-dagre@2/cytoscape-dagre.js",
+  ];
+
+  let cy = null;
+  let pendingLines = null;
+
+  // History of the line this admin connection is assigned to, as pushed via
+  // MSG_SELECT_HISTORY. Doubles as the rewind control: right-click / tap-hold a
+  // visited node → "rewind here" sends the same {selectedIdx} the session-page
+  // dropdown does (the server re-checks availability + in-sub regardless).
+  let historyState = { history: [], selectedIdx: -1, available: undefined };
+
+  // Vanilla mode: a score without session-* markup is presented as a
+  // single-line session. There is no per-line payload — the one playhead is
+  // tracked from the broadcast MSG_SHOW and the room-wide player/rider counts.
+  let vanillaMode = false;
+  let mainFrames = [];
+  const vanillaState = { idx: -1, players: 0, riders: 0 };
+
+  function loadScript(src) {
+    return new Promise((resolve, reject) => {
+      const s = document.createElement("script");
+      s.src = src;
+      s.onload = resolve;
+      s.onerror = () => reject(new Error(`failed to load ${src}`));
+      document.head.appendChild(s);
+    });
+  }
+
+  function setStatus(text) {
+    const el = document.getElementById("session-map-status");
+    if (el) el.textContent = text;
+  }
+
+  function frameLabel(name) {
+    return String(name).replace(/\.svg$/i, "");
+  }
+
+  // "Tetra1/Echo.svg" → sub node, "H.svg" → main node. Null when unresolvable.
+  function resolveRefToNodeId(ref, main, subs) {
+    const slash = String(ref).indexOf("/");
+    if (slash > 0) {
+      const score = ref.slice(0, slash);
+      const frame = ref.slice(slash + 1);
+      const sub = subs[score];
+      const resolved = sub && sub.frameNameByLower[frame.toLowerCase()];
+      return resolved ? `sub:${score}:${resolved}` : null;
+    }
+    const resolved = main.frameNameByLower[String(ref).toLowerCase()];
+    return resolved ? `main:${resolved}` : null;
+  }
+
+  function graphElements(data) {
+    const { main, subs } = data;
+    const elements = [];
+    let edgeId = 0;
+    const edge = (source, target, classes) => {
+      elements.push({
+        group: "edges",
+        data: { id: `e${edgeId++}`, source, target },
+        classes,
+      });
+    };
+
+    const rejoinSources = main.rejoinTargets || {};
+
+    const addFrames = (graph, prefix, parent) => {
+      for (const name of graph.frames) {
+        const classes = [];
+        if (/^START/i.test(name)) classes.push("start");
+        if ((graph.splits || {})[name]) classes.push("split");
+        if ((graph.holdUntilTargets || {})[name]) classes.push("barrier");
+        if ((graph.subStart || {})[name]) classes.push("substart");
+        if ((graph.subEnd || {})[name]) classes.push("subend");
+        elements.push({
+          group: "nodes",
+          data: {
+            id: `${prefix}${name}`,
+            label: frameLabel(name),
+            badge: "",
+            parent,
+          },
+          classes: classes.join(" "),
+        });
+      }
+    };
+
+    const addHrefEdges = (graph, prefix) => {
+      for (const name of graph.frames) {
+        const attrs = graph.byFrame[name] || {};
+        const isSubStart = !!(graph.subStart || {})[name];
+        const rejoinAt = (rejoinSources[name] || []).map((t) =>
+          String(t).toLowerCase(),
+        );
+        for (const href of attrs.hrefs || []) {
+          const target = graph.frameNameByLower[String(href).toLowerCase()];
+          if (!target || target === name) continue;
+          const classes = [];
+          if ((graph.splits || {})[name]) classes.push("split-edge");
+          if (rejoinAt.includes(target.toLowerCase()))
+            classes.push("merge-edge");
+          // A sub-start's href is walked only AFTER the sub (dive → …sub… →
+          // return); dot it so the real path through the sub reads clearly.
+          if (isSubStart) classes.push("via-sub");
+          edge(`${prefix}${name}`, `${prefix}${target}`, classes.join(" "));
+        }
+      }
+    };
+
+    addFrames(main, "main:");
+    addHrefEdges(main, "main:");
+
+    for (const [score, sub] of Object.entries(subs || {})) {
+      elements.push({
+        group: "nodes",
+        data: { id: `subbox:${score}`, label: score },
+        classes: "subbox",
+      });
+      addFrames(sub, `sub:${score}:`, `subbox:${score}`);
+      addHrefEdges(sub, `sub:${score}:`);
+    }
+
+    // Dive / return edges around each sub-start frame.
+    for (const [name, info] of Object.entries(main.subStart || {})) {
+      const sub = (subs || {})[info.score];
+      if (!sub) continue;
+      const startFrame =
+        sub.frames.find((f) => /^START/i.test(f)) || sub.frames[0];
+      if (startFrame) {
+        edge(`main:${name}`, `sub:${info.score}:${startFrame}`, "dive");
+      }
+      const returnTarget =
+        info.returnHref &&
+        main.frameNameByLower[String(info.returnHref).toLowerCase()];
+      if (returnTarget) {
+        for (const endFrame of Object.keys(sub.subEnd || {})) {
+          edge(
+            `sub:${info.score}:${endFrame}`,
+            `main:${returnTarget}`,
+            "return",
+          );
+        }
+      }
+    }
+
+    // Barrier "waits for" edges (targets may be sub-qualified "score/frame").
+    for (const [name, targets] of Object.entries(main.holdUntilTargets || {})) {
+      for (const t of targets) {
+        const targetId = resolveRefToNodeId(t, main, subs || {});
+        if (targetId) edge(`main:${name}`, targetId, "waits");
+      }
+    }
+
+    return elements;
+  }
+
+  const STYLE = [
+    {
+      selector: "node",
+      style: {
+        shape: "round-rectangle",
+        width: "label",
+        height: "label",
+        padding: "6px",
+        "background-color": "#f4f4f4",
+        "border-width": 1,
+        "border-color": "#999",
+        label: (ele) =>
+          ele.data("badge")
+            ? `${ele.data("label")}\n${ele.data("badge")}`
+            : ele.data("label"),
+        "text-wrap": "wrap",
+        "text-valign": "center",
+        "text-halign": "center",
+        "font-size": 11,
+        "font-family": "monospace",
+      },
+    },
+    {
+      selector: "node.subbox",
+      style: {
+        shape: "round-rectangle",
+        "background-color": "#eef4fb",
+        "background-opacity": 0.5,
+        "border-width": 1,
+        "border-style": "dashed",
+        "border-color": "#7fa8d0",
+        label: "data(label)",
+        "text-valign": "top",
+        "font-size": 12,
+      },
+    },
+    { selector: "node.start", style: { "border-color": "#2e7d32", "border-width": 2 } },
+    { selector: "node.split", style: { "border-color": "#e67e22", "border-width": 2 } },
+    {
+      selector: "node.barrier",
+      style: { shape: "octagon", "border-color": "#c0392b", "border-width": 2 },
+    },
+    {
+      selector: "node.substart",
+      style: { shape: "diamond", "border-color": "#2b6cb0", "border-width": 2, padding: "10px" },
+    },
+    { selector: "node.subend", style: { "border-style": "double", "border-width": 3 } },
+    // History trail: visited ≤ checkpoint, "ahead" = redo entries past it.
+    // Declared before .here so a line's live position wins on background.
+    { selector: "node.visited", style: { "background-color": "#dcedc8" } },
+    {
+      selector: "node.visited-ahead",
+      style: { "background-color": "#f1f8e9" },
+    },
+    {
+      selector: "node.checkpoint",
+      style: {
+        "underlay-color": "#2b6cb0",
+        "underlay-opacity": 0.25,
+        "underlay-padding": 6,
+      },
+    },
+    {
+      selector: "node.here",
+      style: {
+        "background-color": "#ffd54f",
+        "border-width": 3,
+        "border-color": "#f57f17",
+      },
+    },
+    { selector: "node.here-waiting", style: { "border-color": "#c0392b" } },
+    { selector: "node.here-dormant", style: { "background-color": "#cfcfcf" } },
+    {
+      selector: "edge",
+      style: {
+        width: 1.5,
+        "curve-style": "bezier",
+        "line-color": "#aaa",
+        "target-arrow-shape": "triangle",
+        "target-arrow-color": "#aaa",
+        "arrow-scale": 0.8,
+      },
+    },
+    {
+      selector: "edge.split-edge",
+      style: { "line-color": "#e67e22", "target-arrow-color": "#e67e22", width: 2 },
+    },
+    {
+      selector: "edge.merge-edge",
+      style: { "line-color": "#8e44ad", "target-arrow-color": "#8e44ad", width: 2 },
+    },
+    {
+      selector: "edge.dive",
+      style: {
+        "line-color": "#2b6cb0",
+        "target-arrow-color": "#2b6cb0",
+        "line-style": "dashed",
+      },
+    },
+    {
+      selector: "edge.return",
+      style: {
+        "line-color": "#2b6cb0",
+        "target-arrow-color": "#2b6cb0",
+        "line-style": "dotted",
+      },
+    },
+    {
+      selector: "edge.waits",
+      style: {
+        "line-color": "#c0392b",
+        "target-arrow-color": "#c0392b",
+        "line-style": "dotted",
+        "arrow-scale": 0.6,
+      },
+    },
+    { selector: "edge.via-sub", style: { "line-style": "dotted", "line-color": "#ccc" } },
+  ];
+
+  // Manual arrangement: nodes are draggable; positions persist per session so
+  // an arrangement survives reloads. "re-layout" clears them.
+  function positionsKey() {
+    return `mapPos:${window.sessionId}`;
+  }
+
+  function loadSavedPositions() {
+    try {
+      return JSON.parse(localStorage.getItem(positionsKey())) || null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function savePositions() {
+    const pos = {};
+    cy.nodes().forEach((n) => {
+      if (!n.isParent()) pos[n.id()] = n.position();
+    });
+    try {
+      localStorage.setItem(positionsKey(), JSON.stringify(pos));
+    } catch (e) {
+      // storage blocked/full — arrangement just won't persist
+    }
+  }
+
+  function autoLayoutOptions() {
+    return typeof window.dagre !== "undefined"
+      ? { name: "dagre", rankDir: "TB", nodeSep: 18, rankSep: 36 }
+      : {
+          name: "breadthfirst",
+          directed: true,
+          spacingFactor: 1.1,
+          roots: "node.start",
+        };
+  }
+
+  function relayout() {
+    try {
+      localStorage.removeItem(positionsKey());
+    } catch (e) {
+      // ignore
+    }
+    cy.layout(autoLayoutOptions()).run();
+    cy.fit(undefined, 20);
+  }
+
+  function render(container, elements) {
+    cy = cytoscape({
+      container,
+      elements,
+      style: STYLE,
+      layout: autoLayoutOptions(),
+      wheelSensitivity: 0.2,
+    });
+    const saved = loadSavedPositions();
+    if (saved) {
+      cy.batch(() => {
+        cy.nodes().forEach((n) => {
+          if (saved[n.id()]) n.position(saved[n.id()]);
+        });
+      });
+    }
+    cy.fit(undefined, 20);
+    cy.on("dragfree", "node", savePositions);
+    const relayoutBtn = document.getElementById("session-map-relayout");
+    if (relayoutBtn) relayoutBtn.addEventListener("click", relayout);
+    wireContextMenu(container);
+    renderHistory(); // history may have arrived before the graph was ready
+  }
+
+  function updateLines(lines) {
+    if (!Array.isArray(lines)) {
+      return;
+    }
+    if (!cy) {
+      pendingLines = lines;
+      return;
+    }
+    cy.batch(() => {
+      cy.nodes()
+        .removeClass("here here-waiting here-dormant")
+        .data("badge", "");
+      for (const l of lines) {
+        if (!l.frame) continue;
+        const nodeId = l.sub ? `sub:${l.sub}:${l.frame}` : `main:${l.frame}`;
+        const node = cy.getElementById(nodeId);
+        if (node.empty()) continue;
+        const badge = node.data("badge");
+        // players (and riders when present) — admins are in `devices` only.
+        const who = `${l.players}p${l.riders ? `+${l.riders}r` : ""}`;
+        const mark = `${l.id}·${who}${l.waiting ? "⏳" : ""}`;
+        node.data("badge", badge ? `${badge} ${mark}` : mark);
+        node.addClass("here");
+        if (l.waiting) node.addClass("here-waiting");
+        if (l.status === "dormant") node.addClass("here-dormant");
+      }
+    });
+    const active = lines.filter((l) => l.status === "active").length;
+    const players = lines.reduce((n, l) => n + (l.players || 0), 0);
+    const riders = lines.reduce((n, l) => n + (l.riders || 0), 0);
+    setStatus(
+      `${lines.length} lines (${active} active) · ${players} players` +
+        (riders ? ` · ${riders} riders` : ""),
+    );
+  }
+
+  function renderVanilla() {
+    if (!cy || !vanillaMode) {
+      return;
+    }
+    cy.batch(() => {
+      cy.nodes()
+        .removeClass("here here-waiting here-dormant")
+        .data("badge", "");
+      const name = vanillaState.idx >= 0 && mainFrames[vanillaState.idx];
+      if (!name) return; // -1 = paused placeholder
+      const node = cy.getElementById(`main:${name}`);
+      if (node.empty()) return;
+      node.data(
+        "badge",
+        `${vanillaState.players}p${vanillaState.riders ? `+${vanillaState.riders}r` : ""}`,
+      );
+      node.addClass("here");
+    });
+    setStatus(
+      `single line · ${vanillaState.players} players` +
+        (vanillaState.riders ? ` · ${vanillaState.riders} riders` : ""),
+    );
+  }
+
+  // ── History overlay + rewind context menu ──────────────────────────────────
+
+  function renderHistory() {
+    if (!cy) {
+      return;
+    }
+    const { history, selectedIdx } = historyState;
+    cy.batch(() => {
+      cy.nodes().removeClass("visited visited-ahead checkpoint");
+      history.forEach((name, i) => {
+        // History names are main-flow frames; while the line is inside a sub
+        // they are sub frame names that simply don't resolve here (rewind is
+        // refused in-sub anyway).
+        const node = cy.getElementById(`main:${name}`);
+        if (node.empty()) return;
+        node.addClass(i <= selectedIdx ? "visited" : "visited-ahead");
+        if (i === selectedIdx) node.addClass("checkpoint");
+      });
+    });
+  }
+
+  function ensureMenu() {
+    let menu = document.getElementById("session-map-menu");
+    if (!menu) {
+      menu = document.createElement("div");
+      menu.id = "session-map-menu";
+      menu.style.display = "none";
+      document.body.appendChild(menu);
+      // Any interaction elsewhere dismisses the menu.
+      document.addEventListener("click", (e) => {
+        if (!menu.contains(e.target)) hideMenu();
+      });
+      document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape") hideMenu();
+      });
+    }
+    return menu;
+  }
+
+  function hideMenu() {
+    const menu = document.getElementById("session-map-menu");
+    if (menu) menu.style.display = "none";
+  }
+
+  function requestRewind(idx, label) {
+    hideMenu();
+    const ok = confirm(
+      `Rewind the session to "${label}" (step ${idx + 1})? ` +
+        `This moves the room, not just one device.`,
+    );
+    if (!ok) return;
+    sendToServer(MSG_SELECT_HISTORY, { selectedIdx: idx });
+    // The server answers with fresh MSG_SELECT_HISTORY + positions pushes,
+    // which redraw the overlay — nothing to do locally.
+  }
+
+  function showNodeMenu(node, clientX, clientY) {
+    const menu = ensureMenu();
+    const label = node.data("label");
+    const isMain = node.id().startsWith("main:");
+    const frameName = isMain ? node.id().slice("main:".length) : null;
+    const { history, selectedIdx, available } = historyState;
+
+    const occurrences = [];
+    if (frameName) {
+      history.forEach((name, i) => {
+        if (name === frameName) occurrences.push(i);
+      });
+    }
+
+    let html = `<div class="menu-title">${label}</div>`;
+    if (!isMain) {
+      html += `<div class="menu-note">sub-score frame — no rewind</div>`;
+    } else if (occurrences.length === 0) {
+      html += `<div class="menu-note">not visited — no rewind</div>`;
+    } else {
+      for (const i of occurrences) {
+        const current = i === selectedIdx;
+        const disabled = current || available === false;
+        const suffix =
+          occurrences.length > 1 ? ` (visit ${occurrences.indexOf(i) + 1})` : "";
+        html += `<button type="button" data-idx="${i}" ${
+          disabled ? "disabled" : ""
+        }>${current ? "current checkpoint" : `⏪ rewind here${suffix}`}</button>`;
+      }
+      if (available === false) {
+        html += `<div class="menu-note">history unavailable — lines diverged</div>`;
+      }
+    }
+    menu.innerHTML = html;
+    for (const btn of menu.querySelectorAll("button[data-idx]")) {
+      btn.addEventListener("click", () =>
+        requestRewind(parseInt(btn.dataset.idx, 10), label),
+      );
+    }
+
+    menu.style.display = "block";
+    // Clamp inside the viewport (menu must be visible to measure).
+    const rect = menu.getBoundingClientRect();
+    menu.style.left = `${Math.min(clientX, window.innerWidth - rect.width - 4)}px`;
+    menu.style.top = `${Math.min(clientY, window.innerHeight - rect.height - 4)}px`;
+  }
+
+  function wireContextMenu(container) {
+    // Native context menu would cover ours on right-click.
+    container.addEventListener("contextmenu", (e) => e.preventDefault());
+    cy.on("cxttap taphold", "node", (evt) => {
+      const node = evt.target;
+      if (node.isParent()) return; // sub boxes have no actions
+      const box = container.getBoundingClientRect();
+      const pos = evt.renderedPosition || { x: 0, y: 0 };
+      showNodeMenu(node, box.left + pos.x, box.top + pos.y);
+    });
+    cy.on("tap", (evt) => {
+      if (evt.target === cy) hideMenu();
+    });
+    cy.on("pan zoom", hideMenu);
+  }
+
+  // Minimal ws-client parseMessage contract for this page: MSG_PING time
+  // calibration (mirrors session.js, incl. the shared ws-client globals), then
+  // MSG_NEED_DISPLAY whose reply chain includes the admin lines snapshot.
+  window.parseMessage = function parseMessage(data) {
+    const msg = data.m;
+    if (msg === MSG_PING) {
+      const { serverTime, clientTime } = data;
+      const ping = Date.now() - clientTime;
+      timeStampOffset +=
+        (serverTime + ping / 2.0 - Date.now() - timeStampOffset) *
+        timeStampRate;
+      if (pingCountToReady > 0) {
+        pingCountToReady--;
+        sendToServer(MSG_PING, { clientTime: Date.now() });
+        return;
+      }
+      if (pingCountToReady === 0) {
+        pingCountToReady--;
+        timeStampRate = 0.1;
+        isReady = true;
+        pingTimer = setInterval(pingCallback, 1000 * 60);
+        sendToServer(MSG_NEED_DISPLAY);
+      }
+      return;
+    }
+    if (msg === MSG_SHOW) {
+      // Track the playhead like the session page does (cid rides on outgoing
+      // messages); in vanilla mode this IS the single line's position.
+      window.currentIndex = data.showIdx;
+      if (vanillaMode) {
+        vanillaState.idx = data.showIdx;
+        renderVanilla();
+      }
+      return;
+    }
+    if (msg === MSG_SHOW_NUMBER_CONNECTION) {
+      if (Array.isArray(data.lines)) {
+        updateLines(data.lines);
+      } else if (vanillaMode) {
+        vanillaState.players = data.playerCount || 0;
+        vanillaState.riders = data.riderCount || 0;
+        renderVanilla();
+      }
+      return;
+    }
+    if (msg === MSG_SELECT_HISTORY) {
+      historyState = {
+        history: data.history || [],
+        selectedIdx: data.selectedIdx ?? -1,
+        available: data.available,
+      };
+      renderHistory();
+      return;
+    }
+    // Everything else (SHOW/voting/… addressed to this connection's line) is
+    // irrelevant to the map.
+  };
+
+  async function init() {
+    const container = document.getElementById("session-map-canvas");
+    if (!container) {
+      return; // not the map page
+    }
+    const back = document.getElementById("session-map-back");
+    if (back) {
+      back.href = `/session/${window.sessionId}/?p=${encodeURIComponent(
+        window.staffCode || "",
+      )}&t=1`;
+    }
+    try {
+      // Right after a server (re)start the graph is re-derived asynchronously,
+      // so a 404 may just mean "still building" — retry before concluding the
+      // score has no session lines.
+      let res = null;
+      for (let attempt = 0; attempt < 15; attempt++) {
+        res = await fetch(`/session/${window.sessionId}/graph`);
+        if (res.ok) break;
+        setStatus(`score still building — retrying… (${attempt + 1})`);
+        await new Promise((r) => setTimeout(r, 2000));
+      }
+      if (!res.ok) {
+        setStatus("this score has no session-lines graph");
+        return;
+      }
+      const data = await res.json();
+      vanillaMode = !data.main.hasSessionLines;
+      mainFrames = data.main.frames || [];
+      for (const src of CDN_SCRIPTS) {
+        try {
+          await loadScript(src);
+        } catch (e) {
+          // dagre / cytoscape-dagre are optional (breadthfirst fallback);
+          // cytoscape itself is not.
+          if (src.includes("/cytoscape@")) throw e;
+          console.warn("session-map: optional layout lib failed", e);
+        }
+      }
+      render(container, graphElements(data));
+      if (pendingLines) {
+        updateLines(pendingLines);
+        pendingLines = null;
+      }
+      renderVanilla(); // position/counts may have arrived before the graph
+      setStatus("connecting…");
+      connectWebSocket();
+      document.addEventListener("visibilitychange", onVisibilityChange);
+    } catch (e) {
+      console.error("session-map init failed", e);
+      setStatus("map failed to load (see console)");
+    }
+  }
+
+  document.addEventListener("DOMContentLoaded", init);
+})();

@@ -9,4 +9,8 @@
     <text x="850" y="2280" font-size="64" text-anchor="middle" fill="#112" font-family="sans-serif">Continue</text>
     <text x="850" y="2375" font-size="40" text-anchor="middle" fill="#556" font-family="sans-serif">Spin.svg</text>
   </a>
+  <g sound="Low-D" style="cursor:pointer">
+    <circle cx="850" cy="1300" r="110" style="fill:#ffffff22;stroke:#fff;stroke-width:6"/>
+    <text x="850" y="1322" font-size="56" text-anchor="middle" fill="#fff" font-family="sans-serif">Low-D</text>
+  </g>
 </svg>

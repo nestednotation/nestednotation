@@ -3,4 +3,8 @@
   <rect x="0" y="0" width="1701" height="2480" style="fill:#333333"/>
   <text x="850" y="400" font-size="150" text-anchor="middle" fill="#fff" font-family="sans-serif">END</text>
   <text x="850" y="880" font-size="46" text-anchor="middle" fill="#ffffff99" font-family="sans-serif">One line again — demo complete.</text>
+  <g sound="Low-C" style="cursor:pointer">
+    <circle cx="850" cy="1300" r="110" style="fill:#ffffff22;stroke:#fff;stroke-width:6"/>
+    <text x="850" y="1322" font-size="56" text-anchor="middle" fill="#fff" font-family="sans-serif">Low-C</text>
+  </g>
 </svg>

@@ -885,3 +885,82 @@ body.ipad {
 #divhistory.history-unavailable {
   opacity: 0.45;
 }
+
+/* Session Lines — standalone live score-map page (views/session-map.jade +
+   session-map.js, experimental). Admin tool; linked from the line panel. */
+.session-map-page {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  margin: 0;
+  overflow: hidden;
+}
+#session-map-header {
+  display: flex;
+  align-items: center;
+  gap: 1em;
+  padding: 0.3em 0.8em;
+  font-size: 0.85em;
+  border-bottom: 1px solid #ddd;
+}
+#session-map-status {
+  color: #777;
+}
+#session-map-relayout {
+  border: 1px solid #ccc;
+  background: #f4f4f4;
+  border-radius: 0.3em;
+  padding: 0.1em 0.6em;
+  cursor: pointer;
+}
+#session-map-back {
+  margin-left: auto;
+}
+#session-map-canvas {
+  flex: 1;
+  min-height: 0;
+}
+#session-map-menu {
+  position: fixed;
+  z-index: 1001;
+  min-width: 160px;
+  background: #fff;
+  border: 1px solid #999;
+  border-radius: 0.3em;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.25);
+  padding: 0.25em;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2em;
+  font-size: 0.85em;
+}
+#session-map-menu .menu-title {
+  font-weight: bold;
+  padding: 0.15em 0.5em;
+  border-bottom: 1px solid #eee;
+}
+#session-map-menu .menu-note {
+  color: #888;
+  padding: 0.15em 0.5em;
+}
+#session-map-menu button {
+  border: none;
+  background: none;
+  text-align: left;
+  padding: 0.25em 0.5em;
+  border-radius: 0.25em;
+  cursor: pointer;
+}
+#session-map-menu button:hover:not(:disabled) {
+  background: #eef4fb;
+}
+#session-map-menu button:disabled {
+  color: #aaa;
+  cursor: default;
+}
+.line-distribution .score-map-link {
+  padding: 0.1em 0.5em;
+  border: 1px solid #ccc;
+  border-radius: 0.4em;
+  white-space: nowrap;
+}

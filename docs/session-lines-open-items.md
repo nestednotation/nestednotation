@@ -22,17 +22,19 @@
 
 | # | Question | Decision | Status |
 |---|---|---|---|
-| 1 | "revert to track group" reading | **(i) fallback-checkpoint** — the modal is a room-wide rewind tool; when diverged it offers the last synchronized track group as the jump target | Semantics recorded; **checkpoint modal UX = future work**. Server-side jump groundwork landed (un-park + generation, below). |
+| 1 | "revert to track group" reading | **(i) fallback-checkpoint** — the modal is a room-wide rewind tool; when diverged it offers the last synchronized track group as the jump target | Semantics recorded; server-side jump groundwork landed (un-park + generation, below). The [score map](score-map.md) (2026-07-11) now covers the *available* case with a graph rewind UI (right-click visited node); the **diverged-case fallback-checkpoint offer is still future work** — the map is its natural home. |
 | 2 | R2 terminal-frame hardening | **No.** Solve at score-authoring time instead: a sub-score frame must always keep an outgoing path to a sub-end | **Implemented**: validator error `sub-dead-end` (every landable sub frame must reach a `session-sub-end`); deadlock guard unchanged. |
 | 3 | Registry on rewind | **(b) generation counter**, with one carve-out: the barrier AT the rewind landing is already unlocked (the room passed it); every barrier met after the rewind — including ones satisfied before it — gates like a first pass | **Implemented**: SM jump bumps `session.reachedGeneration`, restarts `reachedTargets`, pre-satisfies the landing frame's own hold-until targets, and un-parks the jumped line (R4). |
 | 4 | S3 "(with split)" pairing | ~~Option A designation~~ **WITHDRAWN 2026-07-08** — the owner clarified that the "(with split)" pairing **does not exist**: `session-rejoin-at` sits on the **pre-merge (source) frames** and announces "this line merges at the target on its next step"; it never pairs with `session-split` (the attributes are independent and may coexist — e.g. staged merges 3→2→1). | **Reverted + replaced**: designation code (`pendingRejoinAt` tagging in `applySplit`, arrival clearing) and the `split-rejoin-mismatch` rule removed. New validator error `rejoin-not-linked`: every rejoin-at target must be one of its frame's own links. Bare co-presence merge (unchanged) is the whole rejoin runtime. |
 | 5 | S6 pre-divergence history | **Yes — history is available whenever the room is one populated line** (lines are git branches; initially there is always exactly one). | **Implemented**: `historyAvailability` returns true for ≤1 populated line on the main flow (still disabled inside a sub, where jumps are meaningless); grouped-frames rule unchanged for 2+ lines. |
 
 The un-answered spec question left in this file is **none**; what remains is build
-work: the reading-(i) **checkpoint-fallback modal UX** (client modal + room-wide
-rewind operation). Other review items still parked for later: **S7** (split ∩
-track-group precedence), **L3** (should admin tabs count as line devices?), **L5/L6**
-(see [session-lines-review.md](session-lines-review.md)).
+work: the reading-(i) **checkpoint-fallback offer** for the diverged case (natural
+home: the [score map](score-map.md)'s rewind menu, which already handles the
+available case). Other review items still parked for later: **S7** (split ∩
+track-group precedence), **L3** (should admin tabs count as line devices? — now
+more visible: every score-map tab is another admin connection populating a line),
+**L5/L6** (see [session-lines-review.md](session-lines-review.md)).
 
 ### Post-implementation review (same day, owner-clarified)
 

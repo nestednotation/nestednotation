@@ -1,6 +1,7 @@
 const express = require("express");
 const router = express.Router();
-const { FORM_MESSAGES } = require("../constants");
+const { FORM_MESSAGES, MESSAGES } = require("../constants");
+const { wsPath } = require("../database");
 const fs = require("fs");
 
 const { cache, SESSION_CACHE_KEY } = require("../utils/sessionCache");
@@ -62,6 +63,58 @@ router.get(
     });
   },
 );
+
+// Session Lines: the full score structure (main graph + every sub-score graph)
+// for the admin live map. Read-only, pure data. Vanilla scores get a graph too
+// (the map shows them as a single-line session; main.hasSessionLines tells the
+// client which mode it is). Deliberately UNCACHED: session.graph is re-derived
+// asynchronously after boot, and apicache would also cache a 404 emitted
+// during that window — wedging the map for the whole cache TTL.
+router.get("/:sessionId/graph", function (req, res) {
+  const db = req.app.get("Database");
+  const session = db.sessionTable.getById(req.params.sessionId);
+
+  if (!session || !session.graph) {
+    res.status(404).json({ error: "No graph (score still building?)" });
+    return;
+  }
+
+  const subs = {};
+  for (const [score, sub] of Object.entries(session.subFrames || {})) {
+    subs[score] = sub.graph;
+  }
+  res.json({ main: session.graph, subs });
+});
+
+// Session Lines: standalone live score-map page (admin tool). Rendered on the
+// fly (not baked/cached like the session page). Works for vanilla scores too —
+// the map presents them as a single-line session.
+router.get("/:sessionId/map", function (req, res) {
+  const db = req.app.get("Database");
+  const session = db.sessionTable.getById(req.params.sessionId);
+
+  if (!session) {
+    res.status(404).send("Session not found");
+    return;
+  }
+
+  // One JSON blob instead of per-constant locals: jade renders the view from
+  // disk per request, so a view newer than the running process would turn a
+  // missing local into `window.X = ;` — a SyntaxError killing the whole
+  // inline script. A blob just leaves new constants undefined.
+  res.render("session-map", {
+    sessionId: session.id,
+    scoreTitle: session.folder,
+    wsPath,
+    constantsJson: JSON.stringify({
+      MSG_PING: MESSAGES.MSG_PING,
+      MSG_SHOW: MESSAGES.MSG_SHOW,
+      MSG_NEED_DISPLAY: MESSAGES.MSG_NEED_DISPLAY,
+      MSG_SHOW_NUMBER_CONNECTION: MESSAGES.MSG_SHOW_NUMBER_CONNECTION,
+      MSG_SELECT_HISTORY: MESSAGES.MSG_SELECT_HISTORY,
+    }),
+  });
+});
 
 router.get("/", function (req, res) {
   const sessionName = req.query.s;

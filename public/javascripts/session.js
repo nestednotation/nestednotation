@@ -39,6 +39,17 @@ function onDOMContentLoaded() {
 
     const tablefooter = document.getElementById("tablefooter");
     tablefooter.style.display = "flex";
+
+    // Live score-map page (works for any score; vanilla shows as one line).
+    // Created dynamically so the shared session HTML stays untouched.
+    const mapLink = document.createElement("a");
+    mapLink.className = "score-map-link";
+    mapLink.target = "_blank";
+    mapLink.href = `/session/${window.sessionId}/map?p=${encodeURIComponent(
+      window.staffCode || "",
+    )}`;
+    mapLink.textContent = "map ↗";
+    tablefooter.appendChild(mapLink);
   }
 
   connectWebSocket();
@@ -409,7 +420,7 @@ function renderLineDistribution(lines) {
     return;
   }
   panel.style.display = "flex";
-  let html = "<span>Lines:</span>";
+  let html = `<span>Lines:</span>`;
   for (const l of lines) {
     const flags = [];
     if (l.status === "dormant") flags.push("dormant");

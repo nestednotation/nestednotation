@@ -483,6 +483,17 @@ async function afterLineArrived(session, line) {
   if (!session.hasSessionLines || line.status === "retired") {
     return false;
   }
+  try {
+    return await afterLineArrivedInner(session, line);
+  } finally {
+    // Admin live map: every landing refreshes the per-line positions (the same
+    // payload the line-distribution panel consumes). Recursive arrivals (sub
+    // exit → landing) just send an extra idempotent snapshot.
+    updateNumberOfConnectionForSession(session);
+  }
+}
+
+async function afterLineArrivedInner(session, line) {
   const graph = session.graph || {};
   const frameName = frameNameForLine(session, line);
 
@@ -1587,6 +1598,10 @@ function updateNumberOfConnectionForSession(session) {
           riders: conns.filter((c) => !c.isAdmin && !c.isStaff).length,
           frame: frameNameForLine(session, l),
           inSub: l.subStack.length > 0,
+          sub:
+            l.subStack.length > 0
+              ? l.subStack[l.subStack.length - 1].score
+              : null,
           waiting: !!l.isBarrierWaiting,
         };
       });

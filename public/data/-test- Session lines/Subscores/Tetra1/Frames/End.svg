@@ -4,4 +4,8 @@
   <text x="850" y="400" font-size="150" text-anchor="middle" fill="#fff" font-family="sans-serif">Tetra1 / End</text>
   <text x="850" y="600" font-size="52" text-anchor="middle" fill="#ffffffcc" font-family="monospace">session-sub-end="Tetra1"</text>
   <text x="850" y="880" font-size="46" text-anchor="middle" fill="#ffffff99" font-family="sans-serif">Exit marker — pops back to the main flow at E.</text>
+  <g sound="Low-A" style="cursor:pointer">
+    <circle cx="850" cy="1300" r="110" style="fill:#ffffff22;stroke:#fff;stroke-width:6"/>
+    <text x="850" y="1322" font-size="56" text-anchor="middle" fill="#fff" font-family="sans-serif">Low-A</text>
+  </g>
 </svg>
