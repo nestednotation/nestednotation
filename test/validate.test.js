@@ -269,4 +269,43 @@ module.exports = {
     assert.deepStrictEqual(errors, [], JSON.stringify(errors));
     assert.ok(codes(warnings).includes("barrier-target-unreachable"), JSON.stringify(warnings));
   },
+
+  "hold-until targeting a frame of the SAME track group is an error": () => {
+    // Decided 2026-07-16: B already waits for C via the group's arrival
+    // barrier — a hold-until on C is redundant and rejected.
+    const frames = [
+      frame("START.svg", { "session-split": "2" }, ["B.svg", "C.svg"]),
+      frame(
+        "B.svg",
+        { "session-track-group": "g", "session-hold-until": "C.svg" },
+        ["D.svg"],
+      ),
+      frame("C.svg", { "session-track-group": "g" }, ["D.svg"]),
+      frame("D.svg", {}, []),
+    ];
+    const g = buildGraph(frames);
+    const { errors } = validateScore(g, frames.map((f) => f.name), () => null);
+    const hits = errors.filter((e) => e.code === "hold-until-in-track-group");
+    assert.strictEqual(hits.length, 1, JSON.stringify(errors));
+    assert.strictEqual(hits[0].frame, "B.svg");
+  },
+
+  "hold-until on a grouped frame targeting OUTSIDE its group passes": () => {
+    // Out-of-group targets are valid and compose with the arrival barrier: B
+    // waits for the group's arrivals AND for X.
+    const frames = [
+      frame("START.svg", { "session-split": "3" }, ["B.svg", "C.svg", "X.svg"]),
+      frame(
+        "B.svg",
+        { "session-track-group": "g", "session-hold-until": "X.svg" },
+        ["D.svg"],
+      ),
+      frame("C.svg", { "session-track-group": "g" }, ["D.svg"]),
+      frame("X.svg", {}, ["D.svg"]),
+      frame("D.svg", {}, []),
+    ];
+    const g = buildGraph(frames);
+    const { errors } = validateScore(g, frames.map((f) => f.name), () => null);
+    assert.deepStrictEqual(errors, [], JSON.stringify(errors));
+  },
 };

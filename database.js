@@ -643,12 +643,20 @@ class BMSession {
       framesHtml += `${svg}\n`;
     }
 
+    const graph = buildGraph(subAttrs);
+    graph.frameLinks = {};
+    for (const { name, attrs } of subAttrs) {
+      graph.frameLinks[name] = (attrs.hrefs || []).map((href) =>
+        frameListLower.indexOf(href.toLowerCase()),
+      );
+    }
+
     return {
       frameList,
       frameListLower,
       soundList,
       framesHtml,
-      graph: buildGraph(subAttrs),
+      graph,
     };
   }
 

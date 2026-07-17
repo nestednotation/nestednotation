@@ -11,7 +11,10 @@ const assert = require("node:assert");
 const {
   planSplitPartition,
   parseVoteTargetIndex,
+  outgoingVoteIds,
+  defaultOutgoingVoteId,
   holdUntilSatisfied,
+  holdUntilReachabilityState,
   markReached,
   registryCoveredTargets,
   beginReachedGeneration,
@@ -23,6 +26,8 @@ const {
   linesOnGroupFrames,
   resolveGroupStay,
   groupLinkWinner,
+  canReachFrames,
+  groupArrivalState,
   subReturnIndex,
   createOrchestrator,
 } = require("../lib/session-lines/orchestrator");
@@ -116,6 +121,97 @@ module.exports = {
     assert.strictEqual(parseVoteTargetIndex("nope#x", 7), 7);
   },
 
+  // ── no-vote fallback ───────────────────────────────────────────────────
+  "voting fallback: normal no-vote line advances to first outgoing link": () => {
+    const frames = ["A.svg", "B.svg"];
+    const voteId = defaultOutgoingVoteId(
+      { "A.svg": [1] },
+      frames,
+      "A.svg",
+      () => 0.9,
+    );
+    assert.strictEqual(voteId, "1#A.svg#0");
+    assert.strictEqual(parseVoteTargetIndex(voteId, 0), 1);
+  },
+
+  "voting fallback: normal no-vote line with no outgoing links stays": () => {
+    const frames = ["A.svg"];
+    const currentIndex = 0;
+    const voteId = defaultOutgoingVoteId(
+      { "A.svg": [] },
+      frames,
+      "A.svg",
+      () => 0,
+    );
+    const targetIdx = voteId
+      ? parseVoteTargetIndex(voteId, currentIndex)
+      : currentIndex;
+    assert.strictEqual(voteId, null);
+    assert.strictEqual(targetIdx, currentIndex);
+  },
+
+  "voting fallback: invalid link votes do not mask default outgoing link": () => {
+    const frames = ["A.svg", "B.svg"];
+    const frameLinks = { "A.svg": [-1, 1] };
+    const validIds = outgoingVoteIds(frameLinks, frames, "A.svg");
+    const currentVotes = ["-1#A.svg#0", "99#A.svg#2", "-1"];
+    const validVotes = currentVotes.filter((vote) => validIds.includes(vote));
+    assert.deepStrictEqual(validIds, ["1#A.svg#1"]);
+    assert.deepStrictEqual(validVotes, []);
+    assert.strictEqual(
+      defaultOutgoingVoteId(frameLinks, frames, "A.svg", () => 0),
+      "1#A.svg#1",
+    );
+  },
+
+  "voting fallback: track-group no local link votes auto-advances without global stay": () => {
+    const frames = ["G1.svg", "G1Next.svg", "G2.svg", "G2Next.svg"];
+    const defaultId = defaultOutgoingVoteId(
+      { "G1.svg": [1] },
+      frames,
+      "G1.svg",
+      () => 0,
+    );
+    const tallies = [
+      { lineId: "L1", counts: { stay: 1 } },
+      { lineId: "L2", counts: { "3#G2.svg#0": 2 } },
+    ];
+    assert.strictEqual(resolveGroupStay(tallies, () => 0).isStay, false);
+    const linkWinner = groupLinkWinner(
+      { stay: 1, winningVoteId: "stay" },
+      () => 0,
+    );
+    assert.strictEqual(linkWinner || defaultId, "1#G1.svg#0");
+  },
+
+  "voting fallback: explicit stay still stays": () => {
+    const frames = ["A.svg", "B.svg"];
+    const currentIndex = 0;
+    const defaultId = defaultOutgoingVoteId(
+      { "A.svg": [1] },
+      frames,
+      "A.svg",
+      () => 0,
+    );
+    const counts = { stay: 3, winningVoteId: "stay" };
+    const winningId = counts.winningVoteId || defaultId;
+    const targetIdx =
+      winningId === "stay"
+        ? currentIndex
+        : parseVoteTargetIndex(winningId, currentIndex);
+    assert.strictEqual(winningId, "stay");
+    assert.strictEqual(targetIdx, currentIndex);
+  },
+
+  "voting fallback: split non-choosers still balance across children": () => {
+    const { assignment, counts } = planSplitPartition(
+      [{ choice: 0 }, {}, {}, {}],
+      2,
+    );
+    assert.deepStrictEqual(assignment, [0, 1, 0, 1]);
+    assert.deepStrictEqual(counts, [2, 2]);
+  },
+
   // ── holdUntilSatisfied / markReached / registryCoveredTargets ───────────
   "holdUntilSatisfied requires all targets (case-insensitive)": () => {
     assert.strictEqual(holdUntilSatisfied(["A.svg", "B.svg"], ["a.svg"]), false);
@@ -124,6 +220,33 @@ module.exports = {
       true,
     );
     assert.strictEqual(holdUntilSatisfied([], []), true);
+  },
+
+  "holdUntilReachabilityState requires a route for each missing target": () => {
+    const targets = ["A.svg", "B.svg", "C.svg"];
+    const covered = new Set(["a.svg"]);
+    const lines = [{ id: "L1" }, { id: "L2" }];
+
+    let state = holdUntilReachabilityState(
+      targets,
+      covered,
+      lines,
+      (line, target) =>
+        (line.id === "L1" && target === "B.svg") ||
+        (line.id === "L2" && target === "C.svg"),
+    );
+    assert.deepStrictEqual(state.missingTargets, ["B.svg", "C.svg"]);
+    assert.deepStrictEqual(state.unreachableTargets, []);
+    assert.strictEqual(state.reachable, true);
+
+    state = holdUntilReachabilityState(
+      targets,
+      covered,
+      lines,
+      (line, target) => line.id === "L1" && target === "B.svg",
+    );
+    assert.deepStrictEqual(state.unreachableTargets, ["C.svg"]);
+    assert.strictEqual(state.reachable, false);
   },
 
   "markReached phases forward only; done-edge reported once": () => {
@@ -248,6 +371,13 @@ module.exports = {
 
   "groupLinkWinner returns null when only stay votes": () => {
     assert.strictEqual(groupLinkWinner({ stay: 4 }, () => 0), null);
+  },
+
+  "groupLinkWinner falls back to a retained window winner": () => {
+    assert.strictEqual(
+      groupLinkWinner({ winningVoteId: "2#x#0" }, () => 0),
+      "2#x#0",
+    );
   },
 
   // Full L scenario: NOT a global stay → each line takes its OWN link winner even
@@ -494,5 +624,125 @@ module.exports = {
       ["Tetra/Echo.svg"],
     );
     assert.strictEqual(uncovered.size, 0);
+  },
+
+  // ── track-group ARRIVAL barrier (decided 2026-07-16) ─────────────────────
+  "canReachFrames walks links transitively (case-insensitive)": () => {
+    // START → A → B → C; frameLinks carry indices into listFiles.
+    const listFiles = ["START.svg", "A.svg", "B.svg", "C.svg"];
+    const frameLinks = {
+      "START.svg": [1],
+      "A.svg": [2],
+      "B.svg": [3],
+      "C.svg": [],
+    };
+    assert.strictEqual(
+      canReachFrames(frameLinks, listFiles, "START.svg", ["c.svg"]),
+      true,
+    );
+    assert.strictEqual(
+      canReachFrames(frameLinks, listFiles, "B.svg", ["C.svg"]),
+      true,
+    );
+    // No path backwards.
+    assert.strictEqual(
+      canReachFrames(frameLinks, listFiles, "C.svg", ["A.svg"]),
+      false,
+    );
+    // Standing on a target counts as reaching it.
+    assert.strictEqual(
+      canReachFrames(frameLinks, listFiles, "B.svg", ["B.svg"]),
+      true,
+    );
+  },
+
+  "canReachFrames survives cycles and skips unresolved links": () => {
+    const listFiles = ["A.svg", "B.svg", "C.svg"];
+    const frameLinks = {
+      "A.svg": [1, -1], // -1 = href that didn't resolve
+      "B.svg": [0], // A ↔ B cycle
+      "C.svg": [],
+    };
+    assert.strictEqual(
+      canReachFrames(frameLinks, listFiles, "A.svg", ["C.svg"]),
+      false,
+    );
+    assert.strictEqual(
+      canReachFrames(frameLinks, listFiles, "B.svg", ["A.svg"]),
+      true,
+    );
+    assert.strictEqual(canReachFrames(frameLinks, listFiles, "A.svg", []), false);
+    assert.strictEqual(canReachFrames({}, listFiles, null, ["C.svg"]), false);
+  },
+
+  "groupArrivalState waits on populated lines that can still reach": () => {
+    const lines = [
+      { id: "L1", status: "active" }, // parked on a group frame
+      { id: "L2", status: "active" }, // still traveling, can reach
+      { id: "L3", status: "active" }, // traveling, path leads away
+      { id: "L4", status: "dormant" }, // never counted
+      { id: "L5", status: "active" }, // empty — excluded (owner rule)
+    ];
+    const frames = { L1: "B.svg", L2: "A.svg", L3: "X.svg", L5: "A.svg" };
+    const state = groupArrivalState(lines, ["B.svg", "C.svg"], {
+      frameNameForLine: (l) => frames[l.id] || null,
+      deviceCount: (l) => (l.id === "L5" ? 0 : 1),
+      canReach: (l) => l.id === "L2",
+    });
+    assert.strictEqual(state.waiting, true);
+    assert.deepStrictEqual(state.incomingIds, ["L2"]);
+    assert.deepStrictEqual(state.blockedIds, []);
+  },
+
+  "groupArrivalState releases when every incoming line has arrived": () => {
+    const lines = [
+      { id: "L1", status: "active" },
+      { id: "L2", status: "active" },
+    ];
+    const frames = { L1: "B.svg", L2: "c.svg" }; // both on group frames
+    const state = groupArrivalState(lines, ["B.svg", "C.svg"], {
+      frameNameForLine: (l) => frames[l.id],
+      deviceCount: () => 1,
+      canReach: () => true, // irrelevant — both are occupants
+    });
+    assert.strictEqual(state.waiting, false);
+    assert.deepStrictEqual(state.incomingIds, []);
+  },
+
+  "groupArrivalState keeps waiting on a hold-until-blocked occupant": () => {
+    // L1 sits on a group frame but its own (out-of-group) hold-until barrier
+    // has not released — the group must keep waiting for it (composition).
+    const lines = [
+      { id: "L1", status: "active", isBarrierWaiting: true },
+      { id: "L2", status: "active" },
+    ];
+    const frames = { L1: "B.svg", L2: "C.svg" };
+    const state = groupArrivalState(lines, ["B.svg", "C.svg"], {
+      frameNameForLine: (l) => frames[l.id],
+      deviceCount: () => 1,
+      isBlocked: (l) => !!l.isBarrierWaiting,
+      canReach: () => false,
+    });
+    assert.strictEqual(state.waiting, true);
+    assert.deepStrictEqual(state.blockedIds, ["L1"]);
+  },
+
+  "groupArrivalState treats a sub line as incoming via canReach": () => {
+    // L2 is inside a sub — even if the sub frame's NAME collides with a group
+    // frame, it is not an occupant; reachability (from its return landing)
+    // decides whether it is incoming.
+    const lines = [
+      { id: "L1", status: "active" },
+      { id: "L2", status: "active", inSub: true },
+    ];
+    const frames = { L1: "B.svg", L2: "C.svg" };
+    const state = groupArrivalState(lines, ["B.svg", "C.svg"], {
+      frameNameForLine: (l) => frames[l.id],
+      deviceCount: () => 1,
+      inSub: (l) => !!l.inSub,
+      canReach: (l) => !!l.inSub,
+    });
+    assert.strictEqual(state.waiting, true);
+    assert.deepStrictEqual(state.incomingIds, ["L2"]);
   },
 };

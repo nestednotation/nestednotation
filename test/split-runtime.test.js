@@ -16,6 +16,9 @@ const { BMLine } = require("../lib/session-lines/line");
 const {
   createOrchestrator,
   parseVoteTargetIndex,
+  groupOfFrame,
+  resolveGroupStay,
+  groupLinkWinner,
 } = require("../lib/session-lines/orchestrator");
 const { MESSAGES } = require("../constants");
 
@@ -108,5 +111,85 @@ module.exports = {
     assert.ok(
       sent.some((s) => s.lineId === children[1].id && s.m === MESSAGES.MSG_BEGIN_SPLIT),
     );
+  },
+
+  // Decided 2026-07-17: a SPLIT frame inside a track group still divides its
+  // line when the group's synchronized window closes — resolveGroupVoting
+  // delegates it to the split path (balanced children) instead of moving the
+  // whole line to one default link. This drives the same decision sequence on
+  // the on-disk "-test- Session lines 2" score: G (1 voter → I) and H
+  // (session-split="2" → J/K, 2 players, nobody voted).
+  "grouped split: group close divides the no-vote split line balanced across J/K": async () => {
+    const session = await buildScore("-test- Session lines 2", {
+      id: "__group_split_test__",
+    });
+    assert.ok(session.hasSessionLines, "score must be flagged hasSessionLines");
+
+    const idx = (name) =>
+      session.listFilesInLowerCase.indexOf(name.toLowerCase());
+    const jIdx = idx("J.svg");
+    const kIdx = idx("K.svg");
+
+    // H is BOTH track-grouped (GH) and a split frame with children [J, K].
+    const group = groupOfFrame(session.graph, "H.svg");
+    assert.strictEqual(String(group).toLowerCase(), "gh");
+    assert.ok(session.graph.splits["H.svg"], "H must be a split frame");
+    assert.deepStrictEqual(session.graph.frameLinks["H.svg"], [jIdx, kIdx]);
+
+    // Group-close decision, as resolveGroupVoting computes it: G's lone voter
+    // picked I; H's players never voted, and a split line's empty tally stays
+    // empty (countVoteForLine's split guard — no synthesized default). The
+    // global max is G's link vote → the group advances, no global stay.
+    const gVote = `${idx("I.svg")}#G.svg#0`;
+    const decision = resolveGroupStay(
+      [
+        { lineId: "L0", counts: { [gVote]: 1 } },
+        { lineId: "L1", counts: {} },
+      ],
+      () => 0,
+    );
+    assert.strictEqual(decision.isStay, false);
+
+    // ...and the split line has NO link winner to advance whole on — the group
+    // resolution must hand it to the split path, never a whole-line default.
+    assert.strictEqual(groupLinkWinner({}, () => 0), null);
+
+    // The delegated split: H's line holds two connections, neither voted →
+    // both are stragglers, balanced 1 to J and 1 to K; parent hard-retired.
+    const parent = new BMLine(session, "L1");
+    parent.status = "active";
+    parent.setCurrIdxTo(idx("H.svg"));
+    session.lines.push(parent);
+
+    const childFrameIndices = session.graph.frameLinks["H.svg"];
+    const conns = [
+      { sessionId: session.id, lineId: parent.id, deviceId: "d1", currentVoteTo: -1 },
+      { sessionId: session.id, lineId: parent.id, deviceId: "d2", currentVoteTo: -1 },
+    ];
+    const members = conns.map((conn) => {
+      const votedIdx = parseVoteTargetIndex(conn.currentVoteTo, -1);
+      const slot = childFrameIndices.indexOf(votedIdx);
+      return { conn, key: conn.deviceId, choice: slot >= 0 ? slot : null };
+    });
+
+    const orch = createOrchestrator({
+      MESSAGES,
+      now: () => 0,
+      createLine: (s, id) => new BMLine(s, id),
+      send: () => {},
+    });
+    const { children, counts } = orch.applySplit({
+      session,
+      parentLine: parent,
+      childFrameIndices,
+      members,
+    });
+
+    assert.strictEqual(children.length, 2);
+    assert.strictEqual(children[0].currentIndex, jIdx);
+    assert.strictEqual(children[1].currentIndex, kIdx);
+    assert.deepStrictEqual(counts, [1, 1]);
+    assert.notStrictEqual(conns[0].lineId, conns[1].lineId);
+    assert.strictEqual(parent.status, "retired");
   },
 };

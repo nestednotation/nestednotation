@@ -50,6 +50,36 @@
     return String(name).replace(/\.svg$/i, "");
   }
 
+  // Track groups: pastel fills chosen to stay clear of the state colors
+  // (here = amber, visited = light green, dormant = grey) so a group tint is
+  // never mistaken for live/history state.
+  const GROUP_PALETTE = [
+    "#bbdefb", // blue
+    "#e1bee7", // purple
+    "#ffccbc", // deep orange
+    "#b2ebf2", // cyan
+    "#f8bbd0", // pink
+    "#c5cae9", // indigo
+    "#d7ccc8", // brown
+    "#ffe0b2", // orange
+  ];
+
+  // group name → color, stable across reloads: sorted names over main + every
+  // sub graph share one assignment (same name in a sub = same group).
+  function buildGroupColors(main, subs) {
+    const names = new Set(Object.keys(main.groups || {}));
+    for (const sub of Object.values(subs)) {
+      for (const g of Object.keys(sub.groups || {})) names.add(g);
+    }
+    const colors = {};
+    Array.from(names)
+      .sort()
+      .forEach((g, i) => {
+        colors[g] = GROUP_PALETTE[i % GROUP_PALETTE.length];
+      });
+    return colors;
+  }
+
   // "Tetra1/Echo.svg" → sub node, "H.svg" → main node. Null when unresolvable.
   function resolveRefToNodeId(ref, main, subs) {
     const slash = String(ref).indexOf("/");
@@ -77,6 +107,7 @@
     };
 
     const rejoinSources = main.rejoinTargets || {};
+    const groupColors = buildGroupColors(main, subs || {});
 
     const addFrames = (graph, prefix, parent) => {
       for (const name of graph.frames) {
@@ -86,12 +117,16 @@
         if ((graph.holdUntilTargets || {})[name]) classes.push("barrier");
         if ((graph.subStart || {})[name]) classes.push("substart");
         if ((graph.subEnd || {})[name]) classes.push("subend");
+        const trackGroup = ((graph.byFrame || {})[name] || {}).trackGroup || "";
+        if (trackGroup) classes.push("grouped");
         elements.push({
           group: "nodes",
           data: {
             id: `${prefix}${name}`,
             label: frameLabel(name),
             badge: "",
+            trackGroup,
+            groupColor: groupColors[trackGroup] || "",
             parent,
           },
           classes: classes.join(" "),
@@ -179,10 +214,12 @@
         "background-color": "#f4f4f4",
         "border-width": 1,
         "border-color": "#999",
-        label: (ele) =>
-          ele.data("badge")
-            ? `${ele.data("label")}\n${ele.data("badge")}`
-            : ele.data("label"),
+        label: (ele) => {
+          const lines = [ele.data("label")];
+          if (ele.data("trackGroup")) lines.push(`⟨${ele.data("trackGroup")}⟩`);
+          if (ele.data("badge")) lines.push(ele.data("badge"));
+          return lines.join("\n");
+        },
         "text-wrap": "wrap",
         "text-valign": "center",
         "text-halign": "center",
@@ -203,6 +240,13 @@
         "text-valign": "top",
         "font-size": 12,
       },
+    },
+    // Track-group tint. Declared before the state styles (visited/here/…) so a
+    // node's live/history state still wins on background; the ⟨group⟩ label
+    // line keeps the group readable while a state color covers the tint.
+    {
+      selector: "node.grouped",
+      style: { "background-color": "data(groupColor)" },
     },
     { selector: "node.start", style: { "border-color": "#2e7d32", "border-width": 2 } },
     { selector: "node.split", style: { "border-color": "#e67e22", "border-width": 2 } },

@@ -290,9 +290,22 @@ function ensureLineAssignment(session, conn, deviceId) {
   }
   // A device claimed the line again — cancel any pending attrition grace timer.
   cancelAttritionTimer(line);
+  const hadDevices =
+    lineConnections(wsServer.connections, session.id, lineId).filter(
+      (c) => c !== conn,
+    ).length > 0;
   // Joining a dormant line revives it (Phase 3 resumes its lifecycle).
   if (line.status === "dormant") {
     line.status = "active";
+  }
+  // First device on a line (a revival, or the adoption of an empty split
+  // child): if its frame's track group is still waiting on arrivals, the line
+  // must park too — otherwise its taps would open a solo, unsynchronized
+  // window mid-wait (the line only now became waitable; empty lines are not).
+  if (!hadDevices && session.hasSessionLines && line.subStack.length === 0) {
+    maybeParkAtGroup(session, line, frameNameForLine(session, line)).catch(
+      (e) => console.error("group park on line adoption error", e),
+    );
   }
   return line;
 }
@@ -322,6 +335,43 @@ function frameNameForLine(session, line) {
     return session.subFrames[sub.score].frameList[line.currentIndex];
   }
   return session.listFiles[line.currentIndex];
+}
+
+function navigationForLine(session, line) {
+  const sub = line.subStack && line.subStack[line.subStack.length - 1];
+  if (sub && session.subFrames && session.subFrames[sub.score]) {
+    const subInfo = session.subFrames[sub.score];
+    return {
+      frameList: subInfo.frameList,
+      frameLinks: (subInfo.graph || {}).frameLinks,
+    };
+  }
+  return {
+    frameList: session.listFiles,
+    frameLinks: (session.graph || {}).frameLinks,
+  };
+}
+
+function defaultOutgoingVoteIdForLine(session, line) {
+  if (!session.hasSessionLines) {
+    return null;
+  }
+  const nav = navigationForLine(session, line);
+  return orch.defaultOutgoingVoteId(
+    nav.frameLinks,
+    nav.frameList,
+    frameNameForLine(session, line),
+    () => Math.random(),
+  );
+}
+
+function outgoingVoteIdsForLine(session, line) {
+  const nav = navigationForLine(session, line);
+  return orch.outgoingVoteIds(
+    nav.frameLinks,
+    nav.frameList,
+    frameNameForLine(session, line),
+  );
 }
 
 // ── Rendezvous reached-registry (#6, decided 2026-07-04) ────────────────────
@@ -456,17 +506,11 @@ async function resolveSplit(session, line) {
   await session.saveSessionStateToFile();
 
   // A child may land on its own orchestration frame (sub-start dives in; a
-  // barrier parks; a nested split just waits for taps). afterLineArrived returns
-  // true when it already drove the display (e.g. MSG_SUB_ENTER); otherwise show
-  // the child's seeded frame.
+  // barrier parks; a nested split just waits for taps). Run arrival hooks before
+  // scheduling any plain SHOW so redirected/merged lines do not receive stale
+  // frame updates.
   for (const child of children) {
-    const consumed = await afterLineArrived(session, child);
-    if (!consumed && !session.isPause) {
-      sendToLine(session, child.id, Date.now() + session.preloadDuration, {
-        m: MESSAGES.MSG_SHOW,
-        showIdx: child.currentIndex,
-      });
-    }
+    await showLineAfterArrivalIfNeeded(session, child);
   }
 
   // Admins were reassigned to child lines — refresh their (per-line) history +
@@ -486,11 +530,28 @@ async function afterLineArrived(session, line) {
   try {
     return await afterLineArrivedInner(session, line);
   } finally {
+    // Track-group arrival waits: ANY landing can shrink a group's waiting set
+    // (the line arrived at the group — or moved off its last path to it), so
+    // re-check every parked group. Recursive arrivals re-check idempotently.
+    await tryReleaseGroupWaits(session);
     // Admin live map: every landing refreshes the per-line positions (the same
     // payload the line-distribution panel consumes). Recursive arrivals (sub
     // exit → landing) just send an extra idempotent snapshot.
     updateNumberOfConnectionForSession(session);
   }
+}
+
+async function showLineAfterArrivalIfNeeded(session, line) {
+  const consumed = session.hasSessionLines
+    ? await afterLineArrived(session, line)
+    : false;
+  if (!consumed && !session.isPause && line.status !== "retired") {
+    sendToLine(session, line.id, Date.now() + session.preloadDuration, {
+      m: MESSAGES.MSG_SHOW,
+      showIdx: line.currentIndex,
+    });
+  }
+  return consumed;
 }
 
 async function afterLineArrivedInner(session, line) {
@@ -534,6 +595,12 @@ async function afterLineArrivedInner(session, line) {
       return true;
     }
   }
+
+  // Track-group ARRIVAL barrier (decided 2026-07-16): a line landing on a
+  // grouped frame parks until every populated line that can still reach the
+  // group has arrived (empty lines excluded). The matching release check runs
+  // in afterLineArrived's finally (tryReleaseGroupWaits).
+  await maybeParkAtGroup(session, line, frameName);
 
   return false;
 }
@@ -647,7 +714,20 @@ function rehydrateBarriers(session) {
   let parkedAny = false;
   const graph = session.graph || {};
   for (const line of session.lines) {
-    if (line.status !== "active" || !line.isBarrierWaiting) {
+    if (line.status !== "active") {
+      continue;
+    }
+    // Group-arrival parks: the flag persists and the wait set is derived live,
+    // so there is nothing to rebuild — but a release may be due (the score may
+    // have changed, or the incoming lines may never reconnect).
+    if (line.isGroupWaiting) {
+      if (line.subStack.length > 0 || !groupOfCurrentFrame(session, line)) {
+        line.isGroupWaiting = false; // score changed under the saved state
+      } else {
+        parkedAny = true;
+      }
+    }
+    if (!line.isBarrierWaiting) {
       continue;
     }
     if (line.subStack.length > 0) {
@@ -680,6 +760,101 @@ function rehydrateBarriers(session) {
 
 function activeLines(session) {
   return session.lines.filter((l) => l.status === "active");
+}
+
+function activeDrivingLines(session, exceptParkedIds = new Set()) {
+  return activeLines(session).filter(
+    (l) =>
+      !exceptParkedIds.has(l.id) &&
+      !l.isBarrierWaiting &&
+      !l.isGroupWaiting &&
+      lineConnections(wsServer.connections, session.id, l.id).length > 0,
+  );
+}
+
+function resolveSubScoreName(session, score) {
+  const subs = session.subFrames || {};
+  return (
+    Object.keys(subs).find(
+      (name) => name.toLowerCase() === String(score || "").toLowerCase(),
+    ) || null
+  );
+}
+
+function subTargetReachableFromStart(session, score, targetFrame) {
+  const scoreName = resolveSubScoreName(session, score);
+  const sub = scoreName && session.subFrames[scoreName];
+  if (!sub || !sub.graph || !sub.graph.frameLinks) {
+    return false;
+  }
+  const startIdx = subStartIndex(sub.frameList);
+  const startFrame = sub.frameList[startIdx];
+  return orch.canReachFrames(
+    sub.graph.frameLinks,
+    sub.frameList,
+    startFrame,
+    [targetFrame],
+  );
+}
+
+function mainCanReachAnySubStart(session, fromFrame, score) {
+  const starts = Object.entries((session.graph || {}).subStart || {})
+    .filter(
+      ([, info]) =>
+        info &&
+        String(info.score).toLowerCase() ===
+          String(score || "").toLowerCase(),
+    )
+    .map(([frameName]) => frameName);
+  return (
+    starts.length > 0 &&
+    orch.canReachFrames(
+      (session.graph || {}).frameLinks,
+      session.listFiles,
+      fromFrame,
+      starts,
+    )
+  );
+}
+
+function lineCanReachHoldTarget(session, line, target) {
+  const ref = String(target || "");
+  const slash = ref.indexOf("/");
+  const top = line.subStack && line.subStack[line.subStack.length - 1];
+
+  if (slash > 0) {
+    const score = ref.slice(0, slash);
+    const targetFrame = ref.slice(slash + 1);
+    const scoreName = resolveSubScoreName(session, score);
+    const sub = scoreName && session.subFrames[scoreName];
+    if (!sub || !sub.graph || !sub.graph.frameLinks) {
+      return false;
+    }
+    if (
+      top &&
+      String(top.score).toLowerCase() === String(score).toLowerCase()
+    ) {
+      return orch.canReachFrames(
+        sub.graph.frameLinks,
+        sub.frameList,
+        frameNameForLine(session, line),
+        [targetFrame],
+      );
+    }
+
+    const fromFrame = mainFlowFrameForLine(session, line);
+    return (
+      subTargetReachableFromStart(session, score, targetFrame) &&
+      mainCanReachAnySubStart(session, fromFrame, score)
+    );
+  }
+
+  return orch.canReachFrames(
+    (session.graph || {}).frameLinks,
+    session.listFiles,
+    mainFlowFrameForLine(session, line),
+    [ref],
+  );
 }
 
 // All frame names that are named as a rejoin-at target by some source frame.
@@ -732,7 +907,6 @@ async function tryReleaseBarriers(session) {
   if (!barrier) {
     return;
   }
-  const actives = activeLines(session);
 
   for (const frameName of Object.keys(barrier.byFrame)) {
     const entry = barrier.byFrame[frameName];
@@ -754,18 +928,21 @@ async function tryReleaseBarriers(session) {
     );
     const satisfied = orch.holdUntilSatisfied(entry.targets, covered);
 
-    // Deadlock guard / attrition (#11): no active line is still travelling
-    // toward this barrier — release rather than wait forever for a line that
-    // can no longer arrive. A line is "coming" only if it is unparked AND has
-    // a device to drive it; an empty split child (e.g. the unchosen path) can
-    // never advance itself, so it must not hold the barrier open (same rule as
-    // historyAvailability, which ignores 0-device lines).
-    const someoneComing = actives.some(
-      (l) =>
-        !entry.parked.has(l.id) &&
-        lineConnections(wsServer.connections, session.id, l.id).length > 0,
+    // Deadlock guard / attrition (#11): release rather than wait forever when
+    // the missing targets can no longer be reached by any active, device-bearing
+    // unparked line. Empty/dormant/retired lines and already-parked lines do not
+    // keep a hold-until barrier open.
+    const reachability = orch.holdUntilReachabilityState(
+      entry.targets,
+      covered,
+      activeDrivingLines(session, entry.parked),
+      (l, target) => lineCanReachHoldTarget(session, l, target),
     );
-    const forceRelease = parkedLines.length > 0 && !someoneComing;
+    const forceRelease =
+      parkedLines.length > 0 &&
+      reachability.missingTargets.length > 0 &&
+      reachability.unreachableTargets.length ===
+        reachability.missingTargets.length;
 
     if (satisfied || forceRelease) {
       delete barrier.byFrame[frameName];
@@ -793,6 +970,14 @@ async function releaseBarrier(session, entry, parkedLines) {
   if (rejoinList.length === 1 && parkedLines.length > 0) {
     await runRejoin(session, parkedLines, rejoinList[0]);
   } else {
+    // Composition with the group ARRIVAL barrier: a freed line on a grouped
+    // frame may still owe the group a wait (out-of-group hold-until targets
+    // are valid and stack) — and clearing this blocker may itself open the
+    // group for the lines already parked there.
+    for (const l of parkedLines) {
+      await maybeParkAtGroup(session, l, entry.frame);
+    }
+    await tryReleaseGroupWaits(session);
     await session.saveSessionStateToFile();
   }
   notifyAdminsBarriers(session);
@@ -811,12 +996,15 @@ async function runRejoin(session, lines, rejoinFrameName) {
     return;
   }
 
+  const anyGroupParked = lines.some((l) => l.isGroupWaiting);
   for (const l of absorbed) {
     l.clearAllTimer();
     l.isBarrierWaiting = false;
+    l.isGroupWaiting = false;
   }
 
   survivor.isBarrierWaiting = false;
+  survivor.isGroupWaiting = false;
   const targetIdx = session.listFilesInLowerCase.indexOf(
     String(rejoinFrameName).toLowerCase(),
   );
@@ -838,16 +1026,19 @@ async function runRejoin(session, lines, rejoinFrameName) {
     m: MESSAGES.MSG_LINE_ASSIGNED,
     lineId: survivor.id,
   });
-  emitHistoryToAdmins(session, survivor);
-  if (!session.isPause) {
-    sendToLine(session, survivor.id, Date.now() + session.preloadDuration, {
-      m: MESSAGES.MSG_SHOW,
-      showIdx: survivor.currentIndex,
+  if (anyGroupParked) {
+    // Merged devices may still show a group-arrival banner from a pre-merge
+    // park (the client only hides it on MSG_BARRIER_RELEASED); the recursive
+    // afterLineArrived below re-parks the survivor if the group still waits.
+    sendToLine(session, survivor.id, 0, {
+      m: MESSAGES.MSG_BARRIER_RELEASED,
+      frame: rejoinFrameName,
     });
   }
+  emitHistoryToAdmins(session, survivor);
 
   // The rejoin frame may itself be an orchestration frame.
-  await afterLineArrived(session, survivor);
+  await showLineAfterArrivalIfNeeded(session, survivor);
 }
 
 // Attrition (#11): a line that loses its last device goes DORMANT (revivable) —
@@ -918,6 +1109,7 @@ async function finalizeAttrition(session, line) {
   line.isStandby = false;
   line.isHolding = false;
   line.isBarrierWaiting = false;
+  line.isGroupWaiting = false;
   if (session._barrier) {
     for (const entry of Object.values(session._barrier.byFrame)) {
       entry.parked.delete(line.id);
@@ -925,6 +1117,8 @@ async function finalizeAttrition(session, line) {
   }
 
   await tryReleaseBarriers(session);
+  // A dormant line stops being "incoming" — group arrival waits may dissolve.
+  await tryReleaseGroupWaits(session);
   notifyAdminsBarriers(session);
   await session.saveSessionStateToFile();
 }
@@ -1001,6 +1195,17 @@ function notifyAdminsBarriers(session) {
         };
       })
     : [];
+  // Track-group arrival waits share the panel (as "group:<name>") so the
+  // operator's force-release valve covers them too — the panel round-trips
+  // the frame string, which forceReleaseBarrier detects by its prefix.
+  for (const [group, lines] of groupWaitParkedByGroup(session)) {
+    barriers.push({
+      frame: `group:${group == null ? "?" : group}`,
+      targets:
+        group == null ? [] : orch.groupFramesLower(session.graph, group),
+      parked: lines.map((l) => l.id),
+    });
+  }
   sendToAllAdmins(session, 0, {
     m: MESSAGES.MSG_BARRIER_WAITING,
     admin: true,
@@ -1013,24 +1218,161 @@ function notifyAdminsBarriers(session) {
 // (MSG_BARRIER_RELEASED + any paired rejoin). Ignores the "someone still coming"
 // guard — this is the operator's manual override for a stuck / rider-only line.
 async function forceReleaseBarrier(session, frameName) {
-  if (!session.hasSessionLines || !session._barrier) {
+  if (!session.hasSessionLines) {
     return;
   }
-  const frames = frameName
-    ? [frameName]
-    : Object.keys(session._barrier.byFrame);
-  for (const fn of frames) {
-    const entry = session._barrier.byFrame[fn];
-    if (!entry) {
-      continue;
+  // "group:<name>" entries are track-group arrival waits, not hold-until frames.
+  const groupRef =
+    typeof frameName === "string" && frameName.startsWith("group:")
+      ? frameName.slice("group:".length)
+      : null;
+  if (session._barrier && groupRef == null) {
+    const frames = frameName
+      ? [frameName]
+      : Object.keys(session._barrier.byFrame);
+    for (const fn of frames) {
+      const entry = session._barrier.byFrame[fn];
+      if (!entry) {
+        continue;
+      }
+      const parkedLines = [...entry.parked]
+        .map((id) => session.lines.find((l) => l.id === id))
+        .filter((l) => l && l.status === "active");
+      delete session._barrier.byFrame[fn];
+      await releaseBarrier(session, entry, parkedLines);
     }
-    const parkedLines = [...entry.parked]
-      .map((id) => session.lines.find((l) => l.id === id))
-      .filter((l) => l && l.status === "active");
-    delete session._barrier.byFrame[fn];
-    await releaseBarrier(session, entry, parkedLines);
+  }
+  if (groupRef != null || !frameName) {
+    for (const [group, lines] of groupWaitParkedByGroup(session)) {
+      const matches =
+        groupRef == null || (group == null ? groupRef === "?" : group === groupRef);
+      if (matches) {
+        await releaseGroupWaitLines(session, lines);
+      }
+    }
   }
   notifyAdminsBarriers(session);
+}
+
+// ── Track-group ARRIVAL barrier (decided 2026-07-16) ─────────────────────────
+// Grouped frames don't just vote together — they WAIT for each other. A line
+// landing on a track-grouped frame parks (frame shown, taps ignored — same
+// client banner protocol as a hold-until park) until every populated line that
+// can still REACH a group frame has arrived on one, and every arrived line has
+// cleared its own (out-of-group) hold-until barrier. Empty (0-device) lines
+// neither occupy nor are waited for. The wait dissolves timeout-free via
+// reachability (decision #11 philosophy). Once released, the first tap opens
+// the group's synchronized windows exactly as before (openCoGroupWindows). A
+// LATE arrival (e.g. a line revived mid-round) is not parked once the group
+// stopped waiting — it joins the running round and is truncated at the group
+// close (owner-decided 2026-07-16: lowest-complexity option). SM jumps never
+// park at the landing (authoritative override, like the landing-barrier
+// carve-out), and the admin panel's force-release valve covers group waits.
+
+// The line's position projected onto the MAIN flow: its current frame, or —
+// inside a sub — the sub-start return landing it will pop back to (where its
+// future navigation resumes; v1 subs are plain).
+function mainFlowFrameForLine(session, line) {
+  if (line.subStack.length === 0) {
+    return frameNameForLine(session, line);
+  }
+  const idx = orch.subReturnIndex(
+    line.subStack[0].returnHref,
+    session.listFilesInLowerCase,
+  );
+  return idx >= 0 ? session.listFiles[idx] : null;
+}
+
+// Evaluate a group's arrival-barrier state over the live session.
+function groupWaitState(session, group) {
+  const groupFrames = orch.groupFramesLower(session.graph, group);
+  return orch.groupArrivalState(activeLines(session), groupFrames, {
+    frameNameForLine: (l) => frameNameForLine(session, l),
+    deviceCount: (l) =>
+      lineConnections(wsServer.connections, session.id, l.id).length,
+    inSub: (l) => l.subStack.length > 0,
+    isBlocked: (l) => !!l.isBarrierWaiting,
+    canReach: (l) =>
+      orch.canReachFrames(
+        session.graph.frameLinks,
+        session.listFiles,
+        mainFlowFrameForLine(session, l),
+        groupFrames,
+      ),
+  });
+}
+
+// Park `line` at its frame's group arrival barrier when the group still waits
+// on someone. No-op for ungrouped frames, sub lines, empty lines, and lines
+// already parked.
+async function maybeParkAtGroup(session, line, frameName) {
+  if (line.isGroupWaiting || line.subStack.length > 0) {
+    return;
+  }
+  const group = orch.groupOfFrame(session.graph, frameName);
+  if (!group) {
+    return;
+  }
+  if (
+    lineConnections(wsServer.connections, session.id, line.id).length === 0
+  ) {
+    return; // an empty line can't vote — never park it (nor is it waited for)
+  }
+  if (!groupWaitState(session, group).waiting) {
+    return;
+  }
+  line.isGroupWaiting = true;
+  sendToLine(session, line.id, 0, {
+    m: MESSAGES.MSG_BARRIER_WAITING,
+    frame: frameName,
+    group,
+  });
+  notifyAdminsBarriers(session);
+  await session.saveSessionStateToFile();
+}
+
+// Group-parked active lines keyed by their frame's group. A line whose frame is
+// no longer grouped (score reloaded under saved state) surfaces under `null`
+// and is released unconditionally by tryReleaseGroupWaits.
+function groupWaitParkedByGroup(session) {
+  const byGroup = new Map();
+  for (const l of activeLines(session)) {
+    if (!l.isGroupWaiting) {
+      continue;
+    }
+    const group = groupOfCurrentFrame(session, l);
+    if (!byGroup.has(group)) {
+      byGroup.set(group, []);
+    }
+    byGroup.get(group).push(l);
+  }
+  return byGroup;
+}
+
+async function releaseGroupWaitLines(session, lines) {
+  for (const l of lines) {
+    l.isGroupWaiting = false;
+    sendToLine(session, l.id, 0, {
+      m: MESSAGES.MSG_BARRIER_RELEASED,
+      frame: frameNameForLine(session, l),
+    });
+  }
+  notifyAdminsBarriers(session);
+  await session.saveSessionStateToFile();
+}
+
+// Re-check every group with parked lines and release the ones whose wait has
+// dissolved. Called on the edges where the waiting set can shrink: every
+// landing, dormancy, hold-until release, SM jump, post-restart rehydration.
+async function tryReleaseGroupWaits(session) {
+  if (!session.hasSessionLines) {
+    return;
+  }
+  for (const [group, lines] of groupWaitParkedByGroup(session)) {
+    if (group == null || !groupWaitState(session, group).waiting) {
+      await releaseGroupWaitLines(session, lines);
+    }
+  }
 }
 
 function sendUpdateVotingToClient(conn, session, line) {
@@ -1054,12 +1396,35 @@ const isValidVote = (vote) => {
   );
 };
 
+function isValidVoteForLine(session, line, vote) {
+  if (!isValidVote(vote)) {
+    return false;
+  }
+  if (!session.hasSessionLines) {
+    return true;
+  }
+  if (vote === "stay") {
+    return true;
+  }
+  return outgoingVoteIdsForLine(session, line).includes(String(vote));
+}
+
+function winningVoteIdForLine(session, line, votingData) {
+  const winningVoteId = votingData && votingData.winningVoteId;
+  if (isValidVoteForLine(session, line, winningVoteId)) {
+    return winningVoteId;
+  }
+  return defaultOutgoingVoteIdForLine(session, line);
+}
+
 // Tally votes for one line: only connections bound to line.id count, and the
 // leader-stabilization state lives on the line. With a single line this is
 // exactly today's session-wide tally.
 function countVoteForLine(session, line) {
   const listConn = lineConnections(wsServer.connections, session.id, line.id);
-  const voteData = listConn.map((o) => o.currentVoteTo).filter(isValidVote);
+  const voteData = listConn
+    .map((o) => o.currentVoteTo)
+    .filter((vote) => isValidVoteForLine(session, line, vote));
   const counts = {};
 
   for (const frameIdx of voteData) {
@@ -1068,6 +1433,26 @@ function countVoteForLine(session, line) {
     } else {
       counts[frameIdx] = 1;
     }
+  }
+
+  if (voteData.length === 0) {
+    // Votes live on websocket connections; if a voting device reconnects before
+    // close, the active tally can go empty. Keep this window's last real tally
+    // so the rest of the line still advances instead of falling back to STAY.
+    if (line._lastVoteCounts) {
+      return { ...line._lastVoteCounts };
+    }
+    if (isValidVoteForLine(session, line, line.currWinningId)) {
+      counts.winningVoteId = line.currWinningId;
+    } else {
+      const defaultVoteId = isSplitFrame(session, line)
+        ? null
+        : defaultOutgoingVoteIdForLine(session, line);
+      if (defaultVoteId) {
+        counts.winningVoteId = defaultVoteId;
+      }
+    }
+    return counts;
   }
 
   const winningVoteCount = Math.max(...Object.values(counts));
@@ -1092,6 +1477,7 @@ function countVoteForLine(session, line) {
 
   line.previousWinningCount = winningVoteIds.length;
   line.currWinningId = counts.winningVoteId;
+  line._lastVoteCounts = { ...counts };
 
   return counts;
 }
@@ -1126,6 +1512,9 @@ async function startVotingForSessionWithDelay(
     line.currentBeginTimeStamp + line.currentVotingDuration * 1000;
   line.isVoting = true;
   line.isStandby = false;
+  line.currWinningId = undefined;
+  line.previousWinningCount = 0;
+  line._lastVoteCounts = null;
 
   //start voting data timer
   line.votingTimeStamp = 0;
@@ -1215,7 +1604,8 @@ async function openCoGroupWindows(session, initiator) {
         l.subStack.length === 0 &&
         !l.isVoting &&
         !l.isStandby &&
-        !l.isBarrierWaiting,
+        !l.isBarrierWaiting &&
+        !l.isGroupWaiting,
     );
 
   // Match the initiator's resolved duration exactly (decision #3: initiator's
@@ -1228,8 +1618,10 @@ async function openCoGroupWindows(session, initiator) {
 
 // Resolve a whole track group at window close. Across all grouped lines' tallies
 // pick the single global-max (random tiebreak); if it is a STAY, every grouped
-// line stays; otherwise each line advances to its own link winner. Each line's
-// winningVoteId is set so the client glow follows (no client change).
+// line stays; otherwise each line advances to its own link winner — except a
+// line on a split frame, which divides via resolveSplit (balanced children)
+// rather than moving whole. Each surviving line's winningVoteId is set so the
+// client glow follows (no client change).
 async function resolveGroupVoting(session, line) {
   const group = groupOfCurrentFrame(session, line);
   const groupFrames = orch.groupFramesLower(session.graph, group);
@@ -1239,7 +1631,9 @@ async function resolveGroupVoting(session, line) {
       (l) => frameNameForLine(session, l),
       groupFrames,
     )
-    .filter((l) => l.subStack.length === 0);
+    // A group-parked line took no part in this round (arrival barrier) — don't
+    // sweep it into the resolution; it votes from the group's next round on.
+    .filter((l) => l.subStack.length === 0 && !l.isGroupWaiting);
   if (!groupLines.includes(line)) {
     groupLines.push(line);
   }
@@ -1268,6 +1662,18 @@ async function resolveGroupVoting(session, line) {
   const { isStay } = orch.resolveGroupStay(tallies, () => Math.random());
 
   for (const l of groupLines) {
+    // A grouped SPLIT frame still divides its line when the group advances
+    // (decided 2026-07-17): delegate to resolveSplit — choosers land on their
+    // tapped child, stragglers are balanced across the children — instead of
+    // moving the whole line to a single link winner. A global STAY brakes the
+    // split like any other grouped line (falls through to the stay handling
+    // below). Must run before this line's votes are cleared: resolveSplit
+    // reads conn.currentVoteTo for the choices.
+    if (!isStay && isSplitFrame(session, l)) {
+      await resolveSplit(session, l);
+      continue;
+    }
+
     l.isStandby = true;
     if (session.holdDuration > 0) {
       l.isHolding = true;
@@ -1285,8 +1691,14 @@ async function resolveGroupVoting(session, line) {
     } else {
       const linkWinner = orch.groupLinkWinner(counts, () => Math.random());
       if (linkWinner == null) {
-        winningId = "stay";
-        targetIdx = l.currentIndex;
+        const defaultVoteId = defaultOutgoingVoteIdForLine(session, l);
+        if (defaultVoteId == null) {
+          winningId = "stay";
+          targetIdx = l.currentIndex;
+        } else {
+          winningId = defaultVoteId;
+          targetIdx = Number(defaultVoteId.split("#")[0]);
+        }
       } else {
         winningId = linkWinner;
         targetIdx = Number(linkWinner.split("#")[0]);
@@ -1329,15 +1741,8 @@ async function resolveGroupVoting(session, line) {
 
     emitHistoryToAdmins(session, l);
 
-    if (!session.isPause && winningId !== "stay" && !isSubStartFrame(session, l)) {
-      sendToLine(session, l.id, Date.now() + session.preloadDuration, {
-        m: MESSAGES.MSG_SHOW,
-        showIdx: targetIdx,
-      });
-    }
-
     if (winningId !== "stay") {
-      await afterLineArrived(session, l);
+      await showLineAfterArrivalIfNeeded(session, l);
     }
   }
 
@@ -1355,17 +1760,20 @@ async function stopVotingForSession(session, line) {
   line.isVoting = false;
   line.didSendStopVoting = true;
 
+  // Session Lines: a window closing on a track-grouped frame resolves the whole
+  // group together (global-stay override). Checked BEFORE the split path so a
+  // grouped split frame gets the same resolution no matter whose synchronized
+  // window happens to close first — resolveGroupVoting runs the global-stay
+  // contest and delegates split-frame lines to resolveSplit itself.
+  if (groupOfCurrentFrame(session, line)) {
+    await resolveGroupVoting(session, line);
+    return;
+  }
+
   // Session Lines: a choice window closing on a split frame divides the line
   // instead of advancing it. (Gated — vanilla scores never reach this.)
   if (isSplitFrame(session, line)) {
     await resolveSplit(session, line);
-    return;
-  }
-
-  // Session Lines: a window closing on a track-grouped frame resolves the whole
-  // group together (global-stay override). Resolves every grouped line at once.
-  if (groupOfCurrentFrame(session, line)) {
-    await resolveGroupVoting(session, line);
     return;
   }
 
@@ -1376,11 +1784,12 @@ async function stopVotingForSession(session, line) {
 
   //stand by signal
   const votingData = countVoteForLine(session, line);
+  const winningVoteId = winningVoteIdForLine(session, line, votingData);
   const mostVoteRingId =
-    votingData.winningVoteId === "stay"
+    winningVoteId === "stay"
       ? line.currentIndex
       : // ID should follow format: nextVoteId#currFileName#aEleIndex
-        Number(votingData.winningVoteId?.split("#")[0] ?? line.currentIndex);
+        Number(winningVoteId?.split("#")[0] ?? line.currentIndex);
 
   // Reset this line's client votes
   wsServer.connections.forEach((conn) => {
@@ -1408,25 +1817,7 @@ async function stopVotingForSession(session, line) {
 
   emitHistoryToAdmins(session, line);
 
-  // Sub-start frames are presented by MSG_SUB_ENTER and sub-end frames by
-  // MSG_SUB_EXIT (afterLineArrived below), not a plain SHOW — sending SHOW here
-  // would race the dive / the pop back to the main flow.
-  if (
-    !session.isPause &&
-    !isSubStartFrame(session, line) &&
-    !isSubEndFrame(session, line)
-  ) {
-    const timestamp = new Date().getTime() + session.preloadDuration;
-    sendToLine(session, line.id, timestamp, {
-      m: MESSAGES.MSG_SHOW,
-      showIdx: mostVoteRingId,
-    });
-  }
-
-  // Session Lines: react to the frame just landed on (barrier / sub / rejoin).
-  if (session.hasSessionLines) {
-    await afterLineArrived(session, line);
-  }
+  await showLineAfterArrivalIfNeeded(session, line);
 }
 
 async function startHoldingForSessionWithDelay(session, line, delay) {
@@ -1494,10 +1885,10 @@ async function jumpScoreForSession(session, line, value) {
   if (index < 0) {
     return;
   }
-  // Captured BEFORE the playhead moves: the barrier frame a parked line is
-  // being rewound away from (its devices' "waiting" banner must be dismissed).
+  // Captured BEFORE the playhead moves: the barrier/group frame a parked line
+  // is being rewound away from (its devices' "waiting" banner must be dismissed).
   const parkedAtFrame =
-    session.hasSessionLines && line.isBarrierWaiting
+    session.hasSessionLines && (line.isBarrierWaiting || line.isGroupWaiting)
       ? frameNameForLine(session, line)
       : null;
 
@@ -1507,8 +1898,11 @@ async function jumpScoreForSession(session, line, value) {
   // Session Lines (open-item decisions, 2026-07-07): an SM jump is a REWIND.
   if (session.hasSessionLines) {
     // R4: a jumped line must not stay parked at the barrier it left — un-park
-    // it and drop it from every barrier entry (deleting emptied entries).
-    if (orch.unparkLine(session, line)) {
+    // it and drop it from every barrier entry (deleting emptied entries). The
+    // same rule applies to a group-arrival park.
+    const wasGroupParked = line.isGroupWaiting === true;
+    line.isGroupWaiting = false;
+    if (orch.unparkLine(session, line) || wasGroupParked) {
       // The client only hides its barrier banner on MSG_BARRIER_RELEASED —
       // without this the jumped line's devices keep "waiting…" forever.
       sendToLine(session, line.id, 0, {
@@ -1532,6 +1926,10 @@ async function jumpScoreForSession(session, line, value) {
     recordArrival(session, line);
     // Pre-satisfied landing targets may release barriers parked elsewhere.
     await tryReleaseBarriers(session);
+    // The jumped line's position changed — group waits it was incoming to may
+    // dissolve. (Deliberately NOT parking at the LANDING frame's group: an SM
+    // jump is authoritative, mirroring the landing-barrier carve-out above.)
+    await tryReleaseGroupWaits(session);
   }
 
   await session.saveSessionStateToFile();
@@ -1602,7 +2000,7 @@ function updateNumberOfConnectionForSession(session) {
             l.subStack.length > 0
               ? l.subStack[l.subStack.length - 1].score
               : null,
-          waiting: !!l.isBarrierWaiting,
+          waiting: !!(l.isBarrierWaiting || l.isGroupWaiting),
         };
       });
   }
@@ -1627,12 +2025,14 @@ async function messageHandle(conn, message) {
 
   // Session Lines: restore barrier bookkeeping after a restart (once, cheap).
   // Re-evaluate only AFTER the grace window — evaluating now would see zero
-  // reconnected devices ("no one coming") and force-release everything.
+  // reconnected devices, so every missing target would appear unreachable.
   if (rehydrateBarriers(session)) {
     setTimeout(() => {
-      tryReleaseBarriers(session).catch((e) =>
-        console.error("post-rehydrate barrier check error", e),
-      );
+      tryReleaseBarriers(session)
+        .then(() => tryReleaseGroupWaits(session))
+        .catch((e) =>
+          console.error("post-rehydrate barrier check error", e),
+        );
     }, ATTRITION_GRACE_MS);
   }
 
@@ -1662,6 +2062,7 @@ async function messageHandle(conn, message) {
       clientIndex !== line.currentIndex ||
       line.isHolding ||
       line.isBarrierWaiting ||
+      line.isGroupWaiting ||
       session.isPause ||
       !Boolean(selectedId)
     ) {
@@ -1686,12 +2087,6 @@ async function messageHandle(conn, message) {
       await session.saveSessionStateToFile();
 
       emitHistoryToAdmins(session, line);
-      if (!isSubStartFrame(session, line) && !isSubEndFrame(session, line)) {
-        sendToLineWithDelay(session, line.id, session.preloadDuration, {
-          m: MESSAGES.MSG_SHOW,
-          showIdx: line.currentIndex,
-        });
-      }
       const customHoldDur = parseCustomDur(
         session.holdDuration,
         nextFrameHoldingDur,
@@ -1699,9 +2094,7 @@ async function messageHandle(conn, message) {
       if (customHoldDur > 0) {
         await startHoldingForSessionWithDelay(session, line, 0);
       }
-      if (session.hasSessionLines) {
-        await afterLineArrived(session, line);
-      }
+      await showLineAfterArrivalIfNeeded(session, line);
       return;
     }
 
@@ -1756,7 +2149,10 @@ async function messageHandle(conn, message) {
       }
     }
 
-    if (session.hasSessionLines && line.isBarrierWaiting) {
+    if (
+      session.hasSessionLines &&
+      (line.isBarrierWaiting || line.isGroupWaiting)
+    ) {
       sendToClient(conn, 0, {
         m: MESSAGES.MSG_BARRIER_WAITING,
         frame: frameNameForLine(session, line),

@@ -566,7 +566,8 @@ body.ipad {
   width: 0;
 }
 
-#loading-sound-indicator {
+#loading-sound-indicator,
+#barrier-waiting-indicator {
   font-size: 18px;
   color: #9a9a9a;
   background: rgba(255, 255, 255, 0.9);

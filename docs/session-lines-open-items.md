@@ -13,8 +13,9 @@
 > `session-hold-until`).
 >
 > Status of related items: **S1 = decided + implemented** (rendezvous registry).
-> **S2, S3-remainder, S6 = decided 2026-07-07.** The history modal UI itself is future
-> work (its semantics are now fixed by these decisions).
+> **S2, S3-remainder, S6 = decided 2026-07-07.** S2 was revised and implemented
+> on 2026-07-16 with target-aware hold-until reachability. The history modal UI
+> itself is future work (its semantics are now fixed by these decisions).
 
 ---
 
@@ -23,18 +24,24 @@
 | # | Question | Decision | Status |
 |---|---|---|---|
 | 1 | "revert to track group" reading | **(i) fallback-checkpoint** — the modal is a room-wide rewind tool; when diverged it offers the last synchronized track group as the jump target | Semantics recorded; server-side jump groundwork landed (un-park + generation, below). The [score map](score-map.md) (2026-07-11) now covers the *available* case with a graph rewind UI (right-click visited node); the **diverged-case fallback-checkpoint offer is still future work** — the map is its natural home. |
-| 2 | R2 terminal-frame hardening | **No.** Solve at score-authoring time instead: a sub-score frame must always keep an outgoing path to a sub-end | **Implemented**: validator error `sub-dead-end` (every landable sub frame must reach a `session-sub-end`); deadlock guard unchanged. |
+| 2 | R2 terminal-frame hardening | **No.** Solve at score-authoring time instead: a sub-score frame must always keep an outgoing path to a sub-end | **Implemented**: validator error `sub-dead-end` (every landable sub frame must reach a `session-sub-end`). The broader hold-until deadlock guard was later revised in row 6. |
 | 3 | Registry on rewind | **(b) generation counter**, with one carve-out: the barrier AT the rewind landing is already unlocked (the room passed it); every barrier met after the rewind — including ones satisfied before it — gates like a first pass | **Implemented**: SM jump bumps `session.reachedGeneration`, restarts `reachedTargets`, pre-satisfies the landing frame's own hold-until targets, and un-parks the jumped line (R4). |
 | 4 | S3 "(with split)" pairing | ~~Option A designation~~ **WITHDRAWN 2026-07-08** — the owner clarified that the "(with split)" pairing **does not exist**: `session-rejoin-at` sits on the **pre-merge (source) frames** and announces "this line merges at the target on its next step"; it never pairs with `session-split` (the attributes are independent and may coexist — e.g. staged merges 3→2→1). | **Reverted + replaced**: designation code (`pendingRejoinAt` tagging in `applySplit`, arrival clearing) and the `split-rejoin-mismatch` rule removed. New validator error `rejoin-not-linked`: every rejoin-at target must be one of its frame's own links. Bare co-presence merge (unchanged) is the whole rejoin runtime. |
 | 5 | S6 pre-divergence history | **Yes — history is available whenever the room is one populated line** (lines are git branches; initially there is always exactly one). | **Implemented**: `historyAvailability` returns true for ≤1 populated line on the main flow (still disabled inside a sub, where jumps are meaningless); grouped-frames rule unchanged for 2+ lines. |
+| 6 | S2 hold-until deadlock guard revision | A missing `session-hold-until` target only keeps a barrier parked while at least one active, device-bearing, unparked line can still reach that target. Dormant, retired, empty, or parked lines are not counted; the barrier releases once no still-missing target remains reachable. | **Implemented 2026-07-16**: `tryReleaseBarriers` uses target-aware reachability over main `graph.frameLinks` and sub-score `graph.frameLinks`; `holdUntilReachabilityState` records the pure rule. |
 
 The un-answered spec question left in this file is **none**; what remains is build
 work: the reading-(i) **checkpoint-fallback offer** for the diverged case (natural
 home: the [score map](score-map.md)'s rewind menu, which already handles the
-available case). Other review items still parked for later: **S7** (split ∩
-track-group precedence), **L3** (should admin tabs count as line devices? — now
-more visible: every score-map tab is another admin connection populating a line),
-**L5/L6** (see [session-lines-review.md](session-lines-review.md)).
+available case). Other review items still parked for later: **L3** (should admin
+tabs count as line devices? — now more visible: every score-map tab is another
+admin connection populating a line), **L5/L6** (see
+[session-lines-review.md](session-lines-review.md)). **S7** (split ∩ track-group
+precedence) was **resolved 2026-07-17**: the group close delegates a grouped
+split frame to the split path (choosers to their pick, stragglers balanced;
+global stay brakes it un-split), and the group check now precedes the split
+check at window close so resolution no longer depends on whose synchronized
+window closes first.
 
 ### Post-implementation review (same day, owner-clarified)
 
@@ -53,6 +60,16 @@ more visible: every score-map tab is another admin connection populating a line)
   triggers orchestration reactions — the line sits on the frame un-dived and its next
   vote follows the frame's href (the sub's return landing), skipping the sub. This
   matches the "rewind-to-a-barrier stays unlocked" rule.
+- **No-vote continuation fallback (implemented 2026-07-16):** a non-split Session
+  Lines voting window that closes with no valid votes and no retained in-window
+  tally no longer falls back to `line.currentIndex`. Session Lines considers only
+  explicit `stay` or graph-derived current outgoing link ids valid; stale/malformed
+  link ids are ignored. It synthesizes a default link winner from the current frame's
+  ordered `frameLinks` (one link → take it; multiple valid links → random tie-break;
+  no valid links → stay/no-op). Split windows keep their existing non-chooser
+  balancing, explicit `stay` still stays, and track-group global `stay` still brakes
+  the whole group; otherwise grouped lines with no local link winner use their own
+  default outgoing link.
 - **Noted, self-healing (no action):** after a rewind restarts the registry, other
   lines' *current* positions are not re-seeded into the fresh generation — a barrier
   whose target is a frame someone is already standing on sees it covered only when
@@ -61,6 +78,19 @@ more visible: every score-map tab is another admin connection populating a line)
   admin tab bound to an otherwise-empty line makes it "populated" — which can flip
   the room from the single-line always-available rule to the 2+-lines grouped-frames
   rule.
+
+## Decisions (owner, 2026-07-16) — track-group ARRIVAL barrier
+
+`session-track-group` no longer only synchronizes voting windows — grouped frames
+**wait for each other** before the first window opens.
+
+| # | Question | Decision | Status |
+|---|---|---|---|
+| 1 | What must the group wait for? | **All incoming lines arrived** — every populated line that can still reach a group frame must have landed on one (not merely one occupant per frame). Empty (0-device) lines neither occupy nor are waited for. | **Implemented**: `line.isGroupWaiting` park on landing (`maybeParkAtGroup`), reusing the hold-until banner protocol (`MSG_BARRIER_WAITING`/`RELEASED` — zero client change). |
+| 2 | Deadlock guard | **Reachability release** (timeout-free, #11 philosophy): a line stops being "incoming" the moment no link path leads from its main-flow position to a group frame (dormant lines drop out; sub lines project to their return landing). Re-checked on every landing, dormancy, hold-until release, SM jump, post-restart rehydration. | **Implemented**: `canReachFrames` BFS over `graph.frameLinks` + `groupArrivalState` (pure, orchestrator.js); `tryReleaseGroupWaits` in bin/www. SM force-release valve covers group waits (`group:<name>` panel entries). |
+| 3 | Track-group × hold-until | **They compose, with a validation rule**: a hold-until on a grouped frame may only target frames **outside** the frame's own group (in-group targets are redundant — the arrival barrier already waits for those). A blocked (hold-until-parked) occupant keeps the whole group waiting until its out-of-group barrier releases. | **Implemented**: validator error `hold-until-in-track-group`; `groupArrivalState` counts barrier-parked occupants as blockers; `releaseBarrier` re-parks freed lines at a still-waiting group. |
+| 4 | Late arrival while a round runs | **Join truncated (today's behavior)** — chosen for lowest code complexity: once the group stopped waiting, a newcomer (e.g. a revived line) just taps into the running round and is cut at the group close. Group-parked lines are excluded from a round's resolution sweep. | **Implemented**: no re-arm after release; `resolveGroupVoting`/`openCoGroupWindows` skip `isGroupWaiting` lines; first device adopting an empty/dormant line on a group frame re-parks it (`ensureLineAssignment`). |
+| 5 | SM jump onto a grouped frame | **Never parks** — a jump is authoritative, mirroring the landing-barrier carve-out; the jump also un-parks a group-parked line (banner dismissed) and re-checks group waits it was incoming to. | **Implemented** in `jumpScoreForSession`. |
 
 ---
 
@@ -96,9 +126,16 @@ line; implemented 2026-07-07 in `historyAvailability`.)*
 
 ## Open item 1 — S2: the barrier deadlock guard
 
+**Update 2026-07-16:** this section is historical. The earlier conservative
+recommendation was superseded by the target-aware reachability guard in the
+decisions table above. The current runtime ignores a missing hold-until target
+when no active, device-bearing, unparked line can still reach it, and releases
+the barrier once no still-missing target remains reachable. Qualified sub refs
+are checked against the referenced sub-score graph.
+
 ### Where things stand
 
-The guard (`someoneComing`, bin/www `tryReleaseBarriers`) force-releases a barrier only
+Historical behavior: the guard (`someoneComing`, bin/www `tryReleaseBarriers`) force-released a barrier only
 when **no active, device-bearing line exists outside its parked set**. Rendezvous (S1)
 removed the worst deadlock class (mutual barriers). What remains stuck is the
 **too-patient** direction: a device-bearing line that can never actually reach an
@@ -125,7 +162,7 @@ target this time. Two consequences:
 - The two tools split cleanly: **force-release = skip the wait; modal rewind = replay
   and satisfy the wait properly.**
 
-### Recommendation
+### Historical Recommendation
 
 - **R1 — Keep the guard as-is.** Conservative is correct: it only force-releases when
   every populated line is parked (the room is provably wedged), which is what an
@@ -137,7 +174,7 @@ target this time. Two consequences:
   class 2 soundly. Caveat: if the modal later implements reading (i), a checkpoint
   rewind *could* move such a line — but the guard only matters when everyone else is
   already parked, so releasing remains the operator-equivalent action. Low risk.
-- **R3 — Do NOT build graph-reachability (BFS) analysis.** It cannot detect behavioral
+- **R3 — Do NOT build graph-reachability (BFS) analysis.** *(Superseded 2026-07-16.)* It cannot detect behavioral
   deadlock (a line that stay-votes forever), it is invalidated by history jumps and
   dormant-line revival, and per the above it actively conflicts with the rewind tool.
   The heuristic guard + two operator tools cover the space. Revisit only if real

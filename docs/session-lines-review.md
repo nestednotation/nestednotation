@@ -10,7 +10,7 @@
 
 All findings below have been **fixed in the working tree** except:
 - **H1** — left in place per instruction (revert manually before commit).
-- **S2, S6, S7, L3, L5, L6** — deliberately NOT changed; they are spec-interpretation / design questions for the requirement owner, not clear-cut bugs.
+- **S2, S6, L3, L5, L6** — deliberately NOT changed; they are spec-interpretation / design questions for the requirement owner, not clear-cut bugs. **S7** — ✅ DECIDED + implemented 2026-07-17 (grouped split divides balanced; see S7 row).
 - **S1** — ✅ DECIDED by the requirement owner (2026-07-04): **rendezvous**. Implemented same day (see S1 row); tests updated (80 pass). **S3** — partially addressed by the same change (multi-target rejoin = route vote on barrier release).
 
 Post-fix verification: `npm test` → **78 passed, 0 failed** (3 new tests: split registry sweep, barrier sub-ref coverage, sub history preservation); vanilla baseline still byte-identical; server boot smoke test (alt ports) → HTTP 200, state reload + validation hook clean. Each fixed item below is tagged **✅ FIXED** with what was done.
@@ -111,12 +111,12 @@ Spec markup table says hold-until "supports sub refs like `Tetra2/E`" and the va
 | # | Where | Deviation |
 |---|-------|-----------|
 | S1 | ✅ DECIDED + FIXED (2026-07-04) | Owner decision: **rendezvous** is the requirement. Implemented: persisted session-global `session.reachedTargets` registry (`arrived` on landing → `done` when that frame's own holding period ends — the "holds ended" clause is now enforced); `recordArrival`/`recordHoldEnded` in bin/www feed it (sub frames as qualified `score/frame` refs); `orchestrator.registryCoveredTargets` replaces the convergence-based `barrierCoveredTargets`. Barriers release wherever the reaching lines are — parked lines never need to converge; mutual barriers (FigJam E⇄F⇄G) now release instead of deadlocking. |
-| S2 | `bin/www:581-586` | Deadlock guard is heuristic: any active, unparked, device-bearing line counts as "coming", so a line that loops forever elsewhere holds the barrier indefinitely. Spec #11 promises timeout-free release when the frame "can no longer be reached" — true reachability isn't analyzed. Admin force-release is the valve, but flag it. |
+| S2 | ✅ FIXED (2026-07-16) | Hold-until's deadlock guard is now target-aware: a missing target keeps the barrier parked only while it is reachable by at least one active, device-bearing, unparked line. Dormant, retired, empty, and parked lines do not keep a target open; qualified sub refs use the sub-score graph. |
 | S3 | partially fixed (2026-07-04) | Barrier-paired rejoin now keeps the FULL target list (`entry.rejoinAll`): a single target auto-advances + merges on release (Barrier→DONE pattern); **multiple targets release without advancing — the line votes its route and merges on arrival at the chosen target** (bare rejoin). Remaining: the "with split" pairing (children distributed across listed targets) is still not implemented. |
 | S4 | ✅ FIXED (partially) | Validation now runs inside `buildSVGContent` (i.e. on every session create/update/reload) and logs errors/warnings to the server console, non-blocking. Remaining (UI work): surfacing results in the admin console. |
 | S5 | ✅ FIXED | `buildSVGContent` now clears `this.graph`/`this.hasSessionLines` when a reloaded score has dropped its `session-*` markup. |
 | S6 | `bin/www:715-724` | `historyAvailable` returns `false` for a single, never-split line sitting on any non-grouped frame — on a session-lines score, admin history is disabled from the very first frame even though nothing has diverged. Literal FigJam reading; confirm intent. |
-| S7 | `bin/www:1129-1139` | A frame that is both `session-split` and in a track group: if *another* grouped line's window closes first, `resolveGroupVoting` treats the split line as a normal link vote (advances it; no split). Guard or document. |
+| S7 | ✅ FIXED (2026-07-17) | A frame that is both `session-split` and in a track group used to resolve differently depending on whose synchronized window closed first (another grouped line's close moved the split line whole to a default link — no split, no balancing). Now: `stopVotingForSession` checks the group before the split, and `resolveGroupVoting` delegates split-frame lines to `resolveSplit` (choosers to their pick, stragglers balanced) unless a global `stay` brakes the group. |
 
 ---
 
@@ -148,6 +148,6 @@ Spec markup table says hold-until "supports sub refs like `Tetra2/E`" and the va
 ## Remaining actions
 
 1. **H1** — revert the `wsPath` hack (one line; deliberately left unfixed — do this before any commit).
-2. Take the open **S-table** items to the requirement owner: **S2** (heuristic deadlock guard — S1 is now decided/implemented as rendezvous, which removes the mutual-barrier deadlock class but keeps the guard heuristic for unreachable targets), **S3 remainder** (rejoin-at "with split" pairing), **S6** (history disabled pre-split on non-grouped frames), **S7** (split ∩ track-group precedence), plus **L3** (should admin tabs count as line devices?) and **L5/L6**.
+2. Take the remaining open **S-table** items to the requirement owner: **S3 remainder** (rejoin-at "with split" pairing), **S6** (history disabled pre-split on non-grouped frames), plus **L3** (should admin tabs count as line devices?) and **L5/L6**. **S2 is fixed** by target-aware hold-until reachability. **S7 is fixed** (grouped split divides balanced, 2026-07-17).
 3. Admin-console surfacing of validation results (S4's UI half).
 4. Manual multi-tab E2E (Chunk N): split → track-group → barrier → rejoin → sub round-trip → refresh-restores-line, now incl. the fixed paths (refresh during a barrier, reconnect after a split, sub exit taps).

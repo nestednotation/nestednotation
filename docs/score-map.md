@@ -40,6 +40,7 @@ Reuses [ws-client.js](../public/javascripts/ws-client.js) wholesale (reconnect/b
 **Visual vocabulary** (cytoscape classes):
 
 - Nodes: `start` (green border), `split` (orange), `barrier` (red octagon), `substart` (blue diamond), `subend` (double border), sub-score frames grouped in dashed `subbox` compound nodes.
+- Track groups: `grouped` nodes get a per-group pastel fill (stable palette, sorted group names over main + subs, cycles past 8 groups) and a `⟨group⟩` label line under the frame name. The palette avoids the state hues (amber/green/grey), and state fills (`here`/`visited`/…) deliberately override the tint — the label line keeps the group readable meanwhile.
 - Edges: plain hrefs (grey), `split-edge` (orange), `merge-edge` (purple, = href that is also its source's `rejoin-at` target), `dive`/`return` (blue dashed/dotted, around sub-starts), `waits` (red dotted, barrier → hold-until target, sub-qualified `score/frame` refs resolve into subboxes), `via-sub` (dotted grey — a sub-start's own href, walked only after the sub).
 - Live: `here` (yellow) with badge `L0·2p+1r⏳` (players + riders; ⏳ = parked at barrier; **admins deliberately excluded** — they only ever count in `devices`), `here-waiting` (red border), `here-dormant` (grey).
 - History: `visited` (green tint, ≤ checkpoint), `visited-ahead` (pale, redo entries), `checkpoint` (blue underlay halo).
