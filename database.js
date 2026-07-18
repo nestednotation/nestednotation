@@ -195,6 +195,11 @@ class BMSession {
   // every session-lines history jump, when the registry above is restarted so
   // replayed barriers gate like first passes.
   reachedGeneration = 0;
+  // Decision #13 revision (2026-07-18): the newest main-flow track-group
+  // landing ({ frame, at }) — dormant-line revivals fast-forward to this
+  // group instead of resuming their frozen position. Cleared on rewind
+  // (beginReachedGeneration) and when a reloaded score drops its markup.
+  latestGroupArrival = null;
 
   selectedScoreIndex = -1;
   selectedCooldownTimeIndex = -1;
@@ -438,6 +443,7 @@ class BMSession {
       // orchestrating on it; the fresh graph above replaces any stale one.
       this.hasSessionLines = false;
       this.reachedTargets = {};
+      this.latestGroupArrival = null;
     }
 
     // Session Lines: build sub-score frames on demand cache (gated; the file is
@@ -719,6 +725,7 @@ class BMSession {
       deviceRegistry: this.deviceRegistry,
       reachedTargets: this.reachedTargets,
       reachedGeneration: this.reachedGeneration,
+      latestGroupArrival: this.latestGroupArrival,
       lines: this.lines.map((line) => line.toJSON()),
     };
   }

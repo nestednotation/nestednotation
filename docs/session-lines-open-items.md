@@ -23,19 +23,23 @@
 
 | # | Question | Decision | Status |
 |---|---|---|---|
-| 1 | "revert to track group" reading | **(i) fallback-checkpoint** — the modal is a room-wide rewind tool; when diverged it offers the last synchronized track group as the jump target | Semantics recorded; server-side jump groundwork landed (un-park + generation, below). The [score map](score-map.md) (2026-07-11) now covers the *available* case with a graph rewind UI (right-click visited node); the **diverged-case fallback-checkpoint offer is still future work** — the map is its natural home. |
+| 1 | "revert to track group" reading | **(i) fallback-checkpoint** — the modal/map is a room-wide rewind tool; when diverged it offers synchronized track groups as jump targets | **Implemented 2026-07-18 in the score map**: right-click a common checkpoint group frame → `MSG_SELECT_HISTORY {group}`; the server recomputes checkpoints and moves every non-retired line to its own landing in that group. Session-page modal UX can follow later. **2026-07-19: the implicit bound-line jump is retired (row 5); the same day an EXPLICIT line-targeted rewind was added (row 7)** — session-lines rewinds are now `{group}` (room) and `{lineId}` (one named line). |
 | 2 | R2 terminal-frame hardening | **No.** Solve at score-authoring time instead: a sub-score frame must always keep an outgoing path to a sub-end | **Implemented**: validator error `sub-dead-end` (every landable sub frame must reach a `session-sub-end`). The broader hold-until deadlock guard was later revised in row 6. |
 | 3 | Registry on rewind | **(b) generation counter**, with one carve-out: the barrier AT the rewind landing is already unlocked (the room passed it); every barrier met after the rewind — including ones satisfied before it — gates like a first pass | **Implemented**: SM jump bumps `session.reachedGeneration`, restarts `reachedTargets`, pre-satisfies the landing frame's own hold-until targets, and un-parks the jumped line (R4). |
 | 4 | S3 "(with split)" pairing | ~~Option A designation~~ **WITHDRAWN 2026-07-08** — the owner clarified that the "(with split)" pairing **does not exist**: `session-rejoin-at` sits on the **pre-merge (source) frames** and announces "this line merges at the target on its next step"; it never pairs with `session-split` (the attributes are independent and may coexist — e.g. staged merges 3→2→1). | **Reverted + replaced**: designation code (`pendingRejoinAt` tagging in `applySplit`, arrival clearing) and the `split-rejoin-mismatch` rule removed. New validator error `rejoin-not-linked`: every rejoin-at target must be one of its frame's own links. Bare co-presence merge (unchanged) is the whole rejoin runtime. |
-| 5 | S6 pre-divergence history | **Yes — history is available whenever the room is one populated line** (lines are git branches; initially there is always exactly one). | **Implemented**: `historyAvailability` returns true for ≤1 populated line on the main flow (still disabled inside a sub, where jumps are meaningless); grouped-frames rule unchanged for 2+ lines. |
+| 5 | S6 pre-divergence history | **Yes — history is available whenever the room is one populated line** (lines are git branches; initially there is always exactly one). | **Superseded 2026-07-19**: the IMPLICIT bound-line `{selectedIdx}` rewind was retired for session-lines rooms — rewinds are the room-wide track-group checkpoint rewind (row 1) and, since the same day, the explicit line-targeted rewind (row 7); neither is availability-gated. `historyAvailability` (and its S6 single-line reading) was deleted; the SM dropdown is now a read-only trail display (`available:false` always). Vanilla scores keep the per-step jump — their single playhead is the room. |
+| 7 | Targeted per-line rewind (owner, 2026-07-19) | An admin may rewind ONE named line to an earlier entry of its own ACTIVE trail (undo, not teleport) — on the main flow, or within its current sub dive ("a sub is a session of its own"). Track-group rule: **passed ⇒ arrived** — a line whose trail already went through a group is never counted as "incoming" again, so a line rewound behind the group replays through it without waiting for the lines ahead (its own truncated trail makes it re-arrive for real). | **Implemented 2026-07-19**: `MSG_SELECT_HISTORY {lineId, selectedIdx, frame}` (admin-only; `frame` = race guard, refused if the trail entry moved) → `bin/www lineRewind` — resolves against the line's active frame list (sub-aware), cancels its timers, un-parks + banner-release, and deliberately does NOT restart the rendezvous registry nor touch `latestGroupArrival` (the ROOM did not rewind). The excusal is `hasPassed` in `orch.groupArrivalState`, wired to `mainTrailForLine` (on forward-only scores reachability already excluded the ahead lines; `hasPassed` makes the rule hold with loops). Map menu: "⏪ rewind L1 here" entries per past trail occurrence on main frames (main-flow lines) and sub frames (lines currently in that sub). Rewinding a line OUT of its sub is out of scope (room rewind force-exits subs). Known interaction (verified, accepted): the rewind itself leaves `latestGroupArrival` alone, but the line's NATURAL landings while replaying re-arm it (pre-existing #13 recording — every main-flow grouped landing is the room's newest of record), so a dormant line revived during the replay window fast-forwards to the replayer's group, not the front of the room. |
 | 6 | S2 hold-until deadlock guard revision | A missing `session-hold-until` target only keeps a barrier parked while at least one active, device-bearing, unparked line can still reach that target. Dormant, retired, empty, or parked lines are not counted; the barrier releases once no still-missing target remains reachable. | **Implemented 2026-07-16**: `tryReleaseBarriers` uses target-aware reachability over main `graph.frameLinks` and sub-score `graph.frameLinks`; `holdUntilReachabilityState` records the pure rule. |
 
-The un-answered spec question left in this file is **none**; what remains is build
-work: the reading-(i) **checkpoint-fallback offer** for the diverged case (natural
-home: the [score map](score-map.md)'s rewind menu, which already handles the
-available case). Other review items still parked for later: **L3** (should admin
-tabs count as line devices? — now more visible: every score-map tab is another
-admin connection populating a line), **L5/L6** (see
+The un-answered spec question left in this file is **none**. The reading-(i)
+**checkpoint-fallback offer** for the diverged case is implemented first in the
+[score map](score-map.md)'s rewind menu; the implementation notes live in
+[room-rewind-plan.md](room-rewind-plan.md). **L3 was resolved 2026-07-18**: an admin is a player with extra
+tools — admin session-page connections count as line population everywhere; the
+score-map page's connection is the exception (an observation tool that marks
+itself `mapView` and is excluded from all population counting via
+`performerLineConnections` — a line holding only map tabs goes dormant like an
+empty one). Still parked: **L5/L6** (see
 [session-lines-review.md](session-lines-review.md)). **S7** (split ∩ track-group
 precedence) was **resolved 2026-07-17**: the group close delegates a grouped
 split frame to the split path (choosers to their pick, stragglers balanced;
@@ -74,10 +78,12 @@ window closes first.
   lines' *current* positions are not re-seeded into the fresh generation — a barrier
   whose target is a frame someone is already standing on sees it covered only when
   that line next moves (its departure marks the frame done).
-- **Noted (interacts with parked L3):** admin tabs count as line devices, so an idle
-  admin tab bound to an otherwise-empty line makes it "populated" — which can flip
-  the room from the single-line always-available rule to the 2+-lines grouped-frames
-  rule.
+- **Noted (L3, decided 2026-07-18):** admin *session-page* tabs count as line
+  devices by design (an admin is a player with extra tools), so an idle admin tab
+  bound to an otherwise-empty line makes it "populated" — which can flip the room
+  from the single-line always-available rule to the 2+-lines grouped-frames rule.
+  Score-*map* tabs no longer do: they are observation tools excluded from all
+  population counting (`performerLineConnections`).
 
 ## Decisions (owner, 2026-07-16) — track-group ARRIVAL barrier
 
@@ -120,7 +126,10 @@ That "revert to track group BC" phrase is load-bearing and has two readings:
 sketch shows the score alternating grouped and ungrouped segments — under reading (ii)
 history would be dead for a large fraction of any performance. *(The `a.svg` "global
 history" row also settled S6 — history is AVAILABLE while the room is one populated
-line; implemented 2026-07-07 in `historyAvailability`.)*
+line; implemented 2026-07-07 in `historyAvailability`. Both the predicate and the
+implicit bound-line jump it gated were retired 2026-07-19; the same day rewinds were
+rebuilt as the room-wide checkpoint rewind plus an explicit line-TARGETED rewind
+(decisions table rows 1/5/7).)*
 
 ---
 

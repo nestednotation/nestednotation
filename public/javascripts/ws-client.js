@@ -224,6 +224,9 @@ function sendToServer(message, payload) {
       sid: window.sessionId,
       msg: message,
       did: window.deviceId,
+      // Set only by the standalone map page — its connection is an observation
+      // tool, never population. undefined elsewhere ⇒ key dropped by stringify.
+      mapView: window.wsMapView,
       ...payload,
     }),
   );

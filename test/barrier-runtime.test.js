@@ -15,6 +15,7 @@ const assert = require("node:assert");
 const { buildScore } = require("../bin/build-score.js");
 const { BMLine } = require("../lib/session-lines/line");
 const { createOrchestrator } = require("../lib/session-lines/orchestrator");
+const { performerLineConnections } = require("../lib/session-lines/routing");
 const { MESSAGES } = require("../constants");
 
 module.exports = {
@@ -179,5 +180,136 @@ module.exports = {
       deviceCount: (l) => (l.id === "L4" ? 0 : 1),
     });
     assert.strictEqual(state.waiting, false);
+  },
+
+  "group wait counts admin connections as population (L3 decided 2026-07-18)": async () => {
+    // Owner ruling: an admin is a PLAYER with extra session controls — an
+    // admin/SM/map connection populates its line exactly like a player
+    // connection. So a line occupied only by an admin tab IS incoming and the
+    // group waits for it (the admin's remedies: tap the line forward,
+    // force-release, or close the tab and let attrition dissolve the wait).
+    // The wait dissolves only when the line truly empties (goes dormant).
+    const session = await buildScore("Session Lines Demo", {
+      id: "__group_admin_test__",
+    });
+    const idx = (n) => session.listFilesInLowerCase.indexOf(n.toLowerCase());
+
+    const orch = createOrchestrator({
+      MESSAGES,
+      now: () => 0,
+      createLine: (s, id) => new BMLine(s, id),
+      send: () => {},
+    });
+    const groupFrames = orch.groupFramesLower(session.graph, "converge");
+
+    for (const l of session.lines) {
+      l.status = "retired";
+    }
+    // L1/L2 (players) arrived on the group; L3 (admin tab only) sits behind
+    // on START, from which the group is still reachable.
+    const l1 = new BMLine(session, "L1");
+    l1.setCurrIdxTo(idx("Left.svg"));
+    const l2 = new BMLine(session, "L2");
+    l2.setCurrIdxTo(idx("Right.svg"));
+    const l3 = new BMLine(session, "L3");
+    l3.setCurrIdxTo(idx("START.svg"));
+    session.lines.push(l1, l2, l3);
+
+    const connections = [
+      { sessionId: session.id, lineId: "L1", isAdmin: false },
+      { sessionId: session.id, lineId: "L2", isAdmin: false },
+      { sessionId: session.id, lineId: "L3", isAdmin: true }, // SM session tab
+    ];
+    // Mirrors bin/www groupWaitState: performers count — admins included,
+    // map-view tabs not (see the dedicated map-view test below).
+    const frameFor = (l) => session.listFiles[l.currentIndex];
+    const opts = {
+      frameNameForLine: frameFor,
+      deviceCount: (l) =>
+        performerLineConnections(connections, session.id, l.id).length,
+      inSub: (l) => l.subStack.length > 0,
+      isBlocked: (l) => !!l.isBarrierWaiting,
+      canReach: (l) =>
+        orch.canReachFrames(
+          session.graph.frameLinks,
+          session.listFiles,
+          frameFor(l),
+          groupFrames,
+        ),
+    };
+
+    let state = orch.groupArrivalState(session.lines, groupFrames, opts);
+    assert.strictEqual(
+      state.waiting,
+      true,
+      "an admin-occupied line is a populated line — the group waits for it",
+    );
+    assert.deepStrictEqual(state.incomingIds, ["L3"]);
+
+    // The admin closes their tab → attrition empties the line (dormant) →
+    // the wait dissolves.
+    connections.pop();
+    l3.status = "dormant";
+    state = orch.groupArrivalState(session.lines, groupFrames, opts);
+    assert.strictEqual(state.waiting, false);
+  },
+
+  "group wait ignores map-view tabs (observation tool, owner 2026-07-18)": async () => {
+    // The standalone /map page's connection can never tap or vote — it is a
+    // pure observer, NOT population (unlike an admin session tab, above). A
+    // line held open only by a map tab is treated as empty: it neither
+    // occupies a group frame nor is waited for, so the group releases.
+    const session = await buildScore("Session Lines Demo", {
+      id: "__group_map_test__",
+    });
+    const idx = (n) => session.listFilesInLowerCase.indexOf(n.toLowerCase());
+
+    const orch = createOrchestrator({
+      MESSAGES,
+      now: () => 0,
+      createLine: (s, id) => new BMLine(s, id),
+      send: () => {},
+    });
+    const groupFrames = orch.groupFramesLower(session.graph, "converge");
+
+    for (const l of session.lines) {
+      l.status = "retired";
+    }
+    // Same layout as the admin test: L1/L2 (players) arrived on the group;
+    // L3 sits behind on START — but its only occupant is a map tab.
+    const l1 = new BMLine(session, "L1");
+    l1.setCurrIdxTo(idx("Left.svg"));
+    const l2 = new BMLine(session, "L2");
+    l2.setCurrIdxTo(idx("Right.svg"));
+    const l3 = new BMLine(session, "L3");
+    l3.setCurrIdxTo(idx("START.svg"));
+    session.lines.push(l1, l2, l3);
+
+    const connections = [
+      { sessionId: session.id, lineId: "L1", isAdmin: false },
+      { sessionId: session.id, lineId: "L2", isAdmin: false },
+      { sessionId: session.id, lineId: "L3", isAdmin: true, isMapView: true },
+    ];
+    const frameFor = (l) => session.listFiles[l.currentIndex];
+    const state = orch.groupArrivalState(session.lines, groupFrames, {
+      frameNameForLine: frameFor,
+      deviceCount: (l) =>
+        performerLineConnections(connections, session.id, l.id).length,
+      inSub: (l) => l.subStack.length > 0,
+      isBlocked: (l) => !!l.isBarrierWaiting,
+      canReach: (l) =>
+        orch.canReachFrames(
+          session.graph.frameLinks,
+          session.listFiles,
+          frameFor(l),
+          groupFrames,
+        ),
+    });
+    assert.strictEqual(
+      state.waiting,
+      false,
+      "a map-tab-only line is an empty line — the group must not wait for it",
+    );
+    assert.deepStrictEqual(state.incomingIds, []);
   },
 };

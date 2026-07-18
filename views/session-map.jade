@@ -14,6 +14,9 @@ html
       window.wsPath = '#{wsPath}';
       window.currentIndex = 0;
       window.isAdminView = true;
+      // The map is an observation tool: its ws connection announces itself so
+      // the server never counts it as population (player counts, group waits).
+      window.wsMapView = true;
       // MSG_* constants arrive as one JSON blob (see routes/session.js) so a
       // stale server process can never render a SyntaxError into this script.
       try { Object.assign(window, JSON.parse('!{constantsJson}')); }

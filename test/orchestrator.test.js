@@ -24,6 +24,9 @@ const {
   groupOfFrame,
   groupFramesLower,
   linesOnGroupFrames,
+  revivalLandingFrame,
+  commonCheckpoints,
+  roomRewindPlan,
   resolveGroupStay,
   groupLinkWinner,
   canReachFrames,
@@ -340,6 +343,219 @@ module.exports = {
       got.map((l) => l.id),
       ["L1"],
     );
+  },
+
+  "commonCheckpoints returns all shared groups newest-first": () => {
+    const groups = {
+      BC: ["B.svg", "C.svg"],
+      EF: ["E.svg", "F.svg"],
+      GH: ["G.svg", "H.svg"],
+      IJK: ["I.svg", "J.svg", "K.svg"],
+      LMO: ["L.svg", "M.svg", "O.svg"],
+      RTU: ["R.svg", "T.svg", "U.svg"],
+      VWY: ["V.svg", "W.svg", "Y.svg"],
+    };
+    const checkpoints = commonCheckpoints({
+      groups,
+      lines: [
+        {
+          id: "L1",
+          trail: [
+            "B.svg",
+            "D.svg",
+            "F.svg",
+            "G.svg",
+            "I.svg",
+            "L.svg",
+            "P.svg",
+            "S.svg",
+            "U.svg",
+            "V.svg",
+          ],
+        },
+        {
+          id: "L2",
+          trail: [
+            "C.svg",
+            "E.svg",
+            "H.svg",
+            "M.svg",
+            "Q.svg",
+            "T.svg",
+            "W.svg",
+          ],
+        },
+      ],
+    });
+    assert.deepStrictEqual(
+      checkpoints.map((c) => c.group),
+      ["VWY", "RTU", "LMO", "GH", "EF", "BC"],
+    );
+    assert.deepStrictEqual(checkpoints[1].byLine, {
+      L1: "U.svg",
+      L2: "T.svg",
+    });
+  },
+
+  "commonCheckpoints uses latest occurrence when a trail loops": () => {
+    const checkpoints = commonCheckpoints({
+      groups: {
+        BC: ["B.svg", "C.svg"],
+        RTU: ["R.svg", "T.svg", "U.svg"],
+      },
+      lines: [
+        { id: "L1", trail: ["B.svg", "U.svg", "B.svg"] },
+        { id: "L2", trail: ["C.svg", "T.svg", "C.svg"] },
+      ],
+    });
+    assert.deepStrictEqual(
+      checkpoints.map((c) => c.group),
+      ["BC", "RTU"],
+    );
+    assert.deepStrictEqual(checkpoints[0].byLine, {
+      L1: "B.svg",
+      L2: "C.svg",
+    });
+  },
+
+  "roomRewindPlan fills non-checkpoint lines onto least-occupied group frames": () => {
+    const groups = {
+      RTU: ["R.svg", "T.svg", "U.svg"],
+    };
+    const plan = roomRewindPlan({
+      group: "rtu",
+      groups,
+      checkpointLines: [
+        { id: "L1", trail: ["A.svg", "U.svg"] },
+        { id: "L2", trail: ["A.svg", "T.svg"] },
+      ],
+      lines: [
+        { id: "L1", trail: ["A.svg", "U.svg"] },
+        { id: "L2", trail: ["A.svg", "T.svg"] },
+        { id: "L3", trail: ["A.svg"] },
+      ],
+    });
+    assert.strictEqual(plan.group, "RTU");
+    assert.deepStrictEqual(plan.lines, [
+      { lineId: "L1", frame: "U.svg", source: "history", historyIndex: 1 },
+      { lineId: "L2", frame: "T.svg", source: "history", historyIndex: 1 },
+      { lineId: "L3", frame: "R.svg", source: "fill", historyIndex: -1 },
+    ]);
+  },
+
+  // ── revival fast-forward (decision #13 revision, 2026-07-18) ────────────
+  "revivalLandingFrame: no recorded grouped landing → revive in place": () => {
+    const graph = { byFrame: {}, groups: {} };
+    const line = { currentIndex: 0, subStack: [] };
+    assert.strictEqual(
+      revivalLandingFrame({
+        graph,
+        listFiles: ["A.svg"],
+        latestGroupFrame: null,
+        line,
+        occupancy: () => 0,
+      }),
+      null,
+    );
+    // Recorded frame no longer grouped (score reloaded without the markup).
+    assert.strictEqual(
+      revivalLandingFrame({
+        graph,
+        listFiles: ["A.svg"],
+        latestGroupFrame: "Gone.svg",
+        line,
+        occupancy: () => 0,
+      }),
+      null,
+    );
+  },
+
+  "revivalLandingFrame: lands on the group's least-occupied frame": () => {
+    const graph = {
+      byFrame: { "G1.svg": { trackGroup: "band" } },
+      groups: { band: ["G1.svg", "G2.svg", "G3.svg"] },
+    };
+    const listFiles = ["A.svg", "G1.svg", "G2.svg", "G3.svg"];
+    const occupancy = (f) => ({ "G1.svg": 2, "G2.svg": 1, "G3.svg": 0 })[f];
+    const got = revivalLandingFrame({
+      graph,
+      listFiles,
+      latestGroupFrame: "G1.svg",
+      line: { currentIndex: 0, subStack: [] }, // frozen at A.svg (behind)
+      occupancy,
+    });
+    assert.strictEqual(got, "G3.svg");
+  },
+
+  "revivalLandingFrame: occupancy tie prefers the recorded frame": () => {
+    const graph = {
+      byFrame: { "G2.svg": { trackGroup: "band" } },
+      groups: { band: ["G1.svg", "G2.svg"] },
+    };
+    const got = revivalLandingFrame({
+      graph,
+      listFiles: ["A.svg", "G1.svg", "G2.svg"],
+      latestGroupFrame: "G2.svg",
+      line: { currentIndex: 0, subStack: [] },
+      occupancy: () => 0,
+    });
+    assert.strictEqual(got, "G2.svg");
+  },
+
+  "revivalLandingFrame: line frozen inside the latest group keeps its slot": () => {
+    const graph = {
+      byFrame: { "G1.svg": { trackGroup: "band" } },
+      groups: { band: ["G1.svg", "G2.svg"] },
+    };
+    const got = revivalLandingFrame({
+      graph,
+      listFiles: ["A.svg", "G1.svg", "G2.svg"],
+      latestGroupFrame: "G1.svg",
+      line: { currentIndex: 2, subStack: [] }, // frozen at G2.svg — a group slot
+      occupancy: () => 0,
+    });
+    assert.strictEqual(got, null);
+  },
+
+  "revivalLandingFrame: a line frozen mid-sub still fast-forwards": () => {
+    const graph = {
+      byFrame: { "G1.svg": { trackGroup: "band" } },
+      groups: { band: ["G1.svg"] },
+    };
+    const got = revivalLandingFrame({
+      graph,
+      listFiles: ["A.svg", "G1.svg"],
+      latestGroupFrame: "G1.svg",
+      line: { currentIndex: 0, subStack: [{ score: "Tetra" }] },
+      occupancy: () => 0,
+    });
+    assert.strictEqual(got, "G1.svg");
+  },
+
+  "revivalLandingFrame: group frames missing from the frame list → in place": () => {
+    const graph = {
+      byFrame: { "G1.svg": { trackGroup: "band" } },
+      groups: { band: ["G1.svg", "G2.svg"] },
+    };
+    const got = revivalLandingFrame({
+      graph,
+      listFiles: ["A.svg"], // reloaded score dropped the group frames
+      latestGroupFrame: "G1.svg",
+      line: { currentIndex: 0, subStack: [] },
+      occupancy: () => 0,
+    });
+    assert.strictEqual(got, null);
+  },
+
+  "beginReachedGeneration clears the revival fast-forward record": () => {
+    const session = {
+      reachedGeneration: 0,
+      reachedTargets: { "old.svg": "done" },
+      latestGroupArrival: { frame: "G1.svg", at: 123 },
+    };
+    beginReachedGeneration(session);
+    assert.strictEqual(session.latestGroupArrival, null);
+    assert.deepStrictEqual(session.reachedTargets, {});
   },
 
   // ── resolveGroupStay (global STAY rule) ─────────────────────────────────
@@ -741,6 +957,62 @@ module.exports = {
       deviceCount: () => 1,
       inSub: (l) => !!l.inSub,
       canReach: (l) => !!l.inSub,
+    });
+    assert.strictEqual(state.waiting, true);
+    assert.deepStrictEqual(state.incomingIds, ["L2"]);
+  },
+
+  "groupArrivalState: a line that already PASSED the group is never incoming (2026-07-19)": () => {
+    // Targeted-rewind rule: L1 was rewound behind the group and replays onto
+    // it; L2 is ahead but its trail already went through the group — even on a
+    // loopy score where L2 could technically reach it again (canReach true),
+    // it counts as arrived forever, so L1 proceeds alone.
+    const lines = [
+      { id: "L1", status: "active", trail: ["A.svg", "B.svg"] }, // occupant
+      { id: "L2", status: "active", trail: ["C.svg", "X.svg"] }, // ahead, passed C
+    ];
+    const frames = { L1: "B.svg", L2: "X.svg" };
+    const state = groupArrivalState(lines, ["B.svg", "C.svg"], {
+      frameNameForLine: (l) => frames[l.id],
+      deviceCount: () => 1,
+      canReach: () => true, // loop back exists
+      hasPassed: (l) =>
+        l.trail.some((f) => ["b.svg", "c.svg"].includes(f.toLowerCase())),
+    });
+    assert.strictEqual(state.waiting, false);
+    assert.deepStrictEqual(state.incomingIds, []);
+  },
+
+  "groupArrivalState: a rewound line (truncated trail) must re-arrive": () => {
+    // The excusal is revoked by trail truncation: L2's rewind dropped its
+    // group entry, so while it can still reach the group it IS incoming again
+    // and the occupant L1 waits for it.
+    const lines = [
+      { id: "L1", status: "active", trail: ["A.svg", "B.svg"] },
+      { id: "L2", status: "active", trail: ["A.svg"] }, // rewound behind
+    ];
+    const frames = { L1: "B.svg", L2: "A.svg" };
+    const state = groupArrivalState(lines, ["B.svg", "C.svg"], {
+      frameNameForLine: (l) => frames[l.id],
+      deviceCount: () => 1,
+      canReach: (l) => l.id === "L2",
+      hasPassed: (l) =>
+        l.trail.some((f) => ["b.svg", "c.svg"].includes(f.toLowerCase())),
+    });
+    assert.strictEqual(state.waiting, true);
+    assert.deepStrictEqual(state.incomingIds, ["L2"]);
+  },
+
+  "groupArrivalState: hasPassed omitted keeps the pre-2026-07-19 behavior": () => {
+    const lines = [
+      { id: "L1", status: "active" },
+      { id: "L2", status: "active" },
+    ];
+    const frames = { L1: "B.svg", L2: "X.svg" };
+    const state = groupArrivalState(lines, ["B.svg", "C.svg"], {
+      frameNameForLine: (l) => frames[l.id],
+      deviceCount: () => 1,
+      canReach: (l) => l.id === "L2",
     });
     assert.strictEqual(state.waiting, true);
     assert.deepStrictEqual(state.incomingIds, ["L2"]);

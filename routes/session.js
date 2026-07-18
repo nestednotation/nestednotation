@@ -112,6 +112,10 @@ router.get("/:sessionId/map", function (req, res) {
       MSG_NEED_DISPLAY: MESSAGES.MSG_NEED_DISPLAY,
       MSG_SHOW_NUMBER_CONNECTION: MESSAGES.MSG_SHOW_NUMBER_CONNECTION,
       MSG_SELECT_HISTORY: MESSAGES.MSG_SELECT_HISTORY,
+      // Vanilla-mode voting/holding overlay (session-lines mode gets these
+      // states in the `lines` payload instead).
+      MSG_BEGIN_VOTING: MESSAGES.MSG_BEGIN_VOTING,
+      MSG_BEGIN_HOLDING: MESSAGES.MSG_BEGIN_HOLDING,
     }),
   });
 });

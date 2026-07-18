@@ -10,6 +10,7 @@ const assert = require("node:assert");
 const {
   sessionConnections,
   lineConnections,
+  performerLineConnections,
   smallestLineId,
 } = require("../lib/session-lines/routing");
 
@@ -41,6 +42,18 @@ module.exports = {
     assert.strictEqual(lineConnections(c, "s1", "L1").length, 1);
     assert.strictEqual(lineConnections(c, "s2", "L0").length, 1);
     assert.strictEqual(lineConnections(c, "s1", "L9").length, 0);
+  },
+
+  "performerLineConnections drops map-view tabs, keeps admins": () => {
+    const c = [
+      { sessionId: "s1", lineId: "L0" },
+      { sessionId: "s1", lineId: "L0", isMapView: true }, // /map page tab
+      { sessionId: "s1", lineId: "L0", isAdmin: true }, // session-page admin
+    ];
+    assert.strictEqual(lineConnections(c, "s1", "L0").length, 3);
+    const performers = performerLineConnections(c, "s1", "L0");
+    assert.strictEqual(performers.length, 2);
+    assert.ok(performers.every((x) => !x.isMapView));
   },
 
   "smallestLineId returns the only line when single": () => {

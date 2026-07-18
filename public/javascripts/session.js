@@ -373,16 +373,19 @@ function updateSelectHistory(historyData, selectedIdx, available) {
   select.innerHTML = content;
   select.selectedIndex = selectedIdx;
 
-  // Session Lines (Chunk M): the SM history modal is disabled ("history
-  // impossible") while the room is diverged — the server sends available:false.
-  // `undefined` (vanilla scores / no session lines) leaves it enabled, exactly
-  // as today.
+  // Session Lines: the implicit bound-line rewind is retired (2026-07-19) —
+  // the server always sends available:false, so the dropdown is a read-only
+  // display of this line's trail; rewinding (the whole room by track-group
+  // checkpoint, or one targeted line) happens from the score map. `undefined`
+  // (vanilla scores / no session lines) leaves it enabled, exactly as today.
   const disabled = available === false;
   select.disabled = disabled;
   const wrap = document.getElementById("divhistory");
   if (wrap) {
     wrap.classList.toggle("history-unavailable", disabled);
-    wrap.title = disabled ? "history unavailable — lines have diverged" : "";
+    wrap.title = disabled
+      ? "read-only — rewind (room or a single line) from the score map"
+      : "";
   }
 }
 

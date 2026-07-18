@@ -945,6 +945,10 @@ body.ipad {
   padding: 0.15em 0.5em;
 }
 #session-map-menu button {
+  /* Block-level so entries always stack vertically like a dropdown, even if
+     the container's flex column is overridden by the inline show/hide style. */
+  display: block;
+  width: 100%;
   border: none;
   background: none;
   text-align: left;

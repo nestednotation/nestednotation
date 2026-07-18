@@ -15,6 +15,7 @@ const { MESSAGES } = require("../constants.js");
 // Session Lines: pure connection routing (line selection / late-join policy).
 const {
   lineConnections,
+  performerLineConnections,
   smallestLineId,
 } = require("../lib/session-lines/routing");
 // Session Lines: orchestration (split / barrier / rejoin / track-group). All of
@@ -275,7 +276,12 @@ function ensureLineAssignment(session, conn, deviceId) {
   }
 
   if (!line) {
-    lineId = smallestLineId(session.lines, wsServer.connections, session.id);
+    // Balance over performers only — map-view tabs don't occupy a line.
+    lineId = smallestLineId(
+      session.lines,
+      wsServer.connections.filter((c) => !c.isMapView),
+      session.id,
+    );
     line = lineId ? session.lines.find((l) => l.id === lineId) : null;
   }
   if (!line) {
@@ -288,15 +294,28 @@ function ensureLineAssignment(session, conn, deviceId) {
   if (deviceId) {
     session.deviceRegistry[deviceId] = lineId;
   }
+  // A map-view tab is an observer: binding it must not keep the line alive
+  // (attrition), revive a dormant line, or trigger adoption parking.
+  if (conn.isMapView) {
+    return line;
+  }
   // A device claimed the line again — cancel any pending attrition grace timer.
   cancelAttritionTimer(line);
   const hadDevices =
-    lineConnections(wsServer.connections, session.id, lineId).filter(
+    performerLineConnections(wsServer.connections, session.id, lineId).filter(
       (c) => c !== conn,
     ).length > 0;
-  // Joining a dormant line revives it (Phase 3 resumes its lifecycle).
+  // Joining a dormant line revives it (Phase 3 resumes its lifecycle) — and
+  // fast-forwards it to the latest track-group frame the room has reached
+  // (decision #13 revision, 2026-07-18): the frozen position is stale, so the
+  // joiner lands where the action is instead of resurrecting an abandoned
+  // path. Reviving in place remains the fallback (no grouped landing yet, or
+  // the line froze inside that same group).
   if (line.status === "dormant") {
     line.status = "active";
+    fastForwardRevivedLine(session, line).catch((e) =>
+      console.error("revival fast-forward error", e),
+    );
   }
   // First device on a line (a revival, or the adoption of an empty split
   // child): if its frame's track group is still waiting on arrivals, the line
@@ -308,6 +327,59 @@ function ensureLineAssignment(session, conn, deviceId) {
     );
   }
   return line;
+}
+
+// Decision #13 revision (2026-07-18): a dormant line being revived abandons its
+// frozen position and lands on the room's latest track group — on that group's
+// least-occupied frame, so revivals fill missing track slots rather than
+// doubling covered ones. All playhead mutation is synchronous (callers rely on
+// line.currentIndex being final when this returns its promise); only the
+// registry/persistence follow-ups await. No-op → frozen-position revival.
+async function fastForwardRevivedLine(session, line) {
+  if (!session.hasSessionLines || !session.graph) {
+    return;
+  }
+  const record = session.latestGroupArrival;
+  const target = orch.revivalLandingFrame({
+    graph: session.graph,
+    listFiles: session.listFiles,
+    latestGroupFrame: record && record.frame,
+    line,
+    occupancy: (frameName) =>
+      activeLines(session).filter((l) => {
+        if (l === line || l.subStack.length > 0) {
+          return false;
+        }
+        const fn = frameNameForLine(session, l);
+        return fn != null && fn.toLowerCase() === frameName.toLowerCase();
+      }).length,
+  });
+  if (!target) {
+    return;
+  }
+  const idx = session.listFilesInLowerCase.indexOf(target.toLowerCase());
+  if (idx < 0) {
+    return;
+  }
+
+  // Leave any frozen sub context (restores the saved main-flow history) — the
+  // landing is a main-flow frame.
+  while (line.subStack.length > 0) {
+    line.exitSub();
+  }
+  line.setCurrIdxTo(idx);
+  // The line teleported: it must not stay parked at — or keep pending
+  // hold-until obligations toward — its pre-dormancy position. (Group parking
+  // at the NEW frame is re-evaluated by the caller's maybeParkAtGroup.)
+  line.isGroupWaiting = false;
+  orch.unparkLine(session, line);
+
+  // Registry: normal departure/landing semantics — leaving the frozen frame
+  // completes it, which may release barriers parked elsewhere.
+  if (recordArrival(session, line)) {
+    await tryReleaseBarriers(session);
+  }
+  await session.saveSessionStateToFile();
 }
 
 // ── Session Lines: orchestration (Phase 3) ───────────────────────────────────
@@ -479,7 +551,7 @@ async function resolveSplit(session, line) {
     return; // not a real split (validator should have caught this)
   }
 
-  const members = lineConnections(
+  const members = performerLineConnections(
     wsServer.connections,
     session.id,
     line.id,
@@ -494,6 +566,15 @@ async function resolveSplit(session, line) {
     parentLine: line,
     childFrameIndices,
     members,
+  });
+
+  // Map-view observers are not split members — re-bind any still on the
+  // retired parent to wherever the registry sweep sent their device id.
+  wsServer.connections.forEach((c) => {
+    if (c.sessionId === session.id && c.isMapView && c.lineId === line.id) {
+      c.lineId =
+        (c.deviceId && session.deviceRegistry[c.deviceId]) || children[0].id;
+    }
   });
 
   // Reset votes on every (now reassigned) connection in this session.
@@ -573,6 +654,14 @@ async function afterLineArrivedInner(session, line) {
   // v1 sub-sessions are plain: no split / barrier / rejoin inside a sub.
   if (line.subStack.length > 0) {
     return false;
+  }
+
+  // Decision #13 revision (2026-07-18): remember the newest MAIN-FLOW grouped
+  // landing — dormant-line revivals fast-forward to this group instead of
+  // resuming their frozen position. Recorded before the barrier/rejoin
+  // branches below: parking or merging on the frame is still "reaching" it.
+  if (orch.groupOfFrame(graph, frameName)) {
+    session.latestGroupArrival = { frame: frameName, at: Date.now() };
   }
 
   // Hold-until barrier (optionally paired with rejoin-at on the same frame). The
@@ -762,13 +851,24 @@ function activeLines(session) {
   return session.lines.filter((l) => l.status === "active");
 }
 
+// L3 DECIDED by owner 2026-07-18: an admin is a PLAYER with extra session
+// controls — admin/SM connections count as line population exactly like
+// player connections (they can tap/vote, so their line can arrive). A line
+// occupied only by an idle admin therefore IS waited for, like any idle
+// player's line; the remedies are the admin's own tools (tap the line
+// forward, SM force-release, or close the tab so attrition dissolves the
+// wait). EXCEPTION (owner, same day): the standalone /map page's connection
+// has no way to tap or vote — it is a pure observation tool, never population
+// (performerLineConnections), so a line holding only map tabs empties out and
+// goes dormant like any abandoned line.
 function activeDrivingLines(session, exceptParkedIds = new Set()) {
   return activeLines(session).filter(
     (l) =>
       !exceptParkedIds.has(l.id) &&
       !l.isBarrierWaiting &&
       !l.isGroupWaiting &&
-      lineConnections(wsServer.connections, session.id, l.id).length > 0,
+      performerLineConnections(wsServer.connections, session.id, l.id).length >
+        0,
   );
 }
 
@@ -1071,7 +1171,7 @@ async function handleConnectionClose(session, conn) {
   if (!line || line.status !== "active") {
     return;
   }
-  const remaining = lineConnections(
+  const remaining = performerLineConnections(
     wsServer.connections,
     session.id,
     lineId,
@@ -1098,7 +1198,10 @@ async function finalizeAttrition(session, line) {
   if (session.isSessionDeleted || line.status !== "active") {
     return;
   }
-  if (lineConnections(wsServer.connections, session.id, line.id).length > 0) {
+  if (
+    performerLineConnections(wsServer.connections, session.id, line.id).length >
+    0
+  ) {
     return;
   }
 
@@ -1127,29 +1230,61 @@ async function finalizeAttrition(session, line) {
 // Everything here is gated on session.hasSessionLines. A vanilla score keeps
 // today's single-line SM behavior (one line, no track groups, no barriers).
 
-// SM history-modal availability (FigJam rule): with 2+ populated lines,
-// history/jump is only offered while the room is synchronized — every
-// device-bearing line on a track-grouped frame. A single populated line is an
-// undiverged room (S6, decided 2026-07-07): available anywhere on the main
-// flow (not inside a sub). A vanilla score is always available (today's
-// behavior).
-function historyAvailable(session) {
-  if (!session.hasSessionLines) {
-    return true;
-  }
-  return orch.historyAvailability(
-    activeLines(session),
-    (l) => groupOfCurrentFrame(session, l),
-    (l) => lineConnections(wsServer.connections, session.id, l.id).length,
-    (l) => l.subStack.length > 0,
-  );
+function nonRetiredLines(session) {
+  return (session.lines || []).filter((l) => l.status !== "retired");
 }
 
-// Push every admin their OWN line's history + the room-wide availability flag.
-// Availability depends on where ALL lines sit, so any line move must refresh
-// every admin — not just the moved line's admins.
+function mainHistoryStateForLine(line) {
+  let history = Array.isArray(line.history) ? line.history : [];
+  let historyIndex = line.historyIndex;
+  if (
+    line.subStack &&
+    line.subStack.length > 0 &&
+    Array.isArray(line.savedHistories) &&
+    line.savedHistories.length > 0
+  ) {
+    const saved = line.savedHistories[0] || {};
+    history = Array.isArray(saved.history) ? saved.history : [];
+    historyIndex = saved.historyIndex;
+  }
+  const max = history.length - 1;
+  const idx =
+    historyIndex == null
+      ? max
+      : Math.max(-1, Math.min(Number(historyIndex), max));
+  return { history, historyIndex: idx };
+}
+
+function mainTrailForLine(line) {
+  const { history, historyIndex } = mainHistoryStateForLine(line);
+  return history.slice(0, historyIndex + 1);
+}
+
+function rewindLineSnapshot(line) {
+  return {
+    id: line.id,
+    trail: mainTrailForLine(line),
+  };
+}
+
+function populatedRewindCheckpointLines(session, lines) {
+  return lines
+    .filter(
+      (l) =>
+        l.status === "active" &&
+        performerLineConnections(wsServer.connections, session.id, l.id)
+          .length > 0,
+    )
+    .map(rewindLineSnapshot);
+}
+
+// Push every admin their OWN line's history. Always available:false — the
+// implicit bound-line rewind is retired in session-lines rooms (2026-07-19),
+// so the SM dropdown is a read-only trail display; rewinds live in the score
+// map (room-wide {group} checkpoint rewind + explicit {lineId} line rewind).
+// Only called for session-lines scores (emitHistoryToAdmins branches; vanilla
+// sends no `available` field at all).
 function pushAdminHistory(session) {
-  const available = historyAvailable(session);
   wsServer.connections.forEach((conn) => {
     if (conn.sessionId === session.id && conn.isAdmin) {
       const line = lineForConn(session, conn);
@@ -1157,7 +1292,7 @@ function pushAdminHistory(session) {
         m: MESSAGES.MSG_SELECT_HISTORY,
         history: line.history,
         selectedIdx: line.historyIndex,
-        available,
+        available: false,
       });
     }
   });
@@ -1286,12 +1421,19 @@ function mainFlowFrameForLine(session, line) {
 // Evaluate a group's arrival-barrier state over the live session.
 function groupWaitState(session, group) {
   const groupFrames = orch.groupFramesLower(session.graph, group);
+  const groupSet = new Set(groupFrames);
   return orch.groupArrivalState(activeLines(session), groupFrames, {
     frameNameForLine: (l) => frameNameForLine(session, l),
     deviceCount: (l) =>
-      lineConnections(wsServer.connections, session.id, l.id).length,
+      performerLineConnections(wsServer.connections, session.id, l.id).length,
     inSub: (l) => l.subStack.length > 0,
     isBlocked: (l) => !!l.isBarrierWaiting,
+    // Passed ⇒ arrived (owner, 2026-07-19, with the targeted line rewind): a
+    // line whose main trail already went through this group is never counted
+    // as incoming again — so a line rewound behind the group replays through
+    // it without waiting for the lines ahead. Trail truncation on rewind is
+    // what revokes this for the rewound line itself.
+    hasPassed: (l) => mainTrailForLine(l).some((f) => groupSet.has(f.toLowerCase())),
     canReach: (l) =>
       orch.canReachFrames(
         session.graph.frameLinks,
@@ -1314,7 +1456,8 @@ async function maybeParkAtGroup(session, line, frameName) {
     return;
   }
   if (
-    lineConnections(wsServer.connections, session.id, line.id).length === 0
+    performerLineConnections(wsServer.connections, session.id, line.id)
+      .length === 0
   ) {
     return; // an empty line can't vote — never park it (nor is it waited for)
   }
@@ -1575,6 +1718,12 @@ async function startVotingForSessionWithDelay(
   if (session.hasSessionLines && !skipGroupSync) {
     await openCoGroupWindows(session, line);
   }
+
+  // Admin map: voting is a between-landings state change, so the per-line
+  // snapshot must be re-pushed here (vanilla map reads MSG_BEGIN_VOTING itself).
+  if (session.hasSessionLines) {
+    updateNumberOfConnectionForSession(session);
+  }
 }
 
 // The track group of a line's current (main-flow) frame, or null.
@@ -1747,6 +1896,9 @@ async function resolveGroupVoting(session, line) {
   }
 
   await session.saveSessionStateToFile();
+  // Admin map: a global STAY resolves without any landing, so no snapshot went
+  // out — push one so the voting glyphs clear (extra one on advance is fine).
+  updateNumberOfConnectionForSession(session);
 }
 
 async function stopVotingForSession(session, line) {
@@ -1846,6 +1998,10 @@ async function startHoldingForSessionWithDelay(session, line, delay) {
         await tryReleaseBarriers(session);
       }
       await session.saveSessionStateToFile();
+      // Admin map: hold ended between landings — refresh the holding flags.
+      if (session.hasSessionLines) {
+        updateNumberOfConnectionForSession(session);
+      }
     },
     line.currentHoldingDuration * 1000,
     session,
@@ -1862,6 +2018,156 @@ async function startHoldingForSessionWithDelay(session, line, delay) {
     endTime: line.currentEndHoldTimeStamp,
     duration: line.currentHoldingDuration,
   });
+}
+
+async function clearLinePhaseForRoomRewind(session, line) {
+  if (line.isHolding || line.holdingTimer != null) {
+    if (line.holdingTimer != null) {
+      await cancelHoldingTimer(session, line, 1);
+    } else {
+      sendToLine(session, line.id, 0, {
+        m: MESSAGES.MSG_BEGIN_HOLDING,
+        endTime: 0,
+        duration: 1,
+      });
+    }
+    line.isHolding = false;
+    line.holdingTimer = null;
+  }
+
+  if (line.standbyTimer) {
+    clearTimeout(line.standbyTimer);
+  }
+  line.standbyTimer = null;
+  line.isStandby = false;
+
+  if (line.isVoting || line.votingTimer != null) {
+    if (line.votingTimer != null) {
+      await cancelVotingTimer(session, line);
+    } else {
+      sendToLine(session, line.id, 0, {
+        m: MESSAGES.MSG_BEGIN_VOTING,
+        endTime: 0,
+        duration: 0,
+      });
+    }
+    line.isVoting = false;
+    line.votingTimer = null;
+    line.currWinningId = undefined;
+    line.previousWinningCount = 0;
+    line._lastVoteCounts = null;
+  }
+
+  wsServer.connections.forEach((conn) => {
+    if (conn.sessionId === session.id && conn.lineId === line.id) {
+      conn.currentVoteTo = -1;
+    }
+  });
+}
+
+async function roomRewind(session, group) {
+  if (!session.hasSessionLines || !session.graph || !session.graph.groups) {
+    return;
+  }
+  const lines = nonRetiredLines(session);
+  const plan = orch.roomRewindPlan({
+    group,
+    groups: session.graph.groups,
+    checkpointLines: populatedRewindCheckpointLines(session, lines),
+    lines: lines.map(rewindLineSnapshot),
+  });
+  if (!plan) {
+    return;
+  }
+
+  const byLineId = new Map(plan.lines.map((p) => [p.lineId, p]));
+  const landings = [];
+  for (const line of lines) {
+    const entry = byLineId.get(line.id);
+    if (!entry) {
+      return;
+    }
+    const idx = session.listFilesInLowerCase.indexOf(
+      String(entry.frame).toLowerCase(),
+    );
+    if (idx < 0) {
+      return;
+    }
+    landings.push({
+      line,
+      index: idx,
+      frame: session.listFiles[idx],
+      source: entry.source,
+      historyIndex: entry.historyIndex,
+    });
+  }
+
+  const landingHoldTargets = [];
+  const seenHoldTarget = new Set();
+  for (const landing of landings) {
+    for (const target of (session.graph.holdUntilTargets || {})[
+      landing.frame
+    ] || []) {
+      const key = String(target).toLowerCase();
+      if (!seenHoldTarget.has(key)) {
+        seenHoldTarget.add(key);
+        landingHoldTargets.push(target);
+      }
+    }
+  }
+
+  const parkedAt = new Map();
+  for (const { line } of landings) {
+    parkedAt.set(
+      line.id,
+      line.isBarrierWaiting || line.isGroupWaiting
+        ? frameNameForLine(session, line)
+        : null,
+    );
+    await clearLinePhaseForRoomRewind(session, line);
+    while (line.subStack.length > 0) {
+      line.exitSub();
+    }
+  }
+
+  orch.beginReachedGeneration(session, landingHoldTargets);
+
+  for (const { line, index, frame, source, historyIndex } of landings) {
+    const wasGroupParked = line.isGroupWaiting === true;
+    line.isGroupWaiting = false;
+    if (orch.unparkLine(session, line) || wasGroupParked) {
+      sendToLine(session, line.id, 0, {
+        m: MESSAGES.MSG_BARRIER_RELEASED,
+        frame: parkedAt.get(line.id),
+      });
+    }
+    line._lastReachedRef = null;
+    if (source === "history") {
+      line.historyIndex = historyIndex;
+    }
+    line.setCurrIdxTo(index);
+    recordArrival(session, line);
+
+    if (orch.groupOfFrame(session.graph, frame)) {
+      session.latestGroupArrival = { frame, at: Date.now() };
+    }
+  }
+
+  await tryReleaseBarriers(session);
+  await tryReleaseGroupWaits(session);
+  await session.saveSessionStateToFile();
+  notifyAdminsBarriers(session);
+  pushAdminHistory(session);
+  updateNumberOfConnectionForSession(session);
+
+  if (!session.isPause) {
+    for (const { line, index } of landings) {
+      sendToLine(session, line.id, Date.now() + session.preloadDuration, {
+        m: MESSAGES.MSG_SHOW,
+        showIdx: index,
+      });
+    }
+  }
 }
 
 async function jumpScoreForSession(session, line, value) {
@@ -1924,6 +2230,12 @@ async function jumpScoreForSession(session, line, value) {
     // this line sat on must NOT leak into the new generation as "done".
     line._lastReachedRef = null;
     recordArrival(session, line);
+    // The rewind landing is the room's newest position of record — a grouped
+    // landing re-arms the revival fast-forward target beginReachedGeneration
+    // just cleared (decision #13 revision, 2026-07-18).
+    if (orch.groupOfFrame(session.graph, landedFrame)) {
+      session.latestGroupArrival = { frame: landedFrame, at: Date.now() };
+    }
     // Pre-satisfied landing targets may release barriers parked elsewhere.
     await tryReleaseBarriers(session);
     // The jumped line's position changed — group waits it was incoming to may
@@ -1935,6 +2247,117 @@ async function jumpScoreForSession(session, line, value) {
   await session.saveSessionStateToFile();
 
   emitHistoryToAdmins(session, line);
+  // A rewind bypasses afterLineArrived, so the admin map's per-line positions
+  // must be re-pushed here or its "here" marker stays on the pre-jump frame.
+  updateNumberOfConnectionForSession(session);
+
+  if (!session.isPause) {
+    sendToLine(session, line.id, Date.now() + session.preloadDuration, {
+      m: MESSAGES.MSG_SHOW,
+      showIdx: index,
+    });
+  }
+}
+
+// Targeted per-line rewind (owner, 2026-07-19): move ONE named line to an
+// earlier entry of its own ACTIVE trail — main flow, or within its current sub
+// dive (a sub is its own session: `history` holds the sub trail while diving,
+// so the same undo semantics apply, resolved against the sub's frame list).
+// Undo, not teleport: the target must be in the trail.
+//
+// Deliberately UNLIKE the room-wide checkpoint rewind / the old SM jump:
+//   - the rendezvous registry is NOT restarted (no beginReachedGeneration) —
+//     the ROOM did not rewind, one line did, so everything the room reached
+//     stays valid and the replaying line passes already-satisfied barriers;
+//   - `session.latestGroupArrival` is NOT touched — the room's newest position
+//     of record is still wherever the lines ahead are, and revived dormant
+//     lines must keep fast-forwarding there, not to the rewound line;
+//   - group waits: the "passed ⇒ arrived" excusal in groupWaitState is the
+//     matching rule — the rewound line replays through groups the room passed
+//     without wedging (its own truncated trail makes it re-arrive for real).
+async function lineRewind(session, lineId, value, expectedFrame) {
+  const line = (session.lines || []).find((l) => l && l.id === lineId);
+  if (!line || line.status === "retired") {
+    return;
+  }
+  const filename = line.history[value];
+  if (filename == null) {
+    return;
+  }
+  // Race guard: the SM menu was built from a trail snapshot — if the line
+  // moved (or exited its sub, swapping `history` back to the main trail)
+  // since, the index no longer names the clicked frame; refuse rather than
+  // land somewhere unintended.
+  if (
+    expectedFrame &&
+    filename.toLowerCase() !== String(expectedFrame).toLowerCase()
+  ) {
+    return;
+  }
+  // Resolve within the line's ACTIVE frame list (sub-aware — the counterpart
+  // of BMLine.activeFrameList, which setCurrIdxTo pushes from).
+  const top = line.subStack[line.subStack.length - 1];
+  const sub = top && session.subFrames && session.subFrames[top.score];
+  if (top && !sub) {
+    return; // score reloaded without this sub — nothing safe to resolve
+  }
+  const frameList = sub ? sub.frameList : session.listFiles;
+  const index = frameList.findIndex(
+    (f) => f.toLowerCase() === filename.toLowerCase(),
+  );
+  if (index < 0) {
+    return;
+  }
+
+  if (line.isHolding && line.holdingTimer != null) {
+    await cancelHoldingTimer(session, line, 1);
+  }
+  if (line.standbyTimer) {
+    clearTimeout(line.standbyTimer);
+    line.standbyTimer = null;
+  }
+  if (line.isVoting && line.votingTimer != null) {
+    await cancelVotingTimer(session, line);
+  }
+
+  // Captured BEFORE the playhead moves (in-sub lines are never parked, so
+  // this only fires for main-flow rewinds).
+  const parkedAtFrame =
+    line.isBarrierWaiting || line.isGroupWaiting
+      ? frameNameForLine(session, line)
+      : null;
+
+  line.historyIndex = value;
+  line.setCurrIdxTo(index);
+
+  // R4, same as the room rewind: a rewound line must not stay parked at the
+  // barrier/group it left — and its devices' "waiting" banner only clears on
+  // MSG_BARRIER_RELEASED.
+  const wasGroupParked = line.isGroupWaiting === true;
+  line.isGroupWaiting = false;
+  if (orch.unparkLine(session, line) || wasGroupParked) {
+    sendToLine(session, line.id, 0, {
+      m: MESSAGES.MSG_BARRIER_RELEASED,
+      frame: parkedAtFrame,
+    });
+    notifyAdminsBarriers(session);
+  }
+
+  // Seed the CURRENT generation with the landing (registry kept — see above).
+  // The pre-rewind frame must not be upgraded to "done" as if the line had
+  // departed it normally: mid-hold refs stay "arrived".
+  line._lastReachedRef = null;
+  recordArrival(session, line);
+  await tryReleaseBarriers(session);
+  // The rewound line may have stepped off a group frame / become incoming
+  // again; waits it participated in must re-evaluate. (Deliberately NOT
+  // parking at the LANDING frame's group: an SM rewind is authoritative,
+  // mirroring jumpScoreForSession and roomRewind.)
+  await tryReleaseGroupWaits(session);
+
+  await session.saveSessionStateToFile();
+  emitHistoryToAdmins(session, line);
+  updateNumberOfConnectionForSession(session);
 
   if (!session.isPause) {
     sendToLine(session, line.id, Date.now() + session.preloadDuration, {
@@ -1967,12 +2390,15 @@ async function cancelVotingTimer(session, line) {
 }
 
 function updateNumberOfConnectionForSession(session) {
-  const countPlayer = wsServer.connections.filter(
-    (conn) => conn.sessionId == session.id && !conn.isAdmin && conn.isStaff,
-  ).length;
-  const countRider = wsServer.connections.filter(
-    (conn) => conn.sessionId == session.id && !conn.isAdmin && !conn.isStaff,
-  ).length;
+  // An admin is a player with extra tools (L3 decision), so admins count as
+  // players here and in the per-line split below — isStaff is true for both
+  // the player and admin passwords. Map-view tabs are observation tools:
+  // never players/riders (they still appear in the raw `devices` count).
+  const performers = wsServer.connections.filter(
+    (conn) => conn.sessionId == session.id && !conn.isMapView,
+  );
+  const countPlayer = performers.filter((conn) => conn.isStaff).length;
+  const countRider = performers.filter((conn) => !conn.isStaff).length;
 
   const payload = {
     m: MESSAGES.MSG_SHOW_NUMBER_CONNECTION,
@@ -1988,12 +2414,14 @@ function updateNumberOfConnectionForSession(session) {
       .filter((l) => l.status !== "retired")
       .map((l) => {
         const conns = lineConnections(wsServer.connections, session.id, l.id);
+        const linePerformers = conns.filter((c) => !c.isMapView);
+        const mainHistory = mainHistoryStateForLine(l);
         return {
           id: l.id,
           status: l.status,
           devices: conns.length,
-          players: conns.filter((c) => !c.isAdmin && c.isStaff).length,
-          riders: conns.filter((c) => !c.isAdmin && !c.isStaff).length,
+          players: linePerformers.filter((c) => c.isStaff).length,
+          riders: linePerformers.filter((c) => !c.isStaff).length,
           frame: frameNameForLine(session, l),
           inSub: l.subStack.length > 0,
           sub:
@@ -2001,6 +2429,18 @@ function updateNumberOfConnectionForSession(session) {
               ? l.subStack[l.subStack.length - 1].score
               : null,
           waiting: !!(l.isBarrierWaiting || l.isGroupWaiting),
+          voting: !!l.isVoting,
+          holding: !!l.isHolding,
+          // Per-line history (ACTIVE context — a line inside a sub carries its
+          // sub trail), so the map can paint every line's visited trail and
+          // checkpoint, not only the receiving admin's bound line.
+          checkpoint: l.history[l.historyIndex] || null,
+          trail: l.history.slice(0, l.historyIndex + 1),
+          // Main-flow trail for room-wide checkpoint detection while a line is
+          // inside a sub; the active sub trail above still drives the overlay.
+          mainCheckpoint:
+            mainHistory.history[mainHistory.historyIndex] || null,
+          mainTrail: mainHistory.history.slice(0, mainHistory.historyIndex + 1),
         };
       });
   }
@@ -2041,6 +2481,9 @@ async function messageHandle(conn, message) {
     const { clientTime, did } = messageData;
     conn.sessionId = sessionId;
     conn.isAdmin = isAdmin;
+    // The standalone /map page marks its connection (window.wsMapView): an
+    // observation tool, excluded from all population counting.
+    conn.isMapView = !!messageData.mapView;
     conn.isStaff =
       password === session.playerPassword || password === session.adminPassword;
     // Session Lines: bind this connection to its device id + line (restores the
@@ -2182,11 +2625,13 @@ async function messageHandle(conn, message) {
         history: line.history,
         selectedIdx: line.historyIndex,
       };
-      // Session Lines: carry the room-wide availability so a (re)connecting
-      // admin's history modal reflects divergence immediately. Omitted for
-      // vanilla scores → message byte-identical to today.
+      // Session Lines: always available:false — the implicit bound-line
+      // rewind is retired (2026-07-19), the dropdown is a read-only trail
+      // display; rewinding (room-wide by checkpoint, or a targeted line)
+      // happens from the score map. Omitted for vanilla scores → message
+      // byte-identical to today.
       if (session.hasSessionLines) {
-        historyPayload.available = historyAvailable(session);
+        historyPayload.available = false;
       }
       sendToClient(conn, 0, historyPayload);
       // Restore the admin's barrier force-release panel on reconnect.
@@ -2245,6 +2690,10 @@ async function messageHandle(conn, message) {
       m: MESSAGES.MSG_CHECK_HOLD,
       isHold,
     });
+    // Admin map: every line's holding flag just flipped without a landing.
+    if (session.hasSessionLines) {
+      updateNumberOfConnectionForSession(session);
+    }
     return;
   }
 
@@ -2281,19 +2730,32 @@ async function messageHandle(conn, message) {
   }
 
   if (msg === MESSAGES.MSG_SELECT_HISTORY) {
+    if (messageData.group && session.hasSessionLines) {
+      await roomRewind(session, messageData.group);
+      return;
+    }
+    // Targeted per-line rewind (owner, 2026-07-19): an EXPLICIT, admin-only
+    // jump of one NAMED line within its own active trail (main flow or its
+    // current sub dive). `frame` is the race guard — it must still be the
+    // trail entry at selectedIdx.
+    if (messageData.lineId != null && session.hasSessionLines) {
+      await lineRewind(
+        session,
+        messageData.lineId,
+        messageData.selectedIdx,
+        messageData.frame,
+      );
+      return;
+    }
+    // The IMPLICIT bound-line {selectedIdx} jump stays retired for
+    // session-lines rooms (decided 2026-07-19): rewinds are the room-wide
+    // {group} checkpoint rewind or the explicit {lineId} rewind above — the
+    // clients no longer offer the implicit form, but don't trust them.
+    // Vanilla scores keep {selectedIdx}: their single playhead IS the room.
+    if (session.hasSessionLines) {
+      return;
+    }
     const line = lineForConn(session, conn);
-    // History names resolve against the MAIN frame list — a line inside a sub
-    // holds sub frame names, so a jump there is meaningless (the client also
-    // disables the modal via available:false, but don't trust it).
-    if (session.hasSessionLines && line.subStack.length > 0) {
-      return;
-    }
-    // Enforce the advertised availability server-side (FigJam rule): a
-    // diverged room (2+ populated lines off track-group frames) refuses
-    // per-line jumps until the reading-(i) checkpoint rewind exists.
-    if (session.hasSessionLines && !historyAvailable(session)) {
-      return;
-    }
     const { selectedIdx } = messageData;
     await jumpScoreForSession(session, line, selectedIdx);
     return;

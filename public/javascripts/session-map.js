@@ -17,19 +17,38 @@
 
   let cy = null;
   let pendingLines = null;
+  let graphData = null;
+
+  // Latest session-lines snapshot (MSG_SHOW_NUMBER_CONNECTION lines[]). Besides
+  // the live badges it now carries every line's history trail + checkpoint, so
+  // the history overlay is painted from here in session-lines mode.
+  let lastLines = null;
 
   // History of the line this admin connection is assigned to, as pushed via
-  // MSG_SELECT_HISTORY. Doubles as the rewind control: right-click / tap-hold a
-  // visited node → "rewind here" sends the same {selectedIdx} the session-page
-  // dropdown does (the server re-checks availability + in-sub regardless).
-  let historyState = { history: [], selectedIdx: -1, available: undefined };
+  // MSG_SELECT_HISTORY. VANILLA MODE ONLY: it drives the per-step rewind menu
+  // (right-click / tap-hold a visited node → "rewind here" {selectedIdx} —
+  // legitimate there, the single playhead IS the room) and paints the overlay
+  // before the first lines push. In session-lines mode the implicit bound-line
+  // rewind is retired (2026-07-19): the menu offers the room-wide track-group
+  // checkpoint rewind plus EXPLICIT line-targeted rewinds ({lineId}), both
+  // built from the lines[] payload — which also drives the overlay.
+  let historyState = { history: [], selectedIdx: -1 };
 
   // Vanilla mode: a score without session-* markup is presented as a
   // single-line session. There is no per-line payload — the one playhead is
-  // tracked from the broadcast MSG_SHOW and the room-wide player/rider counts.
+  // tracked from the broadcast MSG_SHOW and the room-wide player/rider counts;
+  // voting/holding come from the room's own MSG_BEGIN_VOTING/HOLDING (their
+  // natural end is client-timed via endTime — the server sends no "ended" msg).
   let vanillaMode = false;
   let mainFrames = [];
-  const vanillaState = { idx: -1, players: 0, riders: 0 };
+  const vanillaState = {
+    idx: -1,
+    players: 0,
+    riders: 0,
+    voting: false,
+    holding: false,
+  };
+  let vanillaPhaseTimer = null;
 
   function loadScript(src) {
     return new Promise((resolve, reject) => {
@@ -48,6 +67,18 @@
 
   function frameLabel(name) {
     return String(name).replace(/\.svg$/i, "");
+  }
+
+  function lc(value) {
+    return String(value || "").toLowerCase();
+  }
+
+  function escapeHtml(value) {
+    return String(value == null ? "" : value)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
   }
 
   // Track groups: pastel fills chosen to stay clear of the state colors
@@ -282,6 +313,13 @@
         "border-color": "#f57f17",
       },
     },
+    // Frame lifecycle on the occupied node: voting window open / holding
+    // period running. Declared before waiting/dormant so those still win.
+    {
+      selector: "node.here-voting",
+      style: { "border-style": "dashed", "border-color": "#6a1b9a" },
+    },
+    { selector: "node.here-holding", style: { "border-color": "#00838f" } },
     { selector: "node.here-waiting", style: { "border-color": "#c0392b" } },
     { selector: "node.here-dormant", style: { "background-color": "#cfcfcf" } },
     {
@@ -410,9 +448,10 @@
       pendingLines = lines;
       return;
     }
+    lastLines = lines;
     cy.batch(() => {
       cy.nodes()
-        .removeClass("here here-waiting here-dormant")
+        .removeClass("here here-voting here-holding here-waiting here-dormant")
         .data("badge", "");
       for (const l of lines) {
         if (!l.frame) continue;
@@ -420,15 +459,19 @@
         const node = cy.getElementById(nodeId);
         if (node.empty()) continue;
         const badge = node.data("badge");
-        // players (and riders when present) — admins are in `devices` only.
+        // players (and riders when present) — admins count as players.
         const who = `${l.players}p${l.riders ? `+${l.riders}r` : ""}`;
-        const mark = `${l.id}·${who}${l.waiting ? "⏳" : ""}`;
+        const phase = `${l.voting ? "✅" : ""}${l.holding ? "✋" : ""}`;
+        const mark = `${l.id}·${who}${l.waiting ? "⏳" : ""}${phase}`;
         node.data("badge", badge ? `${badge} ${mark}` : mark);
         node.addClass("here");
+        if (l.voting) node.addClass("here-voting");
+        if (l.holding) node.addClass("here-holding");
         if (l.waiting) node.addClass("here-waiting");
         if (l.status === "dormant") node.addClass("here-dormant");
       }
     });
+    renderHistory(); // trails/checkpoints ride on the same payload
     const active = lines.filter((l) => l.status === "active").length;
     const players = lines.reduce((n, l) => n + (l.players || 0), 0);
     const riders = lines.reduce((n, l) => n + (l.riders || 0), 0);
@@ -444,17 +487,20 @@
     }
     cy.batch(() => {
       cy.nodes()
-        .removeClass("here here-waiting here-dormant")
+        .removeClass("here here-voting here-holding here-waiting here-dormant")
         .data("badge", "");
       const name = vanillaState.idx >= 0 && mainFrames[vanillaState.idx];
       if (!name) return; // -1 = paused placeholder
       const node = cy.getElementById(`main:${name}`);
       if (node.empty()) return;
+      const phase = `${vanillaState.voting ? "✅" : ""}${vanillaState.holding ? "✋" : ""}`;
       node.data(
         "badge",
-        `${vanillaState.players}p${vanillaState.riders ? `+${vanillaState.riders}r` : ""}`,
+        `${vanillaState.players}p${vanillaState.riders ? `+${vanillaState.riders}r` : ""}${phase}`,
       );
       node.addClass("here");
+      if (vanillaState.voting) node.addClass("here-voting");
+      if (vanillaState.holding) node.addClass("here-holding");
     });
     setStatus(
       `single line · ${vanillaState.players} players` +
@@ -464,17 +510,103 @@
 
   // ── History overlay + rewind context menu ──────────────────────────────────
 
+  function latestGroupTrailOccurrence(trail, groupFrames) {
+    const set = new Set((groupFrames || []).map(lc));
+    if (set.size === 0 || !Array.isArray(trail)) return null;
+    for (let i = trail.length - 1; i >= 0; i--) {
+      const frame = trail[i];
+      if (set.has(lc(frame))) return { index: i, frame };
+    }
+    return null;
+  }
+
+  function commonCheckpointsForMap() {
+    const groups = (graphData && graphData.main && graphData.main.groups) || {};
+    const checkpointLines = (lastLines || [])
+      .filter((l) => (l.players || 0) + (l.riders || 0) > 0)
+      .map((l) => ({
+        id: l.id,
+        trail: Array.isArray(l.mainTrail) ? l.mainTrail : l.trail || [],
+      }));
+    if (checkpointLines.length === 0) return [];
+
+    const checkpoints = [];
+    for (const [group, frames] of Object.entries(groups)) {
+      if (!Array.isArray(frames) || frames.length === 0) continue;
+      const byLine = {};
+      const indices = [];
+      let ok = true;
+      for (const line of checkpointLines) {
+        const hit = latestGroupTrailOccurrence(line.trail, frames);
+        if (!hit) {
+          ok = false;
+          break;
+        }
+        byLine[line.id] = hit.frame;
+        indices.push(hit.index);
+      }
+      if (ok) {
+        checkpoints.push({
+          group,
+          byLine,
+          order: Math.min(...indices),
+          sum: indices.reduce((n, i) => n + i, 0),
+          max: Math.max(...indices),
+        });
+      }
+    }
+    checkpoints.sort(
+      (a, b) =>
+        b.order - a.order ||
+        b.sum - a.sum ||
+        b.max - a.max ||
+        a.group.localeCompare(b.group),
+    );
+    return checkpoints.map(({ group, byLine }) => ({ group, byLine }));
+  }
+
+  function groupForMainFrame(frameName) {
+    const main = graphData && graphData.main;
+    const byFrame = (main && main.byFrame) || {};
+    const node = byFrame[frameName];
+    if (node && node.trackGroup) return node.trackGroup;
+    for (const [group, frames] of Object.entries((main && main.groups) || {})) {
+      if ((frames || []).some((name) => lc(name) === lc(frameName))) {
+        return group;
+      }
+    }
+    return null;
+  }
+
   function renderHistory() {
     if (!cy) {
       return;
     }
-    const { history, selectedIdx } = historyState;
     cy.batch(() => {
       cy.nodes().removeClass("visited visited-ahead checkpoint");
+      // Session Lines: paint EVERY line's trail + checkpoint from the lines[]
+      // payload (visited = union over lines; a checkpoint halo per line, which
+      // normally sits on its `here` node since a landing always moves the
+      // history pointer to the end). A line inside a sub carries its sub trail
+      // — same prefix rule as its position, resolving into the sub box.
+      if (!vanillaMode && Array.isArray(lastLines)) {
+        for (const l of lastLines) {
+          const prefix = l.sub ? `sub:${l.sub}:` : "main:";
+          for (const name of l.trail || []) {
+            const node = cy.getElementById(`${prefix}${name}`);
+            if (!node.empty()) node.addClass("visited");
+          }
+          if (l.checkpoint) {
+            const node = cy.getElementById(`${prefix}${l.checkpoint}`);
+            if (!node.empty()) node.addClass("checkpoint");
+          }
+        }
+        return;
+      }
+      // Vanilla mode (or before the first lines push): the bound line's
+      // history as pushed via MSG_SELECT_HISTORY.
+      const { history, selectedIdx } = historyState;
       history.forEach((name, i) => {
-        // History names are main-flow frames; while the line is inside a sub
-        // they are sub frame names that simply don't resolve here (rewind is
-        // refused in-sub anyway).
         const node = cy.getElementById(`main:${name}`);
         if (node.empty()) return;
         node.addClass(i <= selectedIdx ? "visited" : "visited-ahead");
@@ -506,59 +638,165 @@
     if (menu) menu.style.display = "none";
   }
 
+  // Vanilla mode only — a session-lines room rewinds room-wide by checkpoint.
   function requestRewind(idx, label) {
     hideMenu();
-    const ok = confirm(
-      `Rewind the session to "${label}" (step ${idx + 1})? ` +
-        `This moves the room, not just one device.`,
-    );
+    const ok = confirm(`Rewind the session to "${label}" (step ${idx + 1})?`);
     if (!ok) return;
     sendToServer(MSG_SELECT_HISTORY, { selectedIdx: idx });
     // The server answers with fresh MSG_SELECT_HISTORY + positions pushes,
     // which redraw the overlay — nothing to do locally.
   }
 
+  function requestRoomRewind(group) {
+    hideMenu();
+    const ok = confirm(
+      `Rewind the room to checkpoint ⟨${group}⟩? ` +
+        `Every line moves to its own frame in that group.`,
+    );
+    if (!ok) return;
+    sendToServer(MSG_SELECT_HISTORY, { group });
+  }
+
+  // Session-lines: targeted rewind of one named line within its own trail
+  // (2026-07-19). `frame` is the server's race guard — refused if the line
+  // moved (or left its sub) since this menu was built.
+  function requestLineRewind(lineId, idx, frame, label) {
+    hideMenu();
+    const ok = confirm(
+      `Rewind line ${lineId} to "${label}" (step ${idx + 1})? ` +
+        `Only this line moves; the rest of the room is unaffected.`,
+    );
+    if (!ok) return;
+    sendToServer(MSG_SELECT_HISTORY, { lineId, selectedIdx: idx, frame });
+  }
+
+  // Targeted rewind entries for `frameName`, matched (case-insensitively)
+  // against each given line's ACTIVE trail: one "⏪ rewind <line> here" per
+  // PAST occurrence — the trail-end occurrence is the line's current position,
+  // nothing to rewind. The exact trail entry rides along as `data-frame`, the
+  // server's race guard (refused if the line moved since this menu was built).
+  function lineRewindButtonsHtml(lines, frameName) {
+    let html = "";
+    for (const l of lines || []) {
+      const trail = Array.isArray(l.trail) ? l.trail : [];
+      const hits = [];
+      trail.forEach((name, i) => {
+        if (lc(name) === lc(frameName)) hits.push(i);
+      });
+      for (const i of hits) {
+        if (i === trail.length - 1) continue; // current position
+        const suffix = hits.length > 1 ? ` (visit ${hits.indexOf(i) + 1})` : "";
+        html += `<button type="button" data-line-id="${escapeHtml(
+          l.id,
+        )}" data-idx="${i}" data-frame="${escapeHtml(
+          trail[i],
+        )}">⏪ rewind ${escapeHtml(l.id)} here${suffix}</button>`;
+      }
+    }
+    return html;
+  }
+
   function showNodeMenu(node, clientX, clientY) {
     const menu = ensureMenu();
     const label = node.data("label");
-    const isMain = node.id().startsWith("main:");
-    const frameName = isMain ? node.id().slice("main:".length) : null;
-    const { history, selectedIdx, available } = historyState;
+    const id = node.id();
+    const isMain = id.startsWith("main:");
+    const frameName = isMain ? id.slice("main:".length) : null;
+    const subMatch = isMain ? null : /^sub:([^:]+):(.*)$/.exec(id);
 
-    const occurrences = [];
-    if (frameName) {
+    let html = `<div class="menu-title">${escapeHtml(label)}</div>`;
+    if (!vanillaMode) {
+      // Session-lines rooms (2026-07-19): rewinds are the room-wide
+      // track-group checkpoint rewind plus EXPLICIT per-line rewinds within a
+      // line's own trail — main flow, or its current sub dive (a sub is its
+      // own session). The implicit bound-line rewind stays retired.
+      if (isMain) {
+        const group = groupForMainFrame(frameName);
+        const roomCheckpoint =
+          group &&
+          commonCheckpointsForMap().find(
+            (checkpoint) => lc(checkpoint.group) === lc(group),
+          );
+        if (roomCheckpoint) {
+          html += `<button type="button" data-room-group="${escapeHtml(
+            roomCheckpoint.group,
+          )}">⏪⏪ rewind ROOM to ⟨${escapeHtml(roomCheckpoint.group)}⟩</button>`;
+        }
+        // Main-flow lines only: an in-sub line's main trail can't rewind
+        // without pulling it out of its sub (out of scope — the room rewind
+        // force-exits subs when that's needed).
+        const lineButtons = lineRewindButtonsHtml(
+          (lastLines || []).filter((l) => !l.sub),
+          frameName,
+        );
+        html += lineButtons;
+        if (!roomCheckpoint && !lineButtons) {
+          html += `<div class="menu-note">${
+            group
+              ? "not a room checkpoint yet — some line hasn't passed this group"
+              : "no line trail through here — no rewind"
+          }</div>`;
+        }
+      } else if (subMatch) {
+        // Sub frame: rewindable for lines CURRENTLY inside this sub whose
+        // dive trail passed here (each dive's trail is dropped on exit, so
+        // only the current dive is rewindable).
+        const lineButtons = lineRewindButtonsHtml(
+          (lastLines || []).filter((l) => l.sub && lc(l.sub) === lc(subMatch[1])),
+          subMatch[2],
+        );
+        html +=
+          lineButtons ||
+          `<div class="menu-note">no line mid-dive here — no rewind</div>`;
+      }
+    } else if (!isMain) {
+      html += `<div class="menu-note">sub-score frame — no rewind</div>`;
+    } else {
+      // Vanilla: one shared playhead, so a per-step rewind IS a room rewind.
+      const { history, selectedIdx } = historyState;
+      const occurrences = [];
       history.forEach((name, i) => {
         if (name === frameName) occurrences.push(i);
       });
-    }
-
-    let html = `<div class="menu-title">${label}</div>`;
-    if (!isMain) {
-      html += `<div class="menu-note">sub-score frame — no rewind</div>`;
-    } else if (occurrences.length === 0) {
-      html += `<div class="menu-note">not visited — no rewind</div>`;
-    } else {
+      if (occurrences.length === 0) {
+        html += `<div class="menu-note">not visited — no rewind</div>`;
+      }
       for (const i of occurrences) {
         const current = i === selectedIdx;
-        const disabled = current || available === false;
         const suffix =
           occurrences.length > 1 ? ` (visit ${occurrences.indexOf(i) + 1})` : "";
         html += `<button type="button" data-idx="${i}" ${
-          disabled ? "disabled" : ""
-        }>${current ? "current checkpoint" : `⏪ rewind here${suffix}`}</button>`;
-      }
-      if (available === false) {
-        html += `<div class="menu-note">history unavailable — lines diverged</div>`;
+          current ? "disabled" : ""
+        }>${current ? "current position" : `⏪ rewind here${suffix}`}</button>`;
       }
     }
     menu.innerHTML = html;
-    for (const btn of menu.querySelectorAll("button[data-idx]")) {
+    for (const btn of menu.querySelectorAll("button[data-room-group]")) {
+      btn.addEventListener("click", () => requestRoomRewind(btn.dataset.roomGroup));
+    }
+    for (const btn of menu.querySelectorAll("button[data-line-id]")) {
+      btn.addEventListener("click", () =>
+        requestLineRewind(
+          btn.dataset.lineId,
+          parseInt(btn.dataset.idx, 10),
+          btn.dataset.frame,
+          label,
+        ),
+      );
+    }
+    // Vanilla per-step entries only (line-targeted buttons carry data-idx too).
+    for (const btn of menu.querySelectorAll(
+      "button[data-idx]:not([data-line-id])",
+    )) {
       btn.addEventListener("click", () =>
         requestRewind(parseInt(btn.dataset.idx, 10), label),
       );
     }
 
-    menu.style.display = "block";
+    // "flex", not "block": the stylesheet's column layout must survive this
+    // inline override, or the entries render side by side on one line.
+    menu.style.display = "flex";
     // Clamp inside the viewport (menu must be visible to measure).
     const rect = menu.getBoundingClientRect();
     menu.style.left = `${Math.min(clientX, window.innerWidth - rect.width - 4)}px`;
@@ -612,8 +850,30 @@
       window.currentIndex = data.showIdx;
       if (vanillaMode) {
         vanillaState.idx = data.showIdx;
+        vanillaState.voting = false; // an advance means the window resolved
         renderVanilla();
       }
+      return;
+    }
+    // Vanilla only: the room's voting/holding phases, timed out client-side at
+    // endTime (server time) since no "ended" message exists. In session-lines
+    // mode these are per-line messages for the map's own bound line — ignored;
+    // the `lines` payload carries every line's flags instead.
+    if (msg === MSG_BEGIN_VOTING || msg === MSG_BEGIN_HOLDING) {
+      if (!vanillaMode) return;
+      const remaining = data.endTime - getServerTime();
+      const active = remaining > 0;
+      vanillaState.voting = msg === MSG_BEGIN_VOTING && active;
+      vanillaState.holding = msg === MSG_BEGIN_HOLDING && active;
+      clearTimeout(vanillaPhaseTimer);
+      if (active) {
+        vanillaPhaseTimer = setTimeout(() => {
+          vanillaState.voting = false;
+          vanillaState.holding = false;
+          renderVanilla();
+        }, remaining);
+      }
+      renderVanilla();
       return;
     }
     if (msg === MSG_SHOW_NUMBER_CONNECTION) {
@@ -627,10 +887,11 @@
       return;
     }
     if (msg === MSG_SELECT_HISTORY) {
+      // `data.available` is ignored here: the map's session-lines menu no
+      // longer offers per-line rewind, and vanilla pushes carry no flag.
       historyState = {
         history: data.history || [],
         selectedIdx: data.selectedIdx ?? -1,
-        available: data.available,
       };
       renderHistory();
       return;
@@ -666,6 +927,7 @@
         return;
       }
       const data = await res.json();
+      graphData = data;
       vanillaMode = !data.main.hasSessionLines;
       mainFrames = data.main.frames || [];
       for (const src of CDN_SCRIPTS) {
