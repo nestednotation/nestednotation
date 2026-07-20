@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg width="100%" height="100%" viewBox="0 0 1701 2480" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+  <rect x="0" y="0" width="1701" height="2480" style="fill:#20242c"/>
+  <text x="850" y="300" font-size="110" text-anchor="middle" fill="#fff" font-family="sans-serif">Sub-score Cube1</text>
+  <text x="120" y="520" font-size="46" fill="#e8e8f4" font-family="monospace" xml:space="preserve">Looping sub-session (Fold can loop to Spin).</text>
+  <text x="120" y="596" font-size="46" fill="#e8e8f4" font-family="monospace" xml:space="preserve">START > Spin > Fold (> Spin ...) > End</text>
+  <text x="120" y="672" font-size="46" fill="#e8e8f4" font-family="monospace" xml:space="preserve">End carries session-sub-end=Cube1 and</text>
+  <text x="120" y="748" font-size="46" fill="#e8e8f4" font-family="monospace" xml:space="preserve">pops the line back to main-flow landing G.</text>
+</svg>

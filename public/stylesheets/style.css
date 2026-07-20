@@ -56,7 +56,6 @@ a {
   font-size: 1em;
 }
 
-
 @font-face {
   font-family: "Comfortaa";
   src: url("Comfortaa-Bold.ttf");
@@ -72,7 +71,6 @@ a {
   src: url("MetallophileSp8-LightItalic.ttf");
 }
 
-
 @font-face {
   font-family: "MetallophileSp8-Medium";
   src: url("MetallophileSp8-Medium.ttf");
@@ -82,7 +80,6 @@ a {
   font-family: "MetallophileSp8-MediumIt";
   src: url("MetallophileSp8-MediumItalic.ttf");
 }
-
 
 @font-face {
   font-family: "Impact";
@@ -284,6 +281,12 @@ body.ipad {
 #MainContent {
   flex: 1;
   min-height: 0;
+}
+
+/* Session Lines: sub-score frames live inside #MainContent; shown state is
+   display:contents (set from JS) so they lay out as if direct children. */
+#SubSessionContent {
+  display: none;
 }
 
 .guide-mode .grayscale-on-guide,
@@ -518,7 +521,9 @@ body.ipad {
    suppress the members' individual animation so the opacity pulse isn't
    doubled up. When the group is only partially playing (a "partial assemble")
    the box stays still and the playing member notes animate on their own. */
-.play-mode [groupsound="true"][data-playing="true"] [sound][data-playing="true"] {
+.play-mode
+  [groupsound="true"][data-playing="true"]
+  [sound][data-playing="true"] {
   animation: none;
 }
 
@@ -561,7 +566,8 @@ body.ipad {
   width: 0;
 }
 
-#loading-sound-indicator {
+#loading-sound-indicator,
+#barrier-waiting-indicator {
   font-size: 18px;
   color: #9a9a9a;
   background: rgba(255, 255, 255, 0.9);
@@ -701,8 +707,8 @@ body.ipad {
   font-size: 4vmin;
   background: #fff;
   cursor: pointer;
-  font-family: "Roboto", "SF Pro Text", "Helvetica Neue", "Helvetica", "Arial",
-    sans-serif;
+  font-family:
+    "Roboto", "SF Pro Text", "Helvetica Neue", "Helvetica", "Arial", sans-serif;
   position: fixed;
   top: 0;
   left: 0;
@@ -713,7 +719,9 @@ body.ipad {
 .vote-indicator.current-vote {
   background: #ff7700;
   color: #fff;
-  box-shadow: 0 0 0 0 #ffa400, 0 0 0 0 #ffa400;
+  box-shadow:
+    0 0 0 0 #ffa400,
+    0 0 0 0 #ffa400;
 }
 
 .vote-indicator.winning {
@@ -790,7 +798,9 @@ body.ipad {
 .stay-btn.current-vote .stay-indicator {
   background: #ff7700;
   color: #fff;
-  box-shadow: 0 0 0 0 #ffa400, 0 0 0 0 #ffa400;
+  box-shadow:
+    0 0 0 0 #ffa400,
+    0 0 0 0 #ffa400;
 }
 
 .play-mode .stay-btn {
@@ -801,11 +811,15 @@ body.ipad {
 @keyframes guide-mode-winning-pulse {
   0%,
   100% {
-    box-shadow: 0 0 0 0 rgba(255, 164, 0, 0), 0 0 0 0 rgba(255, 164, 0, 0);
+    box-shadow:
+      0 0 0 0 rgba(255, 164, 0, 0),
+      0 0 0 0 rgba(255, 164, 0, 0);
   }
 
   50% {
-    box-shadow: 0 0 0 2vmin #ffa400, 0 0 4vmin 4vmin #ffa400;
+    box-shadow:
+      0 0 0 2vmin #ffa400,
+      0 0 4vmin 4vmin #ffa400;
   }
 }
 
@@ -830,10 +844,152 @@ body.ipad {
 @keyframes stay-winning-pulse {
   0%,
   100% {
-    box-shadow: 0 0 0 0 rgba(255, 164, 0, 0), 0 0 0 0 #ffa400;
+    box-shadow:
+      0 0 0 0 rgba(255, 164, 0, 0),
+      0 0 0 0 #ffa400;
   }
 
   50% {
-    box-shadow: 0 0 0 0.8vh #ffa400, 0 0 1.6vh 1.6vh #ffa400;
+    box-shadow:
+      0 0 0 0.8vh #ffa400,
+      0 0 1.6vh 1.6vh #ffa400;
   }
+}
+
+/* Session Lines (Chunk M) — admin SM controls across lines. All of this UI is
+   created dynamically by session.js (never in session.jade), so it only ever
+   appears for an admin on a session-lines score; vanilla built HTML is
+   unaffected. */
+.line-distribution,
+.admin-barrier-panel {
+  flex-wrap: wrap;
+  gap: 0.4em;
+  font-size: 0.8em;
+  align-items: center;
+}
+.line-distribution .line-info,
+.admin-barrier-panel .barrier-info {
+  padding: 0.1em 0.5em;
+  border: 1px solid #ccc;
+  border-radius: 0.4em;
+  white-space: nowrap;
+}
+.line-distribution .line-stalled {
+  border-color: #ffa400;
+  background: #fff6e6;
+  font-weight: bold;
+}
+.admin-barrier-panel {
+  border-top: 1px solid #ffa400;
+}
+.divhistory.history-unavailable,
+#divhistory.history-unavailable {
+  opacity: 0.45;
+}
+
+/* Session Lines — standalone live score-map page (views/session-map.jade +
+   session-map.js, experimental). Admin tool; linked from the line panel. */
+.session-map-page {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  margin: 0;
+  overflow: hidden;
+}
+#session-map-header {
+  display: flex;
+  align-items: center;
+  gap: 1em;
+  padding: 0.3em 0.8em;
+  font-size: 0.85em;
+  border-bottom: 1px solid #ddd;
+}
+#session-map-status {
+  color: #777;
+}
+#session-map-relayout,
+#session-map-zoom button {
+  border: 1px solid #ccc;
+  background: #f4f4f4;
+  border-radius: 0.3em;
+  padding: 0.1em 0.6em;
+  cursor: pointer;
+}
+/* Floating zoom control pinned over the canvas. Below the context menu
+   (z-index 1001) so an open menu still covers it. */
+#session-map-zoom {
+  position: fixed;
+  right: 1em;
+  bottom: 1em;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  gap: 0.3em;
+  padding: 0.25em 0.4em;
+  font-size: 0.85em;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid #ccc;
+  border-radius: 0.4em;
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.15);
+}
+#session-map-zoom-value {
+  min-width: 3.2em;
+  text-align: center;
+  color: #555;
+  font-variant-numeric: tabular-nums;
+}
+#session-map-back {
+  margin-left: auto;
+}
+#session-map-canvas {
+  flex: 1;
+  min-height: 0;
+}
+#session-map-menu {
+  position: fixed;
+  z-index: 1001;
+  min-width: 160px;
+  background: #fff;
+  border: 1px solid #999;
+  border-radius: 0.3em;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.25);
+  padding: 0.25em;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2em;
+  font-size: 0.85em;
+}
+#session-map-menu .menu-title {
+  font-weight: bold;
+  padding: 0.15em 0.5em;
+  border-bottom: 1px solid #eee;
+}
+#session-map-menu .menu-note {
+  color: #888;
+  padding: 0.15em 0.5em;
+}
+#session-map-menu button {
+  /* Block-level so entries always stack vertically like a dropdown, even if
+     the container's flex column is overridden by the inline show/hide style. */
+  display: block;
+  width: 100%;
+  border: none;
+  background: none;
+  text-align: left;
+  padding: 0.25em 0.5em;
+  border-radius: 0.25em;
+  cursor: pointer;
+}
+#session-map-menu button:hover:not(:disabled) {
+  background: #eef4fb;
+}
+#session-map-menu button:disabled {
+  color: #aaa;
+  cursor: default;
+}
+.line-distribution .score-map-link {
+  padding: 0.1em 0.5em;
+  border: 1px solid #ccc;
+  border-radius: 0.4em;
+  white-space: nowrap;
 }

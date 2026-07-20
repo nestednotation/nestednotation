@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg width="100%" height="100%" viewBox="0 0 1701 2480" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+  <rect x="0" y="0" width="1701" height="2480" style="fill:#3a7d89"/>
+  <text x="850" y="400" font-size="150" text-anchor="middle" fill="#fff" font-family="sans-serif">Tetra1 / Drift</text>
+  <text x="850" y="880" font-size="46" text-anchor="middle" fill="#ffffff99" font-family="sans-serif">Middle frame 2 of 2 — next stop exits the sub.</text>
+  <a xlink:href="End.svg">
+    <rect x="150" y="2160" width="1401" height="280" rx="36" style="fill:#e8e8f4;stroke:#223;stroke-width:6"/>
+    <text x="850" y="2280" font-size="64" text-anchor="middle" fill="#112" font-family="sans-serif">Exit sub</text>
+    <text x="850" y="2375" font-size="40" text-anchor="middle" fill="#556" font-family="sans-serif">End.svg</text>
+  </a>
+  <g sound="Low-G" style="cursor:pointer">
+    <circle cx="850" cy="1300" r="110" style="fill:#ffffff22;stroke:#fff;stroke-width:6"/>
+    <text x="850" y="1322" font-size="56" text-anchor="middle" fill="#fff" font-family="sans-serif">Low-G</text>
+  </g>
+</svg>

@@ -3,6 +3,12 @@ const fs = require("fs");
 
 const jade = require("jade");
 
+// Session Lines: pure graph builder (no behavior change for vanilla scores).
+const { parseFrameAttrs } = require("./lib/session-lines/parse");
+const { buildGraph } = require("./lib/session-lines/graph");
+// Session Lines: per-playhead line model + persistence helpers.
+const { BMLine, migrateState } = require("./lib/session-lines/line");
+
 const IGNORE_STATE_KEYS = ["svgContent", "htmlContent"];
 const HREF_REGX = /(?<=href=")(.*?)(?=")/;
 const LINK_REGEX = /((xlink:href)|(href))="(.*?)"/;
@@ -29,8 +35,12 @@ const regexWithPattern = (str, pattern, groupId) => {
   return match[groupId];
 };
 
-const buildAboutSvgAsync = async (contentDir, svgIdSuffix) => {
-  const dir = `${DATA_DIR}/${contentDir}`;
+const buildAboutSvgAsync = async (
+  contentDir,
+  svgIdSuffix,
+  dataDir = DATA_DIR,
+) => {
+  const dir = `${dataDir}/${contentDir}`;
   if (!fs.existsSync(dir)) {
     console.log(`${dir} not found`);
     return null;
@@ -172,30 +182,43 @@ class BMAdminTable {
 }
 
 class BMSession {
-  history = [];
-  historyIndex = 0;
+  // Offline tools may point a session at test fixtures outside public/data.
+  // Runtime sessions keep the production data directory default.
+  scoreDataDir = DATA_DIR;
+
+  // Session Lines: the playhead(s). A session always has >= 1 line; until a
+  // split occurs it has exactly one (`lines[0]`). The per-line fields that used
+  // to live flat on BMSession are now owned entirely by BMLine — the runtime
+  // (bin/www) reads/writes them through the line object (`line.currentIndex`
+  // etc.), and BMSession's own playhead helpers below delegate to `lines[0]`.
+  lines = [new BMLine(this)];
+  nextLineId = 1;
+  // Structural split history used by the score map's "undo split" operation.
+  // Events are append-only (active → undone) so ids remain race-safe across
+  // restarts and repeated visits to the same split frame.
+  splitEvents = [];
+  nextSplitEventId = 1;
+  deviceRegistry = {};
+  // Rendezvous barriers (#6): session-global registry of frame refs reached by
+  // any line — { "<lower ref>": "arrived" | "done" }. Sub frames use the
+  // qualified "score/frame" form. Only written on session-lines scores.
+  reachedTargets = {};
+  // SM-jump rewind generation (S2 option (b), decided 2026-07-07): bumped on
+  // every session-lines history jump, when the registry above is restarted so
+  // replayed barriers gate like first passes.
+  reachedGeneration = 0;
+  // Decision #13 revision (2026-07-18): the newest main-flow track-group
+  // landing ({ frame, at }) — dormant-line revivals fast-forward to this
+  // group instead of resuming their frozen position. Cleared on rewind
+  // (beginReachedGeneration) and when a reloaded score drops its markup.
+  latestGroupArrival = null;
 
   selectedScoreIndex = -1;
   selectedCooldownTimeIndex = -1;
   selectedHoldTimeIndex = -1;
 
-  currentEndTimeStamp = 0;
-  currentVotingDuration = 0;
-
-  currentEndHoldTimeStamp = 0;
-  currentHoldingDuration = 0;
-
-  currentIndex = 0;
-
-  isHolding = false;
   isPause = false;
-  isVoting = false;
-  isStandby = false;
   isSessionDeleted = false;
-
-  holdingTimer = null;
-  standbyTimer = null;
-  votingTimer = null;
 
   synTimeInterval = 0.5;
   standbyDuration = 3;
@@ -212,7 +235,7 @@ class BMSession {
   }
 
   checkScoreHasSounds(score) {
-    const dir = `${DATA_DIR}/${score}`;
+    const dir = `${this.scoreDataDir}/${score}`;
 
     if (!fs.existsSync(dir)) {
       return;
@@ -225,6 +248,19 @@ class BMSession {
   async patchState(stateData, saveToFile = false) {
     for (const [key, val] of Object.entries(stateData)) {
       if (IGNORE_STATE_KEYS.includes(key)) {
+        continue;
+      }
+
+      // `version` is re-emitted by toJSON; nothing reads it off the instance.
+      if (key === "version") {
+        continue;
+      }
+
+      // Rehydrate persisted lines into BMLine instances (with this session as
+      // their back-ref). Partial patches from bin/www/routes never carry
+      // `lines`, so they fall through to the plain assignment below.
+      if (key === "lines" && Array.isArray(val)) {
+        this.lines = val.map((lineObj) => BMLine.fromJSON(this, lineObj));
         continue;
       }
 
@@ -291,49 +327,22 @@ class BMSession {
     this.setCurrIdxToStart();
   }
 
+  // Session Lines: playhead operations delegate to the (single, until split)
+  // first line. The shim keeps `session.currentIndex`/`history`/… in sync.
   setCurrIdxToStart() {
-    //random pick first index (files begin with Pre or Start)
-    const listPreFile = this.listFiles.filter((o) => o.startsWith("PRE"));
-    const listStartFile = this.listFiles.filter((o) => o.startsWith("START"));
-    const startedFile = this.randomItem(
-      listStartFile.length > 0 ? listStartFile : listPreFile,
-    );
-
-    this.setCurrIdxTo(this.listFiles.indexOf(startedFile));
+    this.lines[0].setCurrIdxToStart();
   }
 
   resetSessionHistory() {
-    this.history = [];
-
-    this.setCurrIdxToStart();
+    this.lines[0].resetHistory();
   }
 
   setCurrIdxTo(index) {
-    this.currentIndex = parseInt(index);
-    this.isVoting = false;
-    this.isStandby = false;
-
-    if (this.history.length > 0) {
-      const countRemove = Math.max(
-        0,
-        this.history.length - (this.historyIndex + 1),
-      );
-      const indexRemove = Math.min(
-        this.history.length - 1,
-        this.historyIndex + 1,
-      );
-
-      if (countRemove > 0) {
-        this.history.splice(indexRemove - 1, countRemove + 1);
-      }
-    }
-
-    this.history.push(this.listFiles[index]);
-    this.historyIndex = this.history.length - 1;
+    this.lines[0].setCurrIdxTo(index);
   }
 
   async getSoundList(folder) {
-    const dir = `${DATA_DIR}/${folder}/Sounds`;
+    const dir = `${this.scoreDataDir}/${folder}/Sounds`;
     if (!fs.existsSync(dir)) {
       return [];
     }
@@ -343,9 +352,9 @@ class BMSession {
   }
 
   async buildSVGContent() {
-    const dir = this.hasSounds
-      ? `${DATA_DIR}/${this.folder}/Frames`
-      : `${DATA_DIR}/${this.folder}`;
+    const scoreDir = `${this.scoreDataDir}/${this.folder}`;
+    const framesDir = `${scoreDir}/Frames`;
+    const dir = fs.existsSync(framesDir) ? framesDir : scoreDir;
     if (!fs.existsSync(dir)) {
       return;
     }
@@ -362,6 +371,10 @@ class BMSession {
 
     this.listMultiChooseImages = [];
 
+    // Session Lines: collect each frame's session-* attributes (parsed from the
+    // raw content, before the <a> href rewrite below strips href values).
+    const sessionFrameAttrs = [];
+
     const svgFilePath = `${SERVER_STATE_DIR}/${this.id}.content.svg`;
     if (fs.existsSync(svgFilePath)) {
       await fs.promises.rm(svgFilePath);
@@ -370,6 +383,10 @@ class BMSession {
     for (const filename of this.listFiles) {
       const filePath = `${dir}/${filename}`;
       const content = await fs.promises.readFile(filePath, "utf8");
+      sessionFrameAttrs.push({
+        name: filename,
+        attrs: parseFrameAttrs(content),
+      });
       let svg = regexWithPattern(content, /<svg.*?<\/svg>/is, 0);
       const svgIndex = this.listFilesInLowerCase.indexOf(
         filename.toLowerCase(),
@@ -413,9 +430,42 @@ class BMSession {
       );
     }
 
+    // Session Lines: the relationship graph is built for EVERY score (the
+    // admin score map treats a vanilla score as a single-line session), but
+    // orchestration is flagged ONLY when the score actually uses session-*
+    // markup. All runtime orchestration gates on hasSessionLines, never on
+    // graph presence, and `graph` is not persisted (toJSON allowlist) — so
+    // vanilla behavior and persisted state are unchanged.
+    const sessionGraph = buildGraph(sessionFrameAttrs);
+    this.graph = sessionGraph;
+    if (sessionGraph.hasSessionLines) {
+      // Session Lines: per-frame ordered link target indices (resolved against
+      // the main frame list). The runtime maps a device's tap on a split frame
+      // to a child slot via these. Gated — never built for vanilla scores.
+      sessionGraph.frameLinks = {};
+      for (const { name, attrs } of sessionFrameAttrs) {
+        sessionGraph.frameLinks[name] = (attrs.hrefs || []).map((href) =>
+          this.listFilesInLowerCase.indexOf(href.toLowerCase()),
+        );
+      }
+      this.hasSessionLines = true;
+    } else {
+      // A reloaded score may have DROPPED its session-* markup — clear the
+      // stale flag (and the reached registry) so the runtime doesn't keep
+      // orchestrating on it; the fresh graph above replaces any stale one.
+      this.hasSessionLines = false;
+      this.reachedTargets = {};
+      this.latestGroupArrival = null;
+    }
+
+    // Session Lines: build sub-score frames on demand cache (gated; the file is
+    // removed for vanilla scores so build output stays byte-identical).
+    await this.buildSubFramesContent(sessionGraph);
+
     const aboutSvg = await buildAboutSvgAsync(
       `${this.folder}/Documentation`,
       "-about-score",
+      this.scoreDataDir,
     );
 
     if (aboutSvg) {
@@ -453,6 +503,14 @@ class BMSession {
       msgChangeVolume: MESSAGES.MSG_CHANGE_VOLUME,
       msgGlobalRefresh: MESSAGES.MSG_GLOBAL_REFRESH,
 
+      // Session Lines orchestration protocol (inert for vanilla scores).
+      msgLineAssigned: MESSAGES.MSG_LINE_ASSIGNED,
+      msgBeginSplit: MESSAGES.MSG_BEGIN_SPLIT,
+      msgBarrierWaiting: MESSAGES.MSG_BARRIER_WAITING,
+      msgBarrierReleased: MESSAGES.MSG_BARRIER_RELEASED,
+      msgSubEnter: MESSAGES.MSG_SUB_ENTER,
+      msgSubExit: MESSAGES.MSG_SUB_EXIT,
+
       defaultAutoplay: JSON.stringify(this.defaultAutoplay),
       enableAutoplayByDefault: JSON.stringify(
         this.enableAutoplayByDefault ?? false,
@@ -481,6 +539,130 @@ class BMSession {
     );
   }
 
+  // Session Lines: build the on-demand sub-score frame cache. For each sub-score
+  // referenced by a session-sub-start, rewrite its frames the same way the main
+  // loop does (id/<a> rewrite, resolved WITHIN the sub) and keep them in memory
+  // (this.subFrames) plus a ${id}.subs.json the sub route streams. Gated: a
+  // vanilla score builds NO subs file (removed if stale), so HTML stays
+  // byte-identical.
+  async buildSubFramesContent(graph) {
+    const subsFile = `${SERVER_STATE_DIR}/${this.id}.subs.json`;
+    this.subFrames = {};
+
+    if (!graph || !graph.hasSessionLines) {
+      if (fs.existsSync(subsFile)) {
+        await fs.promises.rm(subsFile);
+      }
+      return;
+    }
+
+    const scores = [
+      ...new Set(
+        Object.values(graph.subLinks || {})
+          .flat()
+          .map((l) => l.score),
+      ),
+    ];
+
+    for (const score of scores) {
+      const built = await this.buildOneSubScore(score);
+      if (built) {
+        this.subFrames[score] = built;
+      }
+    }
+
+    if (Object.keys(this.subFrames).length > 0) {
+      // Persist only what the sub route serves (framesHtml/frameList/soundList);
+      // the per-sub graph stays in-memory for the runtime.
+      const payload = {};
+      for (const [score, sub] of Object.entries(this.subFrames)) {
+        payload[score] = {
+          framesHtml: sub.framesHtml,
+          frameList: sub.frameList,
+          soundList: sub.soundList,
+        };
+      }
+      await fs.promises.writeFile(subsFile, JSON.stringify(payload));
+    } else if (fs.existsSync(subsFile)) {
+      await fs.promises.rm(subsFile);
+    }
+  }
+
+  async buildOneSubScore(score) {
+    const base = `${this.scoreDataDir}/${this.folder}/Subscores/${score}`;
+    const framesDir = fs.existsSync(`${base}/Frames`) ? `${base}/Frames` : base;
+    if (!fs.existsSync(framesDir)) {
+      console.log(`Sub-score frames not found at ${framesDir}`);
+      return null;
+    }
+
+    const frameList = (await fs.promises.readdir(framesDir)).filter((f) =>
+      f.toLowerCase().endsWith(".svg"),
+    );
+    if (frameList.length <= 0) {
+      return null;
+    }
+    const frameListLower = frameList.map((f) => f.toLowerCase());
+
+    let soundList = [];
+    const soundsDir = `${base}/Sounds`;
+    if (fs.existsSync(soundsDir)) {
+      const files = await fs.promises.readdir(soundsDir, { recursive: true });
+      // Normalize EVERY path separator (a single .replace only fixes the first
+      // level of nesting on Windows).
+      soundList = files.map((f) => String(f).replace(/\\/g, "/"));
+    }
+
+    const subAttrs = [];
+    let framesHtml = "";
+
+    for (const filename of frameList) {
+      const content = await fs.promises.readFile(
+        `${framesDir}/${filename}`,
+        "utf8",
+      );
+      subAttrs.push({ name: filename, attrs: parseFrameAttrs(content) });
+
+      let svg = regexWithPattern(content, /<svg.*?<\/svg>/is, 0);
+      const svgIndex = frameListLower.indexOf(filename.toLowerCase());
+      svg = svg?.replace(
+        "<svg",
+        `<svg id="sub-${score}-${svgIndex}" class="hidden" file="${filename}" `,
+      );
+
+      const listA = svg?.match(/<a.*?>/g);
+      listA?.forEach((a, idx) => {
+        const matchedHref = HREF_REGX.exec(a)?.[0];
+        const aIndex = frameListLower.indexOf(matchedHref?.toLowerCase());
+        const newA = a
+          .replace(
+            "<a",
+            `<a id="${aIndex}#${filename}#${idx}" data-next-file-idx="${aIndex}" `,
+          )
+          .replace(LINK_REGEX, `onclick="handleSelectLink(this)"`);
+        svg = svg.replace(a, newA);
+      });
+
+      framesHtml += `${svg}\n`;
+    }
+
+    const graph = buildGraph(subAttrs);
+    graph.frameLinks = {};
+    for (const { name, attrs } of subAttrs) {
+      graph.frameLinks[name] = (attrs.hrefs || []).map((href) =>
+        frameListLower.indexOf(href.toLowerCase()),
+      );
+    }
+
+    return {
+      frameList,
+      frameListLower,
+      soundList,
+      framesHtml,
+      graph,
+    };
+  }
+
   regexWithPattern(str, pattern, groupId) {
     const match = str.match(pattern);
     if (match === null) {
@@ -499,21 +681,52 @@ class BMSession {
   }
 
   clearAllTimer() {
-    //stop holding timer
-    if (this.holdingTimer != null) {
-      clearTimeout(this.holdingTimer);
-      this.holdingTimer = null;
+    // Clear every line's timers (single line until a split).
+    for (const line of this.lines) {
+      line.clearAllTimer();
     }
-    //stop standby timer
-    if (this.standbyTimer != null) {
-      clearTimeout(this.standbyTimer);
-      this.standbyTimer = null;
-    }
-    //stop voting timer
-    if (this.votingTimer != null) {
-      clearInterval(this.votingTimer);
-      this.votingTimer = null;
-    }
+  }
+
+  // Versioned persistence allowlist (v2). Serializes session-global fields +
+  // lines[] + deviceRegistry, and drops fields buildSVGContent re-derives on
+  // load (listFiles*, graph). Timer-nulling / voting-reset happen per-line in
+  // BMLine.toJSON.
+  toJSON() {
+    return {
+      version: 2,
+      id: this.id,
+      ownerId: this.ownerId,
+      sessionName: this.sessionName,
+      adminPassword: this.adminPassword,
+      playerPassword: this.playerPassword,
+      folder: this.folder,
+      isHtml5: this.isHtml5,
+      fadeDuration: this.fadeDuration,
+      defaultVolume: this.defaultVolume,
+      defaultAutoplay: this.defaultAutoplay,
+      enableAutoplayByDefault: this.enableAutoplayByDefault,
+      hasSounds: this.hasSounds,
+      soundList: this.soundList,
+      isPause: this.isPause,
+      isSessionDeleted: this.isSessionDeleted,
+      votingDuration: this.votingDuration,
+      holdDuration: this.holdDuration,
+      votingSize: this.votingSize,
+      standbyDuration: this.standbyDuration,
+      synTimeInterval: this.synTimeInterval,
+      preloadDuration: this.preloadDuration,
+      selectedScoreIndex: this.selectedScoreIndex,
+      selectedCooldownTimeIndex: this.selectedCooldownTimeIndex,
+      selectedHoldTimeIndex: this.selectedHoldTimeIndex,
+      nextLineId: this.nextLineId,
+      splitEvents: this.splitEvents,
+      nextSplitEventId: this.nextSplitEventId,
+      deviceRegistry: this.deviceRegistry,
+      reachedTargets: this.reachedTargets,
+      reachedGeneration: this.reachedGeneration,
+      latestGroupArrival: this.latestGroupArrival,
+      lines: this.lines.map((line) => line.toJSON()),
+    };
   }
 
   async saveSessionStateToFile() {
@@ -521,14 +734,10 @@ class BMSession {
       return;
     }
 
-    const clonedData = { ...this };
-    clonedData.votingTimer = null;
-    clonedData.standbyTimer = null;
-    clonedData.holdingTimer = null;
-    clonedData.isVoting = false;
+    const stateData = this.toJSON();
 
     const stateFilePath = `${SERVER_STATE_DIR}/${this.id}.json`;
-    await fs.promises.writeFile(stateFilePath, JSON.stringify(clonedData));
+    await fs.promises.writeFile(stateFilePath, JSON.stringify(stateData));
 
     console.log(
       `Write session ${this.sessionName} state to file: ${stateFilePath}`,
@@ -640,7 +849,8 @@ class BMSessionTable {
       const state = JSON.parse(
         await fs.promises.readFile(`${SERVER_STATE_DIR}/${file.name}`, "utf8"),
       );
-      await newSession.patchState(state);
+      // Bring legacy v1 (flat) state up to v2 (lines:[one]) before applying.
+      await newSession.patchState(migrateState(state));
       await newSession.buildSVGContent();
 
       this.data.push(newSession);
@@ -712,3 +922,8 @@ class BMDatabase {
 }
 
 module.exports = BMDatabase;
+// Additive named exports for offline tooling/tests (no behavior change).
+module.exports.BMSession = BMSession;
+module.exports.SERVER_STATE_DIR = SERVER_STATE_DIR;
+module.exports.DATA_DIR = DATA_DIR;
+module.exports.wsPath = wsPath;

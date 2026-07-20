@@ -1,0 +1,37 @@
+//- Session Lines — standalone live score-map page (admin tool, experimental).
+//- Rendered on the fly by routes/session.js (never baked/cached), so it adds
+//- nothing to the shared session page. Opens its own ws connection; pass the
+//- admin password as ?p= so the server addresses admin payloads to it.
+html
+  head
+    title Score map: #{scoreTitle}
+    link(rel='stylesheet', href='/stylesheets/style.css')
+    meta(name='viewport', content='width=device-width, initial-scale=1.0')
+    script.
+      const search = new URLSearchParams(window.location.search);
+      window.staffCode = search.get('p');
+      window.sessionId = '#{sessionId}';
+      window.wsPath = '#{wsPath}';
+      window.currentIndex = 0;
+      window.isAdminView = true;
+      // The map is an observation tool: its ws connection announces itself so
+      // the server never counts it as population (player counts, group waits).
+      window.wsMapView = true;
+      // MSG_* constants arrive as one JSON blob (see routes/session.js) so a
+      // stale server process can never render a SyntaxError into this script.
+      try { Object.assign(window, JSON.parse('!{constantsJson}')); }
+      catch (e) { console.error('session-map constants missing — restart the server', e); }
+    script(src='/javascripts/ws-client.js')
+    script(src='/javascripts/session-map.js')
+  body(class="session-map-page")
+    div(id="session-map-header")
+      span(id="session-map-title") score map — #{scoreTitle}
+      span(id="session-map-status") loading…
+      button(id="session-map-relayout", type="button", title="discard manual arrangement and re-run automatic layout") re-layout
+      a(id="session-map-back", href="#") back to session
+    div(id="ws-reconnect-indicator")
+    div(id="session-map-canvas")
+    div(id="session-map-zoom")
+      button(id="session-map-zoom-out", type="button", title="zoom out") −
+      span(id="session-map-zoom-value") —
+      button(id="session-map-zoom-in", type="button", title="zoom in") +

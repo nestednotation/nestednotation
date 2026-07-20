@@ -55,6 +55,13 @@ html
       window.MSG_CHANGE_VOLUME = #{msgChangeVolume};
       window.MSG_GLOBAL_REFRESH = #{msgGlobalRefresh};
 
+      window.MSG_LINE_ASSIGNED = #{msgLineAssigned};
+      window.MSG_BEGIN_SPLIT = #{msgBeginSplit};
+      window.MSG_BARRIER_WAITING = #{msgBarrierWaiting};
+      window.MSG_BARRIER_RELEASED = #{msgBarrierReleased};
+      window.MSG_SUB_ENTER = #{msgSubEnter};
+      window.MSG_SUB_EXIT = #{msgSubExit};
+
     script(src='/javascripts/voting.js')
     script(src='/javascripts/ws-client.js')
     script(src='/javascripts/session.js')
@@ -101,6 +108,7 @@ html
       div(id="divOverlay")
       div(id="MainSVGContent")
         | !{sessionSvg}
+      div(id="SubSessionContent")
       svg(id="svg-1", width="100%", height="100%", viewBox="0 0 1801 1801", version="1.1", xmlns="http://www.w3.org/2000/svg", xmlns:xlink="http://www.w3.org/1999/xlink", xml:space="preserve", xmlns:serif="http://www.serif.com/", style="fill-rule:evenodd;clip-rule:evenodd;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:1.5;")
         g
           rect(x="0.7", y="0.9", width="1800", height="1800", style="fill:none;")
@@ -129,6 +137,8 @@ html
       span |
       button(type="button", id="globalRefresh", onclick="sendGlobalRefresh();") global refresh
 
+    div(id="barrier-waiting-indicator")
+      | waiting for other lines…
     div(id="loading-sound-indicator")
       | loading audio...
 

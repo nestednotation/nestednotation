@@ -14,14 +14,39 @@ const removeFileExt = (fileName) => {
 // additional .m4u3 as ext.
 // But I cache the list just in case the score using different file ext like .mp3
 window.SOUND_FILE_LIST = null;
-const getSoundLink = (soundName) => {
-  const { scoreTitle, soundFileList } = window;
+// Session Lines: per-sub soundName→fileName maps (built lazily on first dive).
+window.SUB_SOUND_FILE_LISTS = {};
+
+const buildSoundFileMap = (soundFileList) =>
+  (soundFileList || []).reduce((acc, soundFile) => {
+    acc[removeFileExt(soundFile)] = soundFile;
+    return acc;
+  }, {});
+
+// `soundContext` (Session Lines) routes sub-session sounds to the sub-score's own
+// Sounds dir. Absent/main context behaves exactly as before.
+const getSoundLink = (soundName, soundContext) => {
+  const { scoreTitle } = window;
+
+  if (soundContext && soundContext.type === "sub") {
+    const sub = soundContext.subName;
+    if (!window.SUB_SOUND_FILE_LISTS[sub]) {
+      window.SUB_SOUND_FILE_LISTS[sub] = buildSoundFileMap(
+        soundContext.soundList,
+      );
+    }
+    const subFileName = window.SUB_SOUND_FILE_LISTS[sub][soundName];
+    if (!subFileName) {
+      console.error(`Sub sound file not found for ${soundName} in ${sub}`);
+    }
+    return `/data/${encodeURIComponent(scoreTitle)}/Subscores/${encodeURIComponent(
+      sub,
+    )}/Sounds/${encodeURIComponent(subFileName)}`;
+  }
+
+  const { soundFileList } = window;
   if (!window.SOUND_FILE_LIST) {
-    window.SOUND_FILE_LIST = soundFileList.reduce((acc, soundFile) => {
-      const fileNameWithoutExt = removeFileExt(soundFile);
-      acc[fileNameWithoutExt] = soundFile;
-      return acc;
-    }, {});
+    window.SOUND_FILE_LIST = buildSoundFileMap(soundFileList);
   }
 
   const fileName = window.SOUND_FILE_LIST[soundName];
@@ -199,7 +224,7 @@ class Note {
       const volumeIdx = isVolumeMismatch ? idx : 0;
 
       const soundInst = new Howl({
-        src: [getSoundLink(sn)],
+        src: [getSoundLink(sn, this.frameInstance.soundContext)],
         loop: this.isLoop,
         preload: false,
         html5: isHtml5,
@@ -369,10 +394,15 @@ class Frame {
   sessionInstance = null;
   frameElement = null;
 
-  constructor(sessionInstance, frameElement) {
+  // Session Lines: null on the main flow; { type:"sub", subName, soundList } for
+  // a sub-session frame so its notes resolve sounds to the sub-score Sounds dir.
+  soundContext = null;
+
+  constructor(sessionInstance, frameElement, soundContext = null) {
     this.frameElement = frameElement;
     this.sessionInstance = sessionInstance;
     this.id = frameElement.id;
+    this.soundContext = soundContext;
 
     this.initialFrameNotes();
     this.initialFrameGroups();
@@ -553,6 +583,28 @@ class AudioSession {
       // frameInstance.loadFrameSounds();
       this.frameMap[frame.id] = frameInstance;
       this.markToGrayscaleNonLinkSvg(frame);
+    }
+  }
+
+  // Session Lines: register a sub-score's injected frames (ids "sub-<name>-<idx>")
+  // so the playhead can show + play them; their sounds resolve to the sub's dir.
+  registerSubFrames(subName, soundList) {
+    const container = document.getElementById("SubSessionContent");
+    if (!container) {
+      return;
+    }
+    const frames = container.querySelectorAll(`svg[id^="sub-${subName}-"]`);
+    for (const frameEl of frames) {
+      if (this.frameMap[frameEl.id]) {
+        continue;
+      }
+      const frameInstance = new Frame(this, frameEl, {
+        type: "sub",
+        subName,
+        soundList,
+      });
+      this.frameMap[frameEl.id] = frameInstance;
+      this.markToGrayscaleNonLinkSvg(frameEl);
     }
   }
 
@@ -794,7 +846,9 @@ const handleOnUpdateView = ({ detail }) => {
     Howler.mute(false);
   }
 
-  const frameId = `svg${newIndex}`;
+  // Session Lines: the playhead carries an explicit DOM id so sub frames
+  // ("sub-<name>-<idx>") route correctly; falls back to the main "svg<idx>".
+  const frameId = detail.frameDomId || `svg${newIndex}`;
   if (frameId === sessionInstance.currFrameId) {
     return;
   }

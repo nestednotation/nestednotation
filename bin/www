@@ -12,6 +12,16 @@ const fs = require("fs");
 const os = require("os");
 const BMDatabase = require("../database.js");
 const { MESSAGES } = require("../constants.js");
+// Session Lines: pure connection routing (line selection / late-join policy).
+const {
+  lineConnections,
+  performerLineConnections,
+  smallestLineId,
+} = require("../lib/session-lines/routing");
+// Session Lines: orchestration (split / barrier / rejoin / track-group). All of
+// this is inert unless session.hasSessionLines.
+const { createOrchestrator } = require("../lib/session-lines/orchestrator");
+const { BMLine } = require("../lib/session-lines/line");
 
 let prefixDir = ".";
 const testPrefixFile = prefixDir + "/account/admin.dat";
@@ -140,12 +150,21 @@ wsServer.on("request", function (request) {
   const connection = request.accept(null, request.origin);
 
   connection.on("message", function (message) {
-    messageHandle(connection, message);
+    // messageHandle is async — an uncaught throw would be an unhandled
+    // rejection (fatal on Node >= 15), taking the whole server down.
+    messageHandle(connection, message).catch((e) =>
+      console.error("messageHandle error", e),
+    );
   });
 
   connection.on("close", function () {
     const session = db.sessionTable.getById(connection.sessionId);
     if (session) {
+      // Session Lines: a line that just lost its last device goes dormant and
+      // releases any barrier waiting on it (#11). No-op for vanilla scores.
+      handleConnectionClose(session, connection).catch((e) =>
+        console.error("handleConnectionClose error", e),
+      );
       updateNumberOfConnectionForSession(session);
     }
   });
@@ -189,8 +208,1351 @@ function sendToAllAdmins(session, time, payload) {
   });
 }
 
-function sendUpdateVotingToClient(conn, session) {
-  const countDic = countVoteForSession(session);
+// ── Session Lines: per-line messaging ────────────────────────────────────────
+// Same as sendToAllClients/sendToAllAdmins, but addressed to one line's
+// connections (conn.lineId === lineId). With a single line every connection is
+// on L0, so these reduce to the session-wide sends above.
+
+function sendToLine(session, lineId, time, payload) {
+  const obj = {
+    t: time,
+    ...payload,
+  };
+  wsServer.connections.forEach(function each(conn) {
+    if (conn.sessionId === session.id && conn.lineId === lineId) {
+      conn.sendUTF(JSON.stringify(obj));
+    }
+  });
+}
+
+function sendToLineWithDelay(session, lineId, timeDelay, payload) {
+  const time = new Date().getTime() + timeDelay;
+  sendToLine(session, lineId, time, payload);
+}
+
+function sendToLineAdmins(session, lineId, time, payload) {
+  const obj = {
+    t: time,
+    ...payload,
+  };
+  wsServer.connections.forEach(function each(conn) {
+    if (conn.sessionId === session.id && conn.lineId === lineId && conn.isAdmin) {
+      conn.sendUTF(JSON.stringify(obj));
+    }
+  });
+}
+
+// Resolve the line a connection currently belongs to. Never resolves to a
+// hard-retired line (split parent / rejoin-absorbed, decision #13) — falls back
+// to the first assignable line (with one line this is always lines[0]).
+function lineForConn(session, conn) {
+  const line = session.lines.find((l) => l.id === conn.lineId);
+  if (line && line.status !== "retired") {
+    return line;
+  }
+  return (
+    session.lines.find((l) => l.status === "active") ||
+    session.lines.find((l) => l.status !== "retired") ||
+    session.lines[0]
+  );
+}
+
+// Bind a connection to its line + device id. Restores a known device's line via
+// deviceRegistry; otherwise assigns the smallest live-or-dormant line (#13).
+// With one line this always resolves to lines[0].
+function ensureLineAssignment(session, conn, deviceId) {
+  if (deviceId) {
+    conn.deviceId = deviceId;
+  }
+
+  let lineId = deviceId ? session.deviceRegistry[deviceId] : conn.lineId;
+  let line = lineId ? session.lines.find((l) => l.id === lineId) : null;
+
+  // Never (re)bind to a hard-retired line (split parent / rejoin-absorbed,
+  // decision #13) — e.g. a stale registry entry for a device that was offline
+  // during a split. Fall through to the normal assignment policy.
+  if (line && line.status === "retired") {
+    line = null;
+  }
+
+  if (!line) {
+    // Balance over performers only — map-view tabs don't occupy a line.
+    lineId = smallestLineId(
+      session.lines,
+      wsServer.connections.filter((c) => !c.isMapView),
+      session.id,
+    );
+    line = lineId ? session.lines.find((l) => l.id === lineId) : null;
+  }
+  if (!line) {
+    line =
+      session.lines.find((l) => l.status !== "retired") || session.lines[0];
+    lineId = line.id;
+  }
+
+  conn.lineId = lineId;
+  if (deviceId) {
+    session.deviceRegistry[deviceId] = lineId;
+  }
+  // A map-view tab is an observer: binding it must not keep the line alive
+  // (attrition), revive a dormant line, or trigger adoption parking.
+  if (conn.isMapView) {
+    return line;
+  }
+  // A device claimed the line again — cancel any pending attrition grace timer.
+  cancelAttritionTimer(line);
+  const hadDevices =
+    performerLineConnections(wsServer.connections, session.id, lineId).filter(
+      (c) => c !== conn,
+    ).length > 0;
+  // Joining a dormant line revives it (Phase 3 resumes its lifecycle) — and
+  // fast-forwards it to the latest track-group frame the room has reached
+  // (decision #13 revision, 2026-07-18): the frozen position is stale, so the
+  // joiner lands where the action is instead of resurrecting an abandoned
+  // path. Reviving in place remains the fallback (no grouped landing yet, or
+  // the line froze inside that same group).
+  if (line.status === "dormant") {
+    line.status = "active";
+    fastForwardRevivedLine(session, line).catch((e) =>
+      console.error("revival fast-forward error", e),
+    );
+  }
+  // First device on a line (a revival, or the adoption of an empty split
+  // child): if its frame's track group is still waiting on arrivals, the line
+  // must park too — otherwise its taps would open a solo, unsynchronized
+  // window mid-wait (the line only now became waitable; empty lines are not).
+  if (!hadDevices && session.hasSessionLines && line.subStack.length === 0) {
+    maybeParkAtGroup(session, line, frameNameForLine(session, line)).catch(
+      (e) => console.error("group park on line adoption error", e),
+    );
+  }
+  return line;
+}
+
+// Decision #13 revision (2026-07-18): a dormant line being revived abandons its
+// frozen position and lands on the room's latest track group — on that group's
+// least-occupied frame, so revivals fill missing track slots rather than
+// doubling covered ones. All playhead mutation is synchronous (callers rely on
+// line.currentIndex being final when this returns its promise); only the
+// registry/persistence follow-ups await. No-op → frozen-position revival.
+async function fastForwardRevivedLine(session, line) {
+  if (!session.hasSessionLines || !session.graph) {
+    return;
+  }
+  const record = session.latestGroupArrival;
+  const target = orch.revivalLandingFrame({
+    graph: session.graph,
+    listFiles: session.listFiles,
+    latestGroupFrame: record && record.frame,
+    line,
+    occupancy: (frameName) =>
+      activeLines(session).filter((l) => {
+        if (l === line || l.subStack.length > 0) {
+          return false;
+        }
+        const fn = frameNameForLine(session, l);
+        return fn != null && fn.toLowerCase() === frameName.toLowerCase();
+      }).length,
+  });
+  if (!target) {
+    return;
+  }
+  const idx = session.listFilesInLowerCase.indexOf(target.toLowerCase());
+  if (idx < 0) {
+    return;
+  }
+
+  // Leave any frozen sub context (restores the saved main-flow history) — the
+  // landing is a main-flow frame.
+  while (line.subStack.length > 0) {
+    line.exitSub();
+  }
+  line.setCurrIdxTo(idx);
+  // The line teleported: it must not stay parked at — or keep pending
+  // hold-until obligations toward — its pre-dormancy position. (Group parking
+  // at the NEW frame is re-evaluated by the caller's maybeParkAtGroup.)
+  line.isGroupWaiting = false;
+  orch.unparkLine(session, line);
+
+  // Registry: normal departure/landing semantics — leaving the frozen frame
+  // completes it, which may release barriers parked elsewhere.
+  if (recordArrival(session, line)) {
+    await tryReleaseBarriers(session);
+  }
+  await session.saveSessionStateToFile();
+}
+
+// ── Session Lines: orchestration (Phase 3) ───────────────────────────────────
+// All of the below only runs behind a `session.hasSessionLines` gate. A vanilla
+// score never enters these paths, so its runtime is byte-for-byte Phase 2.
+
+const orch = createOrchestrator({
+  send: sendToLine,
+  sendAdmins: sendToLineAdmins,
+  createLine: (session, id) => new BMLine(session, id),
+  MESSAGES,
+  now: () => Date.now(),
+});
+
+// Fallback duration (seconds) for a split choice window when both the frame and
+// the session would resolve it to 0 — the window must always be bounded but
+// real (decision #2).
+const DEFAULT_SPLIT_CHOICE_DUR = 10;
+
+// The frame NAME a line currently sits on. In a sub-session the line indexes the
+// sub's frame list (Chunk K); on the main flow it indexes session.listFiles.
+function frameNameForLine(session, line) {
+  const sub = line.subStack && line.subStack[line.subStack.length - 1];
+  if (sub && session.subFrames && session.subFrames[sub.score]) {
+    return session.subFrames[sub.score].frameList[line.currentIndex];
+  }
+  return session.listFiles[line.currentIndex];
+}
+
+function navigationForLine(session, line) {
+  const sub = line.subStack && line.subStack[line.subStack.length - 1];
+  if (sub && session.subFrames && session.subFrames[sub.score]) {
+    const subInfo = session.subFrames[sub.score];
+    return {
+      frameList: subInfo.frameList,
+      frameLinks: (subInfo.graph || {}).frameLinks,
+    };
+  }
+  return {
+    frameList: session.listFiles,
+    frameLinks: (session.graph || {}).frameLinks,
+  };
+}
+
+function defaultOutgoingVoteIdForLine(session, line) {
+  if (!session.hasSessionLines) {
+    return null;
+  }
+  const nav = navigationForLine(session, line);
+  return orch.defaultOutgoingVoteId(
+    nav.frameLinks,
+    nav.frameList,
+    frameNameForLine(session, line),
+    () => Math.random(),
+  );
+}
+
+function outgoingVoteIdsForLine(session, line) {
+  const nav = navigationForLine(session, line);
+  return orch.outgoingVoteIds(
+    nav.frameLinks,
+    nav.frameList,
+    frameNameForLine(session, line),
+  );
+}
+
+// ── Rendezvous reached-registry (#6, decided 2026-07-04) ────────────────────
+// Every playhead landing is recorded in session.reachedTargets ("arrived") and
+// upgraded to "done" once the frame's own holding period there has ended —
+// hold-until barriers release on "done" targets no matter where the reaching
+// line is (it does NOT have to converge on the barrier frame). Refs inside a
+// sub are qualified "score/frame", matching hold-until sub refs. Departure
+// also completes a frame (a line cannot leave mid-hold), so the previous ref
+// is upgraded on the next landing.
+
+function reachedRefForLine(session, line) {
+  const frameName = frameNameForLine(session, line);
+  if (!frameName) {
+    return null;
+  }
+  const sub = line.subStack && line.subStack[line.subStack.length - 1];
+  return sub ? `${sub.score}/${frameName}` : frameName;
+}
+
+// Returns true when some ref BECAME "done" — the edge on which open barriers
+// must be re-checked (the caller runs tryReleaseBarriers).
+function recordArrival(session, line) {
+  if (!session.hasSessionLines) {
+    return false;
+  }
+  if (!session.reachedTargets) {
+    session.reachedTargets = {};
+  }
+  const ref = reachedRefForLine(session, line);
+  if (!ref) {
+    return false;
+  }
+  let becameDone = false;
+  if (
+    line._lastReachedRef &&
+    line._lastReachedRef.toLowerCase() !== ref.toLowerCase()
+  ) {
+    becameDone = orch.markReached(
+      session.reachedTargets,
+      line._lastReachedRef,
+      true,
+    );
+  }
+  line._lastReachedRef = ref;
+  // No holding running for this landing (holdDuration 0, a split-seeded
+  // child, a sub entry…) ⇒ the frame's holding period is already over.
+  return orch.markReached(session.reachedTargets, ref, !line.isHolding) || becameDone;
+}
+
+// The line's holding period at its current frame ended (holding timer fired).
+function recordHoldEnded(session, line) {
+  if (!session.hasSessionLines || line.status !== "active") {
+    return false;
+  }
+  if (!session.reachedTargets) {
+    session.reachedTargets = {};
+  }
+  const ref = reachedRefForLine(session, line);
+  return ref ? orch.markReached(session.reachedTargets, ref, true) : false;
+}
+
+// The sub link (if any) of the line's current MAIN-FLOW frame whose return
+// landing is the advance target. Taking that link means the line dives into
+// the sub instead of moving — the target frame is where it lands after the
+// sub. Matching is by target frame (vote ids and default fallbacks carry the
+// frame index); only navigation call sites consult this — rewinds and other
+// repositions never dive.
+function subLinkForAdvanceTarget(session, line, targetIdx) {
+  if (!session.hasSessionLines || line.subStack.length > 0) {
+    return null;
+  }
+  const links = ((session.graph || {}).subLinks || {})[
+    frameNameForLine(session, line)
+  ];
+  if (!links || links.length === 0) {
+    return null;
+  }
+  const targetName = session.listFiles[targetIdx];
+  if (!targetName) {
+    return null;
+  }
+  const targetLower = targetName.toLowerCase();
+  return (
+    links.find(
+      (l) =>
+        l.returnHref &&
+        String(l.returnHref).toLowerCase() === targetLower &&
+        session.subFrames &&
+        session.subFrames[l.score],
+    ) || null
+  );
+}
+
+// A navigation advance chose a sub link: dive instead of moving. Mirrors the
+// bookkeeping afterLineArrived's finally would have done for a plain landing
+// (the dive can change group reachability, and admins want the fresh
+// positions snapshot).
+async function diveViaSubLink(session, line, subLink) {
+  await enterSubSession(session, line, subLink);
+  await tryReleaseGroupWaits(session);
+  updateNumberOfConnectionForSession(session);
+}
+
+// True when a line INSIDE a sub sits on that sub's session-sub-end frame. The
+// display for that arrival is driven by MSG_SUB_EXIT (afterLineArrived →
+// exitSubSession), so a plain delayed MSG_SHOW must not race it — it would fire
+// after the exit, in main context, with a stale sub index (wrong frame + the
+// client's cid desyncs and every later tap is rejected).
+function isSubEndFrame(session, line) {
+  if (!session.hasSessionLines || line.subStack.length === 0) {
+    return false;
+  }
+  const top = line.subStack[line.subStack.length - 1];
+  const subInfo = session.subFrames && session.subFrames[top.score];
+  const subGraph = subInfo && subInfo.graph;
+  return !!(subGraph && (subGraph.subEnd || {})[frameNameForLine(session, line)]);
+}
+
+// True when a line (on the main flow) sits on a session-split frame.
+function isSplitFrame(session, line) {
+  if (!session.hasSessionLines || !session.graph || !session.graph.splits) {
+    return false;
+  }
+  if (line.subStack && line.subStack.length > 0) {
+    return false; // splits only on the main flow (v1 subs are plain)
+  }
+  return !!session.graph.splits[frameNameForLine(session, line)];
+}
+
+// Resolve a split: the choice window has closed on a split frame. Spawn the N
+// child lines, distribute choosers + balance stragglers, hard-retire the parent,
+// reassign connections, then let each child react to its landing frame.
+async function resolveSplit(session, line) {
+  const frameName = frameNameForLine(session, line);
+  const childFrameIndices = (session.graph.frameLinks || {})[frameName] || [];
+  if (childFrameIndices.length < 2) {
+    return; // not a real split (validator should have caught this)
+  }
+
+  const members = performerLineConnections(
+    wsServer.connections,
+    session.id,
+    line.id,
+  ).map((conn) => {
+    const votedIdx = orch.parseVoteTargetIndex(conn.currentVoteTo, -1);
+    const slot = childFrameIndices.indexOf(votedIdx);
+    return { conn, key: conn.deviceId, choice: slot >= 0 ? slot : null };
+  });
+
+  const { children } = orch.applySplit({
+    session,
+    parentLine: line,
+    childFrameIndices,
+    members,
+  });
+
+  // Map-view observers are not split members — re-bind any still on the
+  // retired parent to wherever the registry sweep sent their device id.
+  wsServer.connections.forEach((c) => {
+    if (c.sessionId === session.id && c.isMapView && c.lineId === line.id) {
+      c.lineId =
+        (c.deviceId && session.deviceRegistry[c.deviceId]) || children[0].id;
+    }
+  });
+
+  // Reset votes on every (now reassigned) connection in this session.
+  wsServer.connections.forEach((conn) => {
+    if (conn.sessionId === session.id) {
+      conn.currentVoteTo = -1;
+    }
+  });
+
+  await session.saveSessionStateToFile();
+
+  // A child may land on its own orchestration frame (a barrier parks; a nested
+  // split just waits for taps — split paths are never sub links, the validator
+  // forbids it). Run arrival hooks before scheduling any plain SHOW so
+  // redirected/merged lines do not receive stale frame updates.
+  for (const child of children) {
+    await showLineAfterArrivalIfNeeded(session, child);
+  }
+
+  // Admins were reassigned to child lines — refresh their (per-line) history +
+  // the now-diverged availability.
+  pushAdminHistory(session);
+}
+
+// Hook run whenever a line's playhead lands on a (new) frame. Detects sub-start /
+// sub-end / hold-until barriers / rejoin. A no-op for plain frames (and for
+// vanilla scores). Split is handled separately, on choice-window close.
+// Returns true if it drove the client display itself (sub enter/exit, or a
+// rejoin that re-showed the survivor) — so the caller must NOT also send a SHOW.
+async function afterLineArrived(session, line) {
+  if (!session.hasSessionLines || line.status === "retired") {
+    return false;
+  }
+  try {
+    return await afterLineArrivedInner(session, line);
+  } finally {
+    // Track-group arrival waits: ANY landing can shrink a group's waiting set
+    // (the line arrived at the group — or moved off its last path to it), so
+    // re-check every parked group. Recursive arrivals re-check idempotently.
+    await tryReleaseGroupWaits(session);
+    // Admin live map: every landing refreshes the per-line positions (the same
+    // payload the line-distribution panel consumes). Recursive arrivals (sub
+    // exit → landing) just send an extra idempotent snapshot.
+    updateNumberOfConnectionForSession(session);
+  }
+}
+
+async function showLineAfterArrivalIfNeeded(session, line) {
+  const consumed = session.hasSessionLines
+    ? await afterLineArrived(session, line)
+    : false;
+  if (!consumed && !session.isPause && line.status !== "retired") {
+    sendToLine(session, line.id, Date.now() + session.preloadDuration, {
+      m: MESSAGES.MSG_SHOW,
+      showIdx: line.currentIndex,
+    });
+  }
+  return consumed;
+}
+
+async function afterLineArrivedInner(session, line) {
+  const graph = session.graph || {};
+  const frameName = frameNameForLine(session, line);
+
+  // Rendezvous registry: record the landing; a target becoming "done" may
+  // release barriers parked anywhere else in the session.
+  if (recordArrival(session, line)) {
+    await tryReleaseBarriers(session);
+  }
+
+  // Sub-session exit: reaching a session-sub-end frame pops back to the main
+  // flow (MSG_SUB_EXIT drives the display). Dives are NOT arrival-triggered —
+  // a line dives when it takes a session-sub-start <a> link (see
+  // subLinkForAdvanceTarget at the navigation call sites).
+  if (await handleSubTransitions(session, line, frameName)) {
+    return true;
+  }
+
+  // v1 sub-sessions are plain: no split / barrier / rejoin inside a sub.
+  if (line.subStack.length > 0) {
+    return false;
+  }
+
+  // Decision #13 revision (2026-07-18): remember the newest MAIN-FLOW grouped
+  // landing — dormant-line revivals fast-forward to this group instead of
+  // resuming their frozen position. Recorded before the barrier/rejoin
+  // branches below: parking or merging on the frame is still "reaching" it.
+  if (orch.groupOfFrame(graph, frameName)) {
+    session.latestGroupArrival = { frame: frameName, at: Date.now() };
+  }
+
+  // Hold-until barrier (optionally paired with rejoin-at on the same frame). The
+  // line parks here and the caller still shows the barrier frame (+ banner).
+  const holdTargets = (graph.holdUntilTargets || {})[frameName];
+  if (holdTargets && holdTargets.length > 0) {
+    await enterBarrier(session, line, frameName, holdTargets);
+    return false;
+  }
+
+  // Bare rejoin-at: a frame that is some line's rejoin TARGET. When 2+ active
+  // lines converge on it (no barrier gating), merge them right here.
+  const rejoinTargetNames = rejoinTargetSet(graph);
+  if (rejoinTargetNames.has(frameName.toLowerCase())) {
+    const converging = activeLines(session).filter(
+      (l) => frameNameForLine(session, l) === frameName,
+    );
+    if (converging.length >= 2) {
+      await runRejoin(session, converging, frameName);
+      return true;
+    }
+  }
+
+  // Track-group ARRIVAL barrier (decided 2026-07-16): a line landing on a
+  // grouped frame parks until every populated line that can still reach the
+  // group has arrived (empty lines excluded). The matching release check runs
+  // in afterLineArrived's finally (tryReleaseGroupWaits).
+  await maybeParkAtGroup(session, line, frameName);
+
+  return false;
+}
+
+// Sub-session exit. Returns true if the arrival was a sub exit (the display is
+// then driven by MSG_SUB_EXIT, not a plain SHOW). Entry is navigation-driven
+// (diveViaSubLink), never an arrival reaction.
+async function handleSubTransitions(session, line, frameName) {
+  if (line.subStack.length === 0) {
+    return false;
+  }
+
+  // Inside a sub: pop on reaching a session-sub-end frame.
+  const top = line.subStack[line.subStack.length - 1];
+  const subInfo = session.subFrames && session.subFrames[top.score];
+  const subGraph = subInfo && subInfo.graph;
+  if (subGraph && (subGraph.subEnd || {})[frameName]) {
+    await exitSubSession(session, line);
+    return true;
+  }
+  return false;
+}
+
+function subStartIndex(frameList) {
+  const start = (frameList || []).findIndex((f) =>
+    f.toUpperCase().startsWith("START"),
+  );
+  if (start >= 0) return start;
+  const pre = (frameList || []).findIndex((f) =>
+    f.toUpperCase().startsWith("PRE"),
+  );
+  return pre >= 0 ? pre : 0;
+}
+
+async function enterSubSession(session, line, subLink) {
+  const { score, returnHref } = subLink;
+  const subInfo = session.subFrames[score];
+
+  line.enterSub(score, returnHref);
+  const startIdx = subStartIndex(subInfo.frameList);
+  line.setCurrIdxTo(startIdx); // indexes the sub list now (activeFrameList)
+  // The sub START is a landing afterLineArrived never sees (the dive happens
+  // inside it) — record it here so sub refs feed the rendezvous registry.
+  if (recordArrival(session, line)) {
+    await tryReleaseBarriers(session);
+  }
+  await session.saveSessionStateToFile();
+
+  // Client fetches + injects the sub frames, swaps its frame list, then shows
+  // the sub START.
+  sendToLine(session, line.id, 0, {
+    m: MESSAGES.MSG_SUB_ENTER,
+    sub: score,
+    showIdx: startIdx,
+  });
+  emitHistoryToAdmins(session, line);
+}
+
+async function exitSubSession(session, line) {
+  const popped = line.exitSub();
+  const returnHref = popped && popped.returnHref;
+  const returnIdx = orch.subReturnIndex(
+    returnHref,
+    session.listFilesInLowerCase,
+  );
+  if (returnIdx >= 0) {
+    line.setCurrIdxTo(returnIdx); // back on the main list
+  }
+  await session.saveSessionStateToFile();
+
+  sendToLine(session, line.id, 0, {
+    m: MESSAGES.MSG_SUB_EXIT,
+    showIdx: line.currentIndex,
+  });
+  emitHistoryToAdmins(session, line);
+
+  // The main landing frame may itself be a barrier / rejoin / sub-start.
+  await afterLineArrived(session, line);
+}
+
+// ── Hold-until barrier + rejoin ──────────────────────────────────────────────
+// session._barrier is transient (never persisted): { byFrame: { <frame>: {
+//   frame, targets[], rejoinAt, rejoinAll[], parked:Set<lineId> } } }.
+// Satisfaction is rendezvous-based: targets are checked against the persisted
+// session.reachedTargets registry, not the parked lines' own histories.
+
+function ensureBarrier(session) {
+  if (!session._barrier) {
+    session._barrier = { byFrame: {} };
+  }
+  return session._barrier;
+}
+
+// Rebuild the transient `_barrier` map from persisted line state after a server
+// restart (`line.isBarrierWaiting`/`pendingHoldUntil` survive serialization,
+// the in-memory map does not). Lazy — runs once per session, on its first
+// message; without it, previously-parked lines would resume un-parked and the
+// barrier would be silently forgotten.
+function rehydrateBarriers(session) {
+  if (!session.hasSessionLines || session._barrierRehydrated) {
+    return false;
+  }
+  session._barrierRehydrated = true;
+  let parkedAny = false;
+  const graph = session.graph || {};
+  for (const line of session.lines) {
+    if (line.status !== "active") {
+      continue;
+    }
+    // Group-arrival parks: the flag persists and the wait set is derived live,
+    // so there is nothing to rebuild — but a release may be due (the score may
+    // have changed, or the incoming lines may never reconnect).
+    if (line.isGroupWaiting) {
+      if (line.subStack.length > 0 || !groupOfCurrentFrame(session, line)) {
+        line.isGroupWaiting = false; // score changed under the saved state
+      } else {
+        parkedAny = true;
+      }
+    }
+    if (!line.isBarrierWaiting) {
+      continue;
+    }
+    if (line.subStack.length > 0) {
+      continue; // barriers live on the main flow only
+    }
+    const frameName = frameNameForLine(session, line);
+    const targets = (graph.holdUntilTargets || {})[frameName];
+    if (!targets || targets.length === 0) {
+      // Score changed under the saved state — nothing to wait on anymore.
+      line.isBarrierWaiting = false;
+      line.pendingHoldUntil = [];
+      continue;
+    }
+    const rejoinList = (graph.rejoinTargets || {})[frameName] || [];
+    const barrier = ensureBarrier(session);
+    const entry =
+      barrier.byFrame[frameName] ||
+      (barrier.byFrame[frameName] = {
+        frame: frameName,
+        targets: targets.slice(),
+        rejoinAt: rejoinList[0] || null,
+        rejoinAll: rejoinList.slice(),
+        parked: new Set(),
+      });
+    entry.parked.add(line.id);
+    parkedAny = true;
+  }
+  return parkedAny;
+}
+
+function activeLines(session) {
+  return session.lines.filter((l) => l.status === "active");
+}
+
+// L3 DECIDED by owner 2026-07-18: an admin is a PLAYER with extra session
+// controls — admin/SM connections count as line population exactly like
+// player connections (they can tap/vote, so their line can arrive). A line
+// occupied only by an idle admin therefore IS waited for, like any idle
+// player's line; the remedies are the admin's own tools (tap the line
+// forward, SM force-release, or close the tab so attrition dissolves the
+// wait). EXCEPTION (owner, same day): the standalone /map page's connection
+// has no way to tap or vote — it is a pure observation tool, never population
+// (performerLineConnections), so a line holding only map tabs empties out and
+// goes dormant like any abandoned line.
+function activeDrivingLines(session, exceptParkedIds = new Set()) {
+  return activeLines(session).filter(
+    (l) =>
+      !exceptParkedIds.has(l.id) &&
+      !l.isBarrierWaiting &&
+      !l.isGroupWaiting &&
+      performerLineConnections(wsServer.connections, session.id, l.id).length >
+        0,
+  );
+}
+
+function resolveSubScoreName(session, score) {
+  const subs = session.subFrames || {};
+  return (
+    Object.keys(subs).find(
+      (name) => name.toLowerCase() === String(score || "").toLowerCase(),
+    ) || null
+  );
+}
+
+function subTargetReachableFromStart(session, score, targetFrame) {
+  const scoreName = resolveSubScoreName(session, score);
+  const sub = scoreName && session.subFrames[scoreName];
+  if (!sub || !sub.graph || !sub.graph.frameLinks) {
+    return false;
+  }
+  const startIdx = subStartIndex(sub.frameList);
+  const startFrame = sub.frameList[startIdx];
+  return orch.canReachFrames(
+    sub.graph.frameLinks,
+    sub.frameList,
+    startFrame,
+    [targetFrame],
+  );
+}
+
+function mainCanReachAnySubStart(session, fromFrame, score) {
+  const scoreLower = String(score || "").toLowerCase();
+  const starts = Object.entries((session.graph || {}).subLinks || {})
+    .filter(([, links]) =>
+      (links || []).some(
+        (l) => String(l.score).toLowerCase() === scoreLower,
+      ),
+    )
+    .map(([frameName]) => frameName);
+  return (
+    starts.length > 0 &&
+    orch.canReachFrames(
+      (session.graph || {}).frameLinks,
+      session.listFiles,
+      fromFrame,
+      starts,
+    )
+  );
+}
+
+function lineCanReachHoldTarget(session, line, target) {
+  const ref = String(target || "");
+  const slash = ref.indexOf("/");
+  const top = line.subStack && line.subStack[line.subStack.length - 1];
+
+  if (slash > 0) {
+    const score = ref.slice(0, slash);
+    const targetFrame = ref.slice(slash + 1);
+    const scoreName = resolveSubScoreName(session, score);
+    const sub = scoreName && session.subFrames[scoreName];
+    if (!sub || !sub.graph || !sub.graph.frameLinks) {
+      return false;
+    }
+    if (
+      top &&
+      String(top.score).toLowerCase() === String(score).toLowerCase()
+    ) {
+      return orch.canReachFrames(
+        sub.graph.frameLinks,
+        sub.frameList,
+        frameNameForLine(session, line),
+        [targetFrame],
+      );
+    }
+
+    const fromFrame = mainFlowFrameForLine(session, line);
+    return (
+      subTargetReachableFromStart(session, score, targetFrame) &&
+      mainCanReachAnySubStart(session, fromFrame, score)
+    );
+  }
+
+  return orch.canReachFrames(
+    (session.graph || {}).frameLinks,
+    session.listFiles,
+    mainFlowFrameForLine(session, line),
+    [ref],
+  );
+}
+
+// All frame names that are named as a rejoin-at target by some source frame.
+function rejoinTargetSet(graph) {
+  const set = new Set();
+  for (const targets of Object.values(graph.rejoinTargets || {})) {
+    for (const t of targets) set.add(String(t).toLowerCase());
+  }
+  return set;
+}
+
+async function enterBarrier(session, line, frameName, targets) {
+  const graph = session.graph || {};
+  const rejoinList = (graph.rejoinTargets || {})[frameName] || [];
+  const barrier = ensureBarrier(session);
+  const entry =
+    barrier.byFrame[frameName] ||
+    (barrier.byFrame[frameName] = {
+      frame: frameName,
+      targets: targets.slice(),
+      rejoinAt: rejoinList[0] || null,
+      rejoinAll: rejoinList.slice(),
+      parked: new Set(),
+    });
+  entry.parked.add(line.id);
+
+  // Park the line: it holds here, ignoring taps, until the barrier releases.
+  line.isBarrierWaiting = true;
+  const covered = orch.registryCoveredTargets(
+    session.reachedTargets,
+    entry.targets,
+  );
+  line.pendingHoldUntil = entry.targets.filter(
+    (t) => !covered.has(t),
+  );
+
+  sendToLine(session, line.id, 0, {
+    m: MESSAGES.MSG_BARRIER_WAITING,
+    frame: frameName,
+    targets: entry.targets,
+  });
+  notifyAdminsBarriers(session);
+  await session.saveSessionStateToFile();
+
+  await tryReleaseBarriers(session);
+}
+
+async function tryReleaseBarriers(session) {
+  const barrier = session._barrier;
+  if (!barrier) {
+    return;
+  }
+
+  for (const frameName of Object.keys(barrier.byFrame)) {
+    const entry = barrier.byFrame[frameName];
+    if (!entry) {
+      // Released by a nested re-check (a release advances lines, whose
+      // arrivals feed the registry and re-enter this function) — skip.
+      continue;
+    }
+    const parkedLines = [...entry.parked]
+      .map((id) => session.lines.find((l) => l.id === id))
+      .filter((l) => l && l.status === "active");
+
+    // Rendezvous (#6): coverage comes from the session-global reached
+    // registry — any line reaching a target anywhere (and ending that frame's
+    // hold) satisfies it; the parked lines never have to converge here.
+    const covered = orch.registryCoveredTargets(
+      session.reachedTargets,
+      entry.targets,
+    );
+    const satisfied = orch.holdUntilSatisfied(entry.targets, covered);
+
+    // Deadlock guard / attrition (#11): release rather than wait forever when
+    // the missing targets can no longer be reached by any active, device-bearing
+    // unparked line. Empty/dormant/retired lines and already-parked lines do not
+    // keep a hold-until barrier open.
+    const reachability = orch.holdUntilReachabilityState(
+      entry.targets,
+      covered,
+      activeDrivingLines(session, entry.parked),
+      (l, target) => lineCanReachHoldTarget(session, l, target),
+    );
+    const forceRelease =
+      parkedLines.length > 0 &&
+      reachability.missingTargets.length > 0 &&
+      reachability.unreachableTargets.length ===
+        reachability.missingTargets.length;
+
+    if (satisfied || forceRelease) {
+      delete barrier.byFrame[frameName];
+      await releaseBarrier(session, entry, parkedLines);
+    }
+  }
+}
+
+async function releaseBarrier(session, entry, parkedLines) {
+  for (const l of parkedLines) {
+    l.isBarrierWaiting = false;
+    l.pendingHoldUntil = [];
+    sendToLine(session, l.id, 0, {
+      m: MESSAGES.MSG_BARRIER_RELEASED,
+      frame: entry.frame,
+    });
+  }
+
+  // Paired rejoin: a SINGLE target auto-advances the released lines there and
+  // merges them (the Barrier→DONE pattern). MULTIPLE targets (e.g.
+  // rejoin-at="H,I") cannot be auto-advanced — the released line stays put and
+  // votes its route; the merge then happens on arrival at the chosen target
+  // (bare rejoin in afterLineArrived). No target behaves the same.
+  const rejoinList = entry.rejoinAll || (entry.rejoinAt ? [entry.rejoinAt] : []);
+  if (rejoinList.length === 1 && parkedLines.length > 0) {
+    await runRejoin(session, parkedLines, rejoinList[0]);
+  } else {
+    // Composition with the group ARRIVAL barrier: a freed line on a grouped
+    // frame may still owe the group a wait (out-of-group hold-until targets
+    // are valid and stack) — and clearing this blocker may itself open the
+    // group for the lines already parked there.
+    for (const l of parkedLines) {
+      await maybeParkAtGroup(session, l, entry.frame);
+    }
+    await tryReleaseGroupWaits(session);
+    await session.saveSessionStateToFile();
+  }
+  notifyAdminsBarriers(session);
+}
+
+// Merge converging lines into the lowest-id survivor, reassign their devices,
+// hard-retire the absorbed lines, then advance the survivor to the rejoin frame.
+async function runRejoin(session, lines, rejoinFrameName) {
+  const lineIds = lines.map((l) => l.id);
+  const { survivor, absorbed } = orch.applyRecombine({
+    session,
+    lineIds,
+    connections: wsServer.connections,
+  });
+  if (!survivor) {
+    return;
+  }
+
+  const anyGroupParked = lines.some((l) => l.isGroupWaiting);
+  for (const l of absorbed) {
+    l.clearAllTimer();
+    l.isBarrierWaiting = false;
+    l.isGroupWaiting = false;
+  }
+
+  survivor.isBarrierWaiting = false;
+  survivor.isGroupWaiting = false;
+  const targetIdx = session.listFilesInLowerCase.indexOf(
+    String(rejoinFrameName).toLowerCase(),
+  );
+  if (targetIdx >= 0 && targetIdx !== survivor.currentIndex) {
+    survivor.setCurrIdxTo(targetIdx);
+  }
+
+  // Reset votes on every (now merged) connection.
+  wsServer.connections.forEach((conn) => {
+    if (conn.sessionId === session.id && conn.lineId === survivor.id) {
+      conn.currentVoteTo = -1;
+    }
+  });
+
+  await session.saveSessionStateToFile();
+
+  // Tell the merged devices their (surviving) line + show its frame.
+  sendToLine(session, survivor.id, 0, {
+    m: MESSAGES.MSG_LINE_ASSIGNED,
+    lineId: survivor.id,
+  });
+  if (anyGroupParked) {
+    // Merged devices may still show a group-arrival banner from a pre-merge
+    // park (the client only hides it on MSG_BARRIER_RELEASED); the recursive
+    // afterLineArrived below re-parks the survivor if the group still waits.
+    sendToLine(session, survivor.id, 0, {
+      m: MESSAGES.MSG_BARRIER_RELEASED,
+      frame: rejoinFrameName,
+    });
+  }
+  emitHistoryToAdmins(session, survivor);
+
+  // The rejoin frame may itself be an orchestration frame.
+  await showLineAfterArrivalIfNeeded(session, survivor);
+}
+
+// Attrition (#11): a line that loses its last device goes DORMANT (revivable) —
+// it releases any barrier waiting on it and clears its timers, but keeps its
+// frame/history/subStack so a later joiner can revive it (#13). Structural
+// lines (split parent / rejoin-absorbed) are already 'retired' and skip this.
+//
+// Dormancy is DEBOUNCED: a socket close is very often a refresh or a transient
+// network blip (the client reconnect backoff is 1–5s), and a barrier released
+// on dormancy is irreversible (#11 — revival never re-arms it). So the line
+// only goes dormant if no device reclaims it within the grace window.
+const ATTRITION_GRACE_MS = 8000;
+
+function cancelAttritionTimer(line) {
+  if (line && line._attritionTimer) {
+    clearTimeout(line._attritionTimer);
+    line._attritionTimer = null;
+  }
+}
+
+async function handleConnectionClose(session, conn) {
+  if (!session || !session.hasSessionLines) {
+    return;
+  }
+  const lineId = conn.lineId;
+  if (!lineId) {
+    return;
+  }
+  const line = session.lines.find((l) => l.id === lineId);
+  if (!line || line.status !== "active") {
+    return;
+  }
+  const remaining = performerLineConnections(
+    wsServer.connections,
+    session.id,
+    lineId,
+  ).filter((c) => c !== conn);
+  if (remaining.length > 0) {
+    return;
+  }
+
+  if (line._attritionTimer) {
+    return; // grace window already running
+  }
+  line._attritionTimer = setTimeout(() => {
+    line._attritionTimer = null;
+    finalizeAttrition(session, line).catch((e) =>
+      console.error("finalizeAttrition error", e),
+    );
+  }, ATTRITION_GRACE_MS);
+}
+
+async function finalizeAttrition(session, line) {
+  // Re-check: the session may be gone, a device may have reclaimed the line
+  // (ensureLineAssignment cancels the timer, but re-verify), or the line may
+  // have been retired by a split/rejoin in the meantime.
+  if (session.isSessionDeleted || line.status !== "active") {
+    return;
+  }
+  if (
+    performerLineConnections(wsServer.connections, session.id, line.id).length >
+    0
+  ) {
+    return;
+  }
+
+  line.status = "dormant";
+  line.clearAllTimer();
+  line.votingTimer = line.holdingTimer = line.standbyTimer = null;
+  line.isVoting = false;
+  line.isStandby = false;
+  line.isHolding = false;
+  line.isBarrierWaiting = false;
+  line.isGroupWaiting = false;
+  if (session._barrier) {
+    for (const entry of Object.values(session._barrier.byFrame)) {
+      entry.parked.delete(line.id);
+    }
+  }
+
+  await tryReleaseBarriers(session);
+  // A dormant line stops being "incoming" — group arrival waits may dissolve.
+  await tryReleaseGroupWaits(session);
+  notifyAdminsBarriers(session);
+  await session.saveSessionStateToFile();
+}
+
+// ── Session manager controls across lines (Chunk M) ──────────────────────────
+// Everything here is gated on session.hasSessionLines. A vanilla score keeps
+// today's single-line SM behavior (one line, no track groups, no barriers).
+
+function nonRetiredLines(session) {
+  return (session.lines || []).filter((l) => l.status !== "retired");
+}
+
+function mainHistoryStateForLine(line) {
+  let history = Array.isArray(line.history) ? line.history : [];
+  let historyIndex = line.historyIndex;
+  if (
+    line.subStack &&
+    line.subStack.length > 0 &&
+    Array.isArray(line.savedHistories) &&
+    line.savedHistories.length > 0
+  ) {
+    const saved = line.savedHistories[0] || {};
+    history = Array.isArray(saved.history) ? saved.history : [];
+    historyIndex = saved.historyIndex;
+  }
+  const max = history.length - 1;
+  const idx =
+    historyIndex == null
+      ? max
+      : Math.max(-1, Math.min(Number(historyIndex), max));
+  return { history, historyIndex: idx };
+}
+
+function mainTrailForLine(line) {
+  const { history, historyIndex } = mainHistoryStateForLine(line);
+  return history.slice(0, historyIndex + 1);
+}
+
+function rewindLineSnapshot(line) {
+  return {
+    id: line.id,
+    trail: mainTrailForLine(line),
+  };
+}
+
+function populatedRewindCheckpointLines(session, lines) {
+  return lines
+    .filter(
+      (l) =>
+        l.status === "active" &&
+        performerLineConnections(wsServer.connections, session.id, l.id)
+          .length > 0,
+    )
+    .map(rewindLineSnapshot);
+}
+
+// Push every admin their OWN line's history. Always available:false — the
+// implicit bound-line rewind is retired in session-lines rooms (2026-07-19),
+// so the SM dropdown is a read-only trail display; rewinds live in the score
+// map (room-wide {group} checkpoint rewind + explicit {lineId} line rewind).
+// Only called for session-lines scores (emitHistoryToAdmins branches; vanilla
+// sends no `available` field at all).
+function pushAdminHistory(session) {
+  wsServer.connections.forEach((conn) => {
+    if (conn.sessionId === session.id && conn.isAdmin) {
+      const line = lineForConn(session, conn);
+      sendToClient(conn, 0, {
+        m: MESSAGES.MSG_SELECT_HISTORY,
+        history: line.history,
+        selectedIdx: line.historyIndex,
+        available: false,
+      });
+    }
+  });
+}
+
+// Emit updated history to admins after a line moved. Session-lines: push every
+// admin their own line + availability (pushAdminHistory). Vanilla: exactly
+// today's single-line admin history send (no `available` field → byte-identical).
+function emitHistoryToAdmins(session, line) {
+  if (session.hasSessionLines) {
+    pushAdminHistory(session);
+    return;
+  }
+  sendToLineAdmins(session, line.id, 0, {
+    m: MESSAGES.MSG_SELECT_HISTORY,
+    history: line.history,
+    selectedIdx: line.historyIndex,
+  });
+}
+
+// Surface the set of currently-waiting hold-until barriers to ALL admins so the
+// operator can force-release a stuck one (defensive valve, decision #12). Sent
+// as an admin-flagged MSG_BARRIER_WAITING; an empty list hides the admin panel.
+function notifyAdminsBarriers(session) {
+  if (!session.hasSessionLines) {
+    return;
+  }
+  const barriers = session._barrier
+    ? Object.keys(session._barrier.byFrame).map((frame) => {
+        const entry = session._barrier.byFrame[frame];
+        return {
+          frame,
+          targets: entry.targets,
+          parked: [...entry.parked],
+        };
+      })
+    : [];
+  // Track-group arrival waits share the panel (as "group:<name>") so the
+  // operator's force-release valve covers them too — the panel round-trips
+  // the frame string, which forceReleaseBarrier detects by its prefix.
+  for (const [group, lines] of groupWaitParkedByGroup(session)) {
+    barriers.push({
+      frame: `group:${group == null ? "?" : group}`,
+      targets:
+        group == null ? [] : orch.groupFramesLower(session.graph, group),
+      parked: lines.map((l) => l.id),
+    });
+  }
+  sendToAllAdmins(session, 0, {
+    m: MESSAGES.MSG_BARRIER_WAITING,
+    admin: true,
+    barriers,
+  });
+}
+
+// Admin force-release (defensive valve). Releases a chosen barrier (by frame) or
+// every waiting barrier when no frame is given, reusing the Chunk J release path
+// (MSG_BARRIER_RELEASED + any paired rejoin). Ignores the "someone still coming"
+// guard — this is the operator's manual override for a stuck / rider-only line.
+async function forceReleaseBarrier(session, frameName) {
+  if (!session.hasSessionLines) {
+    return;
+  }
+  // "group:<name>" entries are track-group arrival waits, not hold-until frames.
+  const groupRef =
+    typeof frameName === "string" && frameName.startsWith("group:")
+      ? frameName.slice("group:".length)
+      : null;
+  if (session._barrier && groupRef == null) {
+    const frames = frameName
+      ? [frameName]
+      : Object.keys(session._barrier.byFrame);
+    for (const fn of frames) {
+      const entry = session._barrier.byFrame[fn];
+      if (!entry) {
+        continue;
+      }
+      const parkedLines = [...entry.parked]
+        .map((id) => session.lines.find((l) => l.id === id))
+        .filter((l) => l && l.status === "active");
+      delete session._barrier.byFrame[fn];
+      await releaseBarrier(session, entry, parkedLines);
+    }
+  }
+  if (groupRef != null || !frameName) {
+    for (const [group, lines] of groupWaitParkedByGroup(session)) {
+      const matches =
+        groupRef == null || (group == null ? groupRef === "?" : group === groupRef);
+      if (matches) {
+        await releaseGroupWaitLines(session, lines);
+      }
+    }
+  }
+  notifyAdminsBarriers(session);
+}
+
+// ── Track-group ARRIVAL barrier (decided 2026-07-16) ─────────────────────────
+// Grouped frames don't just vote together — they WAIT for each other. A line
+// landing on a track-grouped frame parks (frame shown, taps ignored — same
+// client banner protocol as a hold-until park) until every populated line that
+// can still REACH a group frame has arrived on one, and every arrived line has
+// cleared its own (out-of-group) hold-until barrier. Empty (0-device) lines
+// neither occupy nor are waited for. The wait dissolves timeout-free via
+// reachability (decision #11 philosophy). Once released, the first tap opens
+// the group's synchronized windows exactly as before (openCoGroupWindows). A
+// LATE arrival (e.g. a line revived mid-round) is not parked once the group
+// stopped waiting — it joins the running round and is truncated at the group
+// close (owner-decided 2026-07-16: lowest-complexity option). SM jumps never
+// park at the landing (authoritative override, like the landing-barrier
+// carve-out), and the admin panel's force-release valve covers group waits.
+
+// The line's position projected onto the MAIN flow: its current frame, or —
+// inside a sub — the sub-start return landing it will pop back to (where its
+// future navigation resumes; v1 subs are plain).
+function mainFlowFrameForLine(session, line) {
+  if (line.subStack.length === 0) {
+    return frameNameForLine(session, line);
+  }
+  const idx = orch.subReturnIndex(
+    line.subStack[0].returnHref,
+    session.listFilesInLowerCase,
+  );
+  return idx >= 0 ? session.listFiles[idx] : null;
+}
+
+// Evaluate a group's arrival-barrier state over the live session.
+function groupWaitState(session, group) {
+  const groupFrames = orch.groupFramesLower(session.graph, group);
+  const groupSet = new Set(groupFrames);
+  return orch.groupArrivalState(activeLines(session), groupFrames, {
+    frameNameForLine: (l) => frameNameForLine(session, l),
+    deviceCount: (l) =>
+      performerLineConnections(wsServer.connections, session.id, l.id).length,
+    inSub: (l) => l.subStack.length > 0,
+    isBlocked: (l) => !!l.isBarrierWaiting,
+    // Hold sync (2026-07-20): an occupant still in its holding period keeps the
+    // group parked so everyone leaves the held frame together — the group
+    // unlocks on the last node's hold release. Gated ≥2 occupants in
+    // groupArrivalState, so a lone grouped line never self-parks while holding.
+    isHolding: (l) => !!l.isHolding,
+    // Passed ⇒ arrived (owner, 2026-07-19, with the targeted line rewind): a
+    // line whose main trail already went through this group is never counted
+    // as incoming again — so a line rewound behind the group replays through
+    // it without waiting for the lines ahead. Trail truncation on rewind is
+    // what revokes this for the rewound line itself.
+    hasPassed: (l) => mainTrailForLine(l).some((f) => groupSet.has(f.toLowerCase())),
+    canReach: (l) =>
+      orch.canReachFrames(
+        session.graph.frameLinks,
+        session.listFiles,
+        mainFlowFrameForLine(session, l),
+        groupFrames,
+      ),
+  });
+}
+
+// Park `line` at its frame's group arrival barrier when the group still waits
+// on someone. No-op for ungrouped frames, sub lines, empty lines, and lines
+// already parked.
+async function maybeParkAtGroup(session, line, frameName) {
+  if (line.isGroupWaiting || line.subStack.length > 0) {
+    return;
+  }
+  const group = orch.groupOfFrame(session.graph, frameName);
+  if (!group) {
+    return;
+  }
+  if (
+    performerLineConnections(wsServer.connections, session.id, line.id)
+      .length === 0
+  ) {
+    return; // an empty line can't vote — never park it (nor is it waited for)
+  }
+  if (!groupWaitState(session, group).waiting) {
+    return;
+  }
+  line.isGroupWaiting = true;
+  sendToLine(session, line.id, 0, {
+    m: MESSAGES.MSG_BARRIER_WAITING,
+    frame: frameName,
+    group,
+  });
+  notifyAdminsBarriers(session);
+  await session.saveSessionStateToFile();
+}
+
+// Group-parked active lines keyed by their frame's group. A line whose frame is
+// no longer grouped (score reloaded under saved state) surfaces under `null`
+// and is released unconditionally by tryReleaseGroupWaits.
+function groupWaitParkedByGroup(session) {
+  const byGroup = new Map();
+  for (const l of activeLines(session)) {
+    if (!l.isGroupWaiting) {
+      continue;
+    }
+    const group = groupOfCurrentFrame(session, l);
+    if (!byGroup.has(group)) {
+      byGroup.set(group, []);
+    }
+    byGroup.get(group).push(l);
+  }
+  return byGroup;
+}
+
+async function releaseGroupWaitLines(session, lines) {
+  for (const l of lines) {
+    l.isGroupWaiting = false;
+    sendToLine(session, l.id, 0, {
+      m: MESSAGES.MSG_BARRIER_RELEASED,
+      frame: frameNameForLine(session, l),
+    });
+  }
+  notifyAdminsBarriers(session);
+  await session.saveSessionStateToFile();
+}
+
+// Re-check every group with parked lines and release the ones whose wait has
+// dissolved. Called on the edges where the waiting set can shrink: every
+// landing, dormancy, hold-until release, SM jump, post-restart rehydration.
+async function tryReleaseGroupWaits(session) {
+  if (!session.hasSessionLines) {
+    return;
+  }
+  for (const [group, lines] of groupWaitParkedByGroup(session)) {
+    if (group == null || !groupWaitState(session, group).waiting) {
+      await releaseGroupWaitLines(session, lines);
+    }
+  }
+}
+
+function sendUpdateVotingToClient(conn, session, line) {
+  const countDic = countVoteForLine(session, line);
   const timestamp = new Date().getTime();
   sendToClient(conn, 0, {
     m: MESSAGES.MSG_UPDATE_VOTING,
@@ -210,11 +1572,35 @@ const isValidVote = (vote) => {
   );
 };
 
-function countVoteForSession(session) {
-  const listConn = wsServer.connections.filter(
-    (conn) => conn.sessionId === session.id,
-  );
-  const voteData = listConn.map((o) => o.currentVoteTo).filter(isValidVote);
+function isValidVoteForLine(session, line, vote) {
+  if (!isValidVote(vote)) {
+    return false;
+  }
+  if (!session.hasSessionLines) {
+    return true;
+  }
+  if (vote === "stay") {
+    return true;
+  }
+  return outgoingVoteIdsForLine(session, line).includes(String(vote));
+}
+
+function winningVoteIdForLine(session, line, votingData) {
+  const winningVoteId = votingData && votingData.winningVoteId;
+  if (isValidVoteForLine(session, line, winningVoteId)) {
+    return winningVoteId;
+  }
+  return defaultOutgoingVoteIdForLine(session, line);
+}
+
+// Tally votes for one line: only connections bound to line.id count, and the
+// leader-stabilization state lives on the line. With a single line this is
+// exactly today's session-wide tally.
+function countVoteForLine(session, line) {
+  const listConn = lineConnections(wsServer.connections, session.id, line.id);
+  const voteData = listConn
+    .map((o) => o.currentVoteTo)
+    .filter((vote) => isValidVoteForLine(session, line, vote));
   const counts = {};
 
   for (const frameIdx of voteData) {
@@ -223,6 +1609,26 @@ function countVoteForSession(session) {
     } else {
       counts[frameIdx] = 1;
     }
+  }
+
+  if (voteData.length === 0) {
+    // Votes live on websocket connections; if a voting device reconnects before
+    // close, the active tally can go empty. Keep this window's last real tally
+    // so the rest of the line still advances instead of falling back to STAY.
+    if (line._lastVoteCounts) {
+      return { ...line._lastVoteCounts };
+    }
+    if (isValidVoteForLine(session, line, line.currWinningId)) {
+      counts.winningVoteId = line.currWinningId;
+    } else {
+      const defaultVoteId = isSplitFrame(session, line)
+        ? null
+        : defaultOutgoingVoteIdForLine(session, line);
+      if (defaultVoteId) {
+        counts.winningVoteId = defaultVoteId;
+      }
+    }
+    return counts;
   }
 
   const winningVoteCount = Math.max(...Object.values(counts));
@@ -235,18 +1641,19 @@ function countVoteForSession(session) {
 
   // Select random winning note in case 2 or more notes have the same vote count
   if (
-    session.currWinningId &&
-    winningVoteIds.includes(session.currWinningId) &&
-    session.previousWinningCount === winningVoteIds.length
+    line.currWinningId &&
+    winningVoteIds.includes(line.currWinningId) &&
+    line.previousWinningCount === winningVoteIds.length
   ) {
-    counts.winningVoteId = session.currWinningId;
+    counts.winningVoteId = line.currWinningId;
   } else {
     const randomWinningIdx = Math.floor(Math.random() * winningVoteIds.length);
     counts.winningVoteId = winningVoteIds[randomWinningIdx];
   }
 
-  session.previousWinningCount = winningVoteIds.length;
-  session.currWinningId = counts.winningVoteId;
+  line.previousWinningCount = winningVoteIds.length;
+  line.currWinningId = counts.winningVoteId;
+  line._lastVoteCounts = { ...counts };
 
   return counts;
 }
@@ -265,216 +1672,866 @@ const parseCustomDur = (defaultDur, customDur) => {
   }
 };
 
-async function startVotingForSessionWithDelay(session, timeDelay, customDur) {
+async function startVotingForSessionWithDelay(
+  session,
+  line,
+  timeDelay,
+  customDur,
+  skipGroupSync = false,
+) {
   const sessionId = session.id;
-  session.currentVotingDuration = customDur
+  line.currentVotingDuration = customDur
     ? parseCustomDur(session.votingDuration, customDur)
     : session.votingDuration;
-  session.currentBeginTimeStamp = Date.now() + timeDelay;
-  session.currentEndTimeStamp =
-    session.currentBeginTimeStamp + session.currentVotingDuration * 1000;
-  session.isVoting = true;
-  session.isStandby = false;
+  line.currentBeginTimeStamp = Date.now() + timeDelay;
+  line.currentEndTimeStamp =
+    line.currentBeginTimeStamp + line.currentVotingDuration * 1000;
+  line.isVoting = true;
+  line.isStandby = false;
+  line.currWinningId = undefined;
+  line.previousWinningCount = 0;
+  line._lastVoteCounts = null;
 
   //start voting data timer
-  session.votingTimeStamp = 0;
-  session.didSendStopVoting = false;
-  session.votingTimer = setInterval(
-    async (session) => {
-      session.votingTimeStamp += session.synTimeInterval * 1000;
+  line.votingTimeStamp = 0;
+  line.didSendStopVoting = false;
+  line.votingTimer = setInterval(
+    async (session, line) => {
+      line.votingTimeStamp += session.synTimeInterval * 1000;
 
-      if (session.didSendStopVoting) {
-        clearInterval(session.votingTimer);
-        session.votingTimer = null;
+      if (line.didSendStopVoting) {
+        clearInterval(line.votingTimer);
+        line.votingTimer = null;
         return;
       }
 
-      const countDic = countVoteForSession(session);
+      const countDic = countVoteForLine(session, line);
       const timestamp = new Date().getTime();
-      sendToAllClients(session, 0, {
+      sendToLine(session, line.id, 0, {
         m: MESSAGES.MSG_UPDATE_VOTING,
         countDic,
         timestamp,
       });
 
       if (
-        !session.didSendStopVoting &&
-        session.votingTimeStamp >= (session.currentVotingDuration - 1) * 1000
+        !line.didSendStopVoting &&
+        line.votingTimeStamp >= (line.currentVotingDuration - 1) * 1000
       ) {
-        await stopVotingForSession(session);
-        session.didSendStopVoting = true;
+        await stopVotingForSession(session, line);
+        line.didSendStopVoting = true;
       }
 
-      if (session.votingTimeStamp >= session.currentVotingDuration * 1000) {
-        clearInterval(session.votingTimer);
-        session.votingTimer = null;
+      if (line.votingTimeStamp >= line.currentVotingDuration * 1000) {
+        clearInterval(line.votingTimer);
+        line.votingTimer = null;
       }
     },
     session.synTimeInterval * 1000,
     session,
+    line,
   );
 
   await session.saveSessionStateToFile();
 
   wsServer.connections.forEach((conn) => {
-    if (conn.sessionId === sessionId) {
+    if (conn.sessionId === sessionId && conn.lineId === line.id) {
       conn.currentVoteTo = -1;
     }
   });
 
-  sendToAllClients(session, 0, {
+  sendToLine(session, line.id, 0, {
     m: MESSAGES.MSG_BEGIN_VOTING,
-    endTime: session.currentEndTimeStamp,
-    duration: session.currentVotingDuration,
+    endTime: line.currentEndTimeStamp,
+    duration: line.currentVotingDuration,
   });
+
+  // Session Lines: a track-group's voting windows are time-synchronized. When a
+  // line on a grouped frame starts voting, open matching windows on the other
+  // votable co-group lines (same duration), so the group closes together (L).
+  if (session.hasSessionLines && !skipGroupSync) {
+    await openCoGroupWindows(session, line);
+  }
+
+  // Admin map: voting is a between-landings state change, so the per-line
+  // snapshot must be re-pushed here (vanilla map reads MSG_BEGIN_VOTING itself).
+  if (session.hasSessionLines) {
+    updateNumberOfConnectionForSession(session);
+  }
 }
 
-async function stopVotingForSession(session) {
+// The track group of a line's current (main-flow) frame, or null.
+function groupOfCurrentFrame(session, line) {
+  if (!session.hasSessionLines || line.subStack.length > 0) {
+    return null;
+  }
+  return orch.groupOfFrame(session.graph, frameNameForLine(session, line));
+}
+
+// Start synchronized voting windows on the co-group lines of `initiator`.
+async function openCoGroupWindows(session, initiator) {
+  const group = groupOfCurrentFrame(session, initiator);
+  if (!group) {
+    return;
+  }
+  const groupFrames = orch.groupFramesLower(session.graph, group);
+  const coLines = orch
+    .linesOnGroupFrames(
+      activeLines(session),
+      (l) => frameNameForLine(session, l),
+      groupFrames,
+    )
+    .filter(
+      (l) =>
+        l.id !== initiator.id &&
+        l.subStack.length === 0 &&
+        !l.isVoting &&
+        !l.isStandby &&
+        !l.isBarrierWaiting &&
+        !l.isGroupWaiting,
+    );
+
+  // Match the initiator's resolved duration exactly (decision #3: initiator's
+  // duration). skipGroupSync=true so co-lines don't recursively re-open windows.
+  const syncDur = String(initiator.currentVotingDuration);
+  for (const l of coLines) {
+    await startVotingForSessionWithDelay(session, l, 100, syncDur, true);
+  }
+}
+
+// Resolve a whole track group at window close. Across all grouped lines' tallies
+// pick the single global-max (random tiebreak); if it is a STAY, every grouped
+// line stays; otherwise each line advances to its own link winner — except a
+// line on a split frame, which divides via resolveSplit (balanced children)
+// rather than moving whole. Each surviving line's winningVoteId is set so the
+// client glow follows (no client change).
+async function resolveGroupVoting(session, line) {
+  const group = groupOfCurrentFrame(session, line);
+  const groupFrames = orch.groupFramesLower(session.graph, group);
+  const groupLines = orch
+    .linesOnGroupFrames(
+      activeLines(session),
+      (l) => frameNameForLine(session, l),
+      groupFrames,
+    )
+    // A group-parked line took no part in this round (arrival barrier) — don't
+    // sweep it into the resolution; it votes from the group's next round on.
+    .filter((l) => l.subStack.length === 0 && !l.isGroupWaiting);
+  if (!groupLines.includes(line)) {
+    groupLines.push(line);
+  }
+
+  // Stop every grouped line's window so their own timers don't double-resolve.
+  for (const l of groupLines) {
+    if (l.votingTimer) {
+      clearInterval(l.votingTimer);
+      l.votingTimer = null;
+    }
+    l.isVoting = false;
+    l.didSendStopVoting = true;
+  }
+
+  // Global stay decision across the group. Tally each line ONCE (the tally
+  // mutates the line's leader-stabilization state and re-randomizes ties) and
+  // reuse the same counts for the per-line link winner below.
+  const countsByLine = new Map();
+  const tallies = groupLines.map((l) => {
+    const counts = countVoteForLine(session, l);
+    countsByLine.set(l.id, counts);
+    const stripped = { ...counts };
+    delete stripped.winningVoteId;
+    return { lineId: l.id, counts: stripped };
+  });
+  const { isStay } = orch.resolveGroupStay(tallies, () => Math.random());
+
+  for (const l of groupLines) {
+    // A grouped SPLIT frame still divides its line when the group advances
+    // (decided 2026-07-17): delegate to resolveSplit — choosers land on their
+    // tapped child, stragglers are balanced across the children — instead of
+    // moving the whole line to a single link winner. A global STAY brakes the
+    // split like any other grouped line (falls through to the stay handling
+    // below). Must run before this line's votes are cleared: resolveSplit
+    // reads conn.currentVoteTo for the choices.
+    if (!isStay && isSplitFrame(session, l)) {
+      await resolveSplit(session, l);
+      continue;
+    }
+
+    l.isStandby = true;
+    if (session.holdDuration > 0) {
+      l.isHolding = true;
+    }
+
+    // The tally computed above, BEFORE clearing votes (resetting first would
+    // wipe the link winner, so groupLinkWinner returns null and every grouped
+    // line falls through to STAY — the frame counts down and never advances).
+    const counts = countsByLine.get(l.id);
+    let winningId;
+    let targetIdx;
+    if (isStay) {
+      winningId = "stay";
+      targetIdx = l.currentIndex;
+    } else {
+      const linkWinner = orch.groupLinkWinner(counts, () => Math.random());
+      if (linkWinner == null) {
+        const defaultVoteId = defaultOutgoingVoteIdForLine(session, l);
+        if (defaultVoteId == null) {
+          winningId = "stay";
+          targetIdx = l.currentIndex;
+        } else {
+          winningId = defaultVoteId;
+          targetIdx = Number(defaultVoteId.split("#")[0]);
+        }
+      } else {
+        winningId = linkWinner;
+        targetIdx = Number(linkWinner.split("#")[0]);
+      }
+    }
+    l.currWinningId = winningId;
+
+    // Now clear this line's client votes for the next window.
+    wsServer.connections.forEach((conn) => {
+      if (conn.sessionId === session.id && conn.lineId === l.id) {
+        conn.currentVoteTo = -1;
+      }
+    });
+
+    // Final glow update: the client follows countDic.winningVoteId.
+    counts.winningVoteId = winningId;
+    sendToLine(session, l.id, 0, {
+      m: MESSAGES.MSG_UPDATE_VOTING,
+      countDic: counts,
+      timestamp: new Date().getTime(),
+    });
+
+    // A grouped line whose link winner is a session-sub-start link dives into
+    // its sub (the group advanced; this line's advance IS the dive).
+    const subLink =
+      winningId === "stay"
+        ? null
+        : subLinkForAdvanceTarget(session, l, targetIdx);
+    if (winningId !== "stay" && !subLink) {
+      l.setCurrIdxTo(targetIdx);
+    }
+
+    l.standbyTimer = setTimeout(
+      async (session, l) => {
+        l.isStandby = false;
+        if (session.holdDuration > 0) {
+          await startHoldingForSessionWithDelay(session, l, 0);
+        }
+        l.standbyTimer = null;
+        await session.saveSessionStateToFile();
+      },
+      1000,
+      session,
+      l,
+    );
+
+    emitHistoryToAdmins(session, l);
+
+    if (subLink) {
+      await diveViaSubLink(session, l, subLink);
+    } else if (winningId !== "stay") {
+      await showLineAfterArrivalIfNeeded(session, l);
+    }
+  }
+
+  await session.saveSessionStateToFile();
+  // Admin map: a global STAY resolves without any landing, so no snapshot went
+  // out — push one so the voting glyphs clear (extra one on advance is fine).
+  updateNumberOfConnectionForSession(session);
+}
+
+async function stopVotingForSession(session, line) {
   // Clear the voting timer immediately to stop sending MSG_UPDATE_VOTING
-  if (session.votingTimer) {
-    clearInterval(session.votingTimer);
-    session.votingTimer = null;
+  if (line.votingTimer) {
+    clearInterval(line.votingTimer);
+    line.votingTimer = null;
   }
 
   // Additional safety: ensure voting state is properly reset
-  session.isVoting = false;
-  session.didSendStopVoting = true;
+  line.isVoting = false;
+  line.didSendStopVoting = true;
 
-  session.isStandby = true;
+  // Session Lines: a window closing on a track-grouped frame resolves the whole
+  // group together (global-stay override). Checked BEFORE the split path so a
+  // grouped split frame gets the same resolution no matter whose synchronized
+  // window happens to close first — resolveGroupVoting runs the global-stay
+  // contest and delegates split-frame lines to resolveSplit itself.
+  if (groupOfCurrentFrame(session, line)) {
+    await resolveGroupVoting(session, line);
+    return;
+  }
+
+  // Session Lines: a choice window closing on a split frame divides the line
+  // instead of advancing it. (Gated — vanilla scores never reach this.)
+  if (isSplitFrame(session, line)) {
+    await resolveSplit(session, line);
+    return;
+  }
+
+  line.isStandby = true;
   if (session.holdDuration > 0) {
-    session.isHolding = true;
+    line.isHolding = true;
   }
 
   //stand by signal
-  const votingData = countVoteForSession(session);
+  const votingData = countVoteForLine(session, line);
+  const winningVoteId = winningVoteIdForLine(session, line, votingData);
   const mostVoteRingId =
-    votingData.winningVoteId === "stay"
-      ? session.currentIndex
+    winningVoteId === "stay"
+      ? line.currentIndex
       : // ID should follow format: nextVoteId#currFileName#aEleIndex
-        Number(votingData.winningVoteId?.split("#")[0] ?? session.currentIndex);
+        Number(winningVoteId?.split("#")[0] ?? line.currentIndex);
 
-  // Reset all client votes
+  // Reset this line's client votes
   wsServer.connections.forEach((conn) => {
-    if (conn.sessionId === session.id) {
+    if (conn.sessionId === session.id && conn.lineId === line.id) {
       conn.currentVoteTo = -1;
     }
   });
 
-  session.setCurrIdxTo(mostVoteRingId);
+  // Session Lines: a winning session-sub-start link DIVES into its sub-score
+  // instead of moving (the link's href is the return landing, reached on exit).
+  const subLink =
+    winningVoteId === "stay"
+      ? null
+      : subLinkForAdvanceTarget(session, line, mostVoteRingId);
+  if (!subLink) {
+    line.setCurrIdxTo(mostVoteRingId);
+  }
   //unlock
-  session.standbyTimer = setTimeout(
-    async (session) => {
-      session.isStandby = false;
+  line.standbyTimer = setTimeout(
+    async (session, line) => {
+      line.isStandby = false;
       if (session.holdDuration > 0) {
-        await startHoldingForSessionWithDelay(session, 0);
+        await startHoldingForSessionWithDelay(session, line, 0);
       }
-      session.standbyTimer = null;
+      line.standbyTimer = null;
       await session.saveSessionStateToFile();
     },
     1000,
     session,
+    line,
   );
   await session.saveSessionStateToFile();
 
-  sendToAllAdmins(session, 0, {
-    m: MESSAGES.MSG_SELECT_HISTORY,
-    history: session.history,
-    selectedIdx: session.historyIndex,
-  });
+  emitHistoryToAdmins(session, line);
 
-  if (!session.isPause) {
-    const timestamp = new Date().getTime() + session.preloadDuration;
-    sendToAllClients(session, timestamp, {
-      m: MESSAGES.MSG_SHOW,
-      showIdx: mostVoteRingId,
-    });
+  if (subLink) {
+    await diveViaSubLink(session, line, subLink);
+  } else {
+    await showLineAfterArrivalIfNeeded(session, line);
   }
 }
 
-async function startHoldingForSessionWithDelay(session, delay) {
-  session.isHolding = true;
+async function startHoldingForSessionWithDelay(session, line, delay) {
+  line.isHolding = true;
   //holding cooldown
-  session.currentHoldingDuration = session.nextFrameHoldingDur
-    ? parseCustomDur(session.holdDuration, session.nextFrameHoldingDur)
+  line.currentHoldingDuration = line.nextFrameHoldingDur
+    ? parseCustomDur(session.holdDuration, line.nextFrameHoldingDur)
     : session.holdDuration;
-  session.nextFrameHoldingDur = null;
-  session.currentBeginHoldTimeStamp = new Date().getTime() + delay;
-  session.currentEndHoldTimeStamp =
-    session.currentBeginHoldTimeStamp + session.currentHoldingDuration * 1000;
+  line.nextFrameHoldingDur = null;
+  line.currentBeginHoldTimeStamp = new Date().getTime() + delay;
+  line.currentEndHoldTimeStamp =
+    line.currentBeginHoldTimeStamp + line.currentHoldingDuration * 1000;
 
   //unlock
-  session.holdingTimer = setTimeout(
-    async (session) => {
-      session.isHolding = false;
+  line.holdingTimer = setTimeout(
+    async (session, line) => {
+      line.isHolding = false;
       sendToAllAdmins(session, 0, {
         m: MESSAGES.MSG_CHECK_HOLD,
-        isHold: session.isHolding,
+        isHold: line.isHolding,
       });
-      session.holdingTimer = null;
+      line.holdingTimer = null;
+      // Rendezvous (#6): the frame's own holding period just ended — its
+      // targets are now fully satisfied; re-check open barriers.
+      if (recordHoldEnded(session, line)) {
+        await tryReleaseBarriers(session);
+      }
+      // Track-group hold sync (2026-07-20): a group parked on this occupant's
+      // hold releases only now that it ended — the hold-end edge where the
+      // group's blocked set shrinks. Releases when the LAST occupant unholds.
+      await tryReleaseGroupWaits(session);
       await session.saveSessionStateToFile();
+      // Admin map: hold ended between landings — refresh the holding flags.
+      if (session.hasSessionLines) {
+        updateNumberOfConnectionForSession(session);
+      }
     },
-    session.currentHoldingDuration * 1000,
+    line.currentHoldingDuration * 1000,
     session,
+    line,
   );
   await session.saveSessionStateToFile();
 
   sendToAllAdmins(session, 0, {
     m: MESSAGES.MSG_CHECK_HOLD,
-    isHold: session.isHolding,
+    isHold: line.isHolding,
   });
-  sendToAllClients(session, 0, {
+  sendToLine(session, line.id, 0, {
     m: MESSAGES.MSG_BEGIN_HOLDING,
-    endTime: session.currentEndHoldTimeStamp,
-    duration: session.currentHoldingDuration,
+    endTime: line.currentEndHoldTimeStamp,
+    duration: line.currentHoldingDuration,
   });
 }
 
-async function jumpScoreForSession(session, value) {
-  if (session.isHolding && session.holdingTimer != null) {
-    await cancelHoldingTimer(session, 1);
+async function clearLinePhaseForRoomRewind(session, line) {
+  if (line.isHolding || line.holdingTimer != null) {
+    if (line.holdingTimer != null) {
+      await cancelHoldingTimer(session, line, 1);
+    } else {
+      sendToLine(session, line.id, 0, {
+        m: MESSAGES.MSG_BEGIN_HOLDING,
+        endTime: 0,
+        duration: 1,
+      });
+    }
+    line.isHolding = false;
+    line.holdingTimer = null;
   }
-  if (session.standbyTimer) {
-    clearTimeout(session.standbyTimer);
-    await session.patchState({ standbyTimer: null }, true);
-  }
-  if (session.isVoting && session.votingTimer != null) {
-    await cancelVotingTimer(session);
-  }
-  //---------
-  const filename = session.history[value];
-  const index = session.listFilesInLowerCase.indexOf(filename.toLowerCase());
-  session.historyIndex = value;
-  session.setCurrIdxTo(index);
-  await session.saveSessionStateToFile();
 
-  sendToAllAdmins(session, 0, {
-    m: MESSAGES.MSG_SELECT_HISTORY,
-    history: session.history,
-    selectedIdx: session.historyIndex,
+  if (line.standbyTimer) {
+    clearTimeout(line.standbyTimer);
+  }
+  line.standbyTimer = null;
+  line.isStandby = false;
+
+  if (line.isVoting || line.votingTimer != null) {
+    if (line.votingTimer != null) {
+      await cancelVotingTimer(session, line);
+    } else {
+      sendToLine(session, line.id, 0, {
+        m: MESSAGES.MSG_BEGIN_VOTING,
+        endTime: 0,
+        duration: 0,
+      });
+    }
+    line.isVoting = false;
+    line.votingTimer = null;
+    line.currWinningId = undefined;
+    line.previousWinningCount = 0;
+    line._lastVoteCounts = null;
+  }
+
+  wsServer.connections.forEach((conn) => {
+    if (conn.sessionId === session.id && conn.lineId === line.id) {
+      conn.currentVoteTo = -1;
+    }
   });
+}
+
+async function roomRewind(session, group) {
+  if (!session.hasSessionLines || !session.graph || !session.graph.groups) {
+    return;
+  }
+  const lines = nonRetiredLines(session);
+  const plan = orch.roomRewindPlan({
+    group,
+    groups: session.graph.groups,
+    checkpointLines: populatedRewindCheckpointLines(session, lines),
+    lines: lines.map(rewindLineSnapshot),
+  });
+  if (!plan) {
+    return;
+  }
+
+  const byLineId = new Map(plan.lines.map((p) => [p.lineId, p]));
+  const landings = [];
+  for (const line of lines) {
+    const entry = byLineId.get(line.id);
+    if (!entry) {
+      return;
+    }
+    const idx = session.listFilesInLowerCase.indexOf(
+      String(entry.frame).toLowerCase(),
+    );
+    if (idx < 0) {
+      return;
+    }
+    landings.push({
+      line,
+      index: idx,
+      frame: session.listFiles[idx],
+      source: entry.source,
+      historyIndex: entry.historyIndex,
+    });
+  }
+
+  const landingHoldTargets = [];
+  const seenHoldTarget = new Set();
+  for (const landing of landings) {
+    for (const target of (session.graph.holdUntilTargets || {})[
+      landing.frame
+    ] || []) {
+      const key = String(target).toLowerCase();
+      if (!seenHoldTarget.has(key)) {
+        seenHoldTarget.add(key);
+        landingHoldTargets.push(target);
+      }
+    }
+  }
+
+  const parkedAt = new Map();
+  for (const { line } of landings) {
+    parkedAt.set(
+      line.id,
+      line.isBarrierWaiting || line.isGroupWaiting
+        ? frameNameForLine(session, line)
+        : null,
+    );
+    await clearLinePhaseForRoomRewind(session, line);
+    while (line.subStack.length > 0) {
+      line.exitSub();
+    }
+  }
+
+  orch.beginReachedGeneration(session, landingHoldTargets);
+
+  for (const { line, index, frame, source, historyIndex } of landings) {
+    const wasGroupParked = line.isGroupWaiting === true;
+    line.isGroupWaiting = false;
+    if (orch.unparkLine(session, line) || wasGroupParked) {
+      sendToLine(session, line.id, 0, {
+        m: MESSAGES.MSG_BARRIER_RELEASED,
+        frame: parkedAt.get(line.id),
+      });
+    }
+    line._lastReachedRef = null;
+    if (source === "history") {
+      line.historyIndex = historyIndex;
+    }
+    line.setCurrIdxTo(index);
+    recordArrival(session, line);
+
+    if (orch.groupOfFrame(session.graph, frame)) {
+      session.latestGroupArrival = { frame, at: Date.now() };
+    }
+  }
+
+  await tryReleaseBarriers(session);
+  await tryReleaseGroupWaits(session);
+  await session.saveSessionStateToFile();
+  notifyAdminsBarriers(session);
+  pushAdminHistory(session);
+  updateNumberOfConnectionForSession(session);
 
   if (!session.isPause) {
-    sendToAllClients(session, Date.now() + session.preloadDuration, {
+    for (const { line, index } of landings) {
+      sendToLine(session, line.id, Date.now() + session.preloadDuration, {
+        m: MESSAGES.MSG_SHOW,
+        showIdx: index,
+      });
+    }
+  }
+}
+
+// Structural split rewind (2026-07-19): collapse every current descendant of
+// one split instance back into its original parent at the split frame. Nested
+// descendant splits collapse recursively through splitAncestors. A split event
+// crossed by a later outside merge is refused by splitRewindPlan — that merged
+// population cannot be separated safely without per-device ancestry.
+//
+// Unlike a room-checkpoint rewind, this is a SUBTREE rewind: unrelated lines do
+// not move, so the room's reached registry + latestGroupArrival stay intact.
+async function splitRewind(session, eventId, expectedFrame) {
+  if (!session.hasSessionLines) {
+    return;
+  }
+  const plan = orch.splitRewindPlan({
+    splitEvents: session.splitEvents,
+    lines: session.lines,
+    eventId,
+    expectedFrame,
+  });
+  if (!plan.available) {
+    return;
+  }
+
+  // Synchronous phase cleanup before any connection changes: old child tabs
+  // must receive cancellation / banner-release messages while still addressed
+  // to their child line ids. No await here, so the topology guard cannot race
+  // a landing between validation and commit.
+  for (const line of plan.descendants) {
+    cancelAttritionTimer(line);
+    if (line.isHolding || line.holdingTimer != null) {
+      sendToLine(session, line.id, 0, {
+        m: MESSAGES.MSG_BEGIN_HOLDING,
+        endTime: 0,
+        duration: 1,
+      });
+    }
+    if (line.isVoting || line.votingTimer != null) {
+      sendToLine(session, line.id, 0, {
+        m: MESSAGES.MSG_BEGIN_VOTING,
+        endTime: 0,
+        duration: 0,
+      });
+    }
+    if (line.isBarrierWaiting || line.isGroupWaiting) {
+      sendToLine(session, line.id, 0, {
+        m: MESSAGES.MSG_BARRIER_RELEASED,
+        frame: frameNameForLine(session, line),
+      });
+    }
+    line.clearAllTimer();
+    line.isGroupWaiting = false;
+    orch.unparkLine(session, line);
+  }
+
+  const result = orch.rewindSplitStructure({
+    session,
+    eventId,
+    expectedFrame,
+    connections: wsServer.connections,
+  });
+  if (!result.available) {
+    return;
+  }
+
+  const parent = result.parent;
+  cancelAttritionTimer(parent);
+  parent.trackGroup = orch.groupOfFrame(session.graph, result.event.frame);
+  // Preserve the current room generation, but record the restored parent's
+  // landing in it (same landing rule as a targeted line rewind).
+  parent._lastReachedRef = null;
+  recordArrival(session, parent);
+
+  await tryReleaseBarriers(session);
+  await tryReleaseGroupWaits(session);
+  await session.saveSessionStateToFile();
+
+  // All live + map connections in the collapsed subtree now carry parent.id.
+  sendToLine(session, parent.id, 0, {
+    m: MESSAGES.MSG_LINE_ASSIGNED,
+    lineId: parent.id,
+  });
+  notifyAdminsBarriers(session);
+  pushAdminHistory(session);
+  updateNumberOfConnectionForSession(session);
+
+  if (!session.isPause) {
+    sendToLine(session, parent.id, Date.now() + session.preloadDuration, {
+      m: MESSAGES.MSG_SHOW,
+      showIdx: parent.currentIndex,
+    });
+  }
+}
+
+async function jumpScoreForSession(session, line, value) {
+  if (line.isHolding && line.holdingTimer != null) {
+    await cancelHoldingTimer(session, line, 1);
+  }
+  if (line.standbyTimer) {
+    clearTimeout(line.standbyTimer);
+    line.standbyTimer = null;
+    await session.saveSessionStateToFile();
+  }
+  if (line.isVoting && line.votingTimer != null) {
+    await cancelVotingTimer(session, line);
+  }
+  //---------
+  const filename = line.history[value];
+  if (filename == null) {
+    return;
+  }
+  const index = session.listFilesInLowerCase.indexOf(filename.toLowerCase());
+  if (index < 0) {
+    return;
+  }
+  // Captured BEFORE the playhead moves: the barrier/group frame a parked line
+  // is being rewound away from (its devices' "waiting" banner must be dismissed).
+  const parkedAtFrame =
+    session.hasSessionLines && (line.isBarrierWaiting || line.isGroupWaiting)
+      ? frameNameForLine(session, line)
+      : null;
+
+  line.historyIndex = value;
+  line.setCurrIdxTo(index);
+
+  // Session Lines (open-item decisions, 2026-07-07): an SM jump is a REWIND.
+  if (session.hasSessionLines) {
+    // R4: a jumped line must not stay parked at the barrier it left — un-park
+    // it and drop it from every barrier entry (deleting emptied entries). The
+    // same rule applies to a group-arrival park.
+    const wasGroupParked = line.isGroupWaiting === true;
+    line.isGroupWaiting = false;
+    if (orch.unparkLine(session, line) || wasGroupParked) {
+      // The client only hides its barrier banner on MSG_BARRIER_RELEASED —
+      // without this the jumped line's devices keep "waiting…" forever.
+      sendToLine(session, line.id, 0, {
+        m: MESSAGES.MSG_BARRIER_RELEASED,
+        frame: parkedAtFrame,
+      });
+      notifyAdminsBarriers(session);
+    }
+    // Registry generation (S2 option (b)): everything reached so far belongs
+    // to the pre-rewind story, so barriers met after the rewind gate like
+    // first passes — except the barrier AT the landing frame itself, which the
+    // room already passed: its targets are pre-satisfied so it stays unlocked.
+    const landedFrame = session.listFiles[index];
+    orch.beginReachedGeneration(
+      session,
+      (session.graph.holdUntilTargets || {})[landedFrame],
+    );
+    // Seed the fresh registry with the landing itself; the pre-rewind frame
+    // this line sat on must NOT leak into the new generation as "done".
+    line._lastReachedRef = null;
+    recordArrival(session, line);
+    // The rewind landing is the room's newest position of record — a grouped
+    // landing re-arms the revival fast-forward target beginReachedGeneration
+    // just cleared (decision #13 revision, 2026-07-18).
+    if (orch.groupOfFrame(session.graph, landedFrame)) {
+      session.latestGroupArrival = { frame: landedFrame, at: Date.now() };
+    }
+    // Pre-satisfied landing targets may release barriers parked elsewhere.
+    await tryReleaseBarriers(session);
+    // The jumped line's position changed — group waits it was incoming to may
+    // dissolve. (Deliberately NOT parking at the LANDING frame's group: an SM
+    // jump is authoritative, mirroring the landing-barrier carve-out above.)
+    await tryReleaseGroupWaits(session);
+  }
+
+  await session.saveSessionStateToFile();
+
+  emitHistoryToAdmins(session, line);
+  // A rewind bypasses afterLineArrived, so the admin map's per-line positions
+  // must be re-pushed here or its "here" marker stays on the pre-jump frame.
+  updateNumberOfConnectionForSession(session);
+
+  if (!session.isPause) {
+    sendToLine(session, line.id, Date.now() + session.preloadDuration, {
       m: MESSAGES.MSG_SHOW,
       showIdx: index,
     });
   }
 }
 
-async function cancelHoldingTimer(session, onOff) {
-  clearTimeout(session.holdingTimer);
-  await session.patchState({ holdingTimer: null }, true);
-  sendToAllClients(session, 0, {
+// Targeted per-line rewind (owner, 2026-07-19): move ONE named line to an
+// earlier entry of its own ACTIVE trail — main flow, or within its current sub
+// dive (a sub is its own session: `history` holds the sub trail while diving,
+// so the same undo semantics apply, resolved against the sub's frame list).
+// Undo, not teleport: the target must be in the trail.
+//
+// Deliberately UNLIKE the room-wide checkpoint rewind / the old SM jump:
+//   - the rendezvous registry is NOT restarted (no beginReachedGeneration) —
+//     the ROOM did not rewind, one line did, so everything the room reached
+//     stays valid and the replaying line passes already-satisfied barriers;
+//   - `session.latestGroupArrival` is NOT touched — the room's newest position
+//     of record is still wherever the lines ahead are, and revived dormant
+//     lines must keep fast-forwarding there, not to the rewound line;
+//   - group waits: the "passed ⇒ arrived" excusal in groupWaitState is the
+//     matching rule — the rewound line replays through groups the room passed
+//     without wedging (its own truncated trail makes it re-arrive for real).
+async function lineRewind(session, lineId, value, expectedFrame) {
+  const line = (session.lines || []).find((l) => l && l.id === lineId);
+  if (!line || line.status === "retired") {
+    return;
+  }
+  const filename = line.history[value];
+  if (filename == null) {
+    return;
+  }
+  // Race guard: the SM menu was built from a trail snapshot — if the line
+  // moved (or exited its sub, swapping `history` back to the main trail)
+  // since, the index no longer names the clicked frame; refuse rather than
+  // land somewhere unintended.
+  if (
+    expectedFrame &&
+    filename.toLowerCase() !== String(expectedFrame).toLowerCase()
+  ) {
+    return;
+  }
+  // Resolve within the line's ACTIVE frame list (sub-aware — the counterpart
+  // of BMLine.activeFrameList, which setCurrIdxTo pushes from).
+  const top = line.subStack[line.subStack.length - 1];
+  const sub = top && session.subFrames && session.subFrames[top.score];
+  if (top && !sub) {
+    return; // score reloaded without this sub — nothing safe to resolve
+  }
+  const frameList = sub ? sub.frameList : session.listFiles;
+  const index = frameList.findIndex(
+    (f) => f.toLowerCase() === filename.toLowerCase(),
+  );
+  if (index < 0) {
+    return;
+  }
+
+  if (line.isHolding && line.holdingTimer != null) {
+    await cancelHoldingTimer(session, line, 1);
+  }
+  if (line.standbyTimer) {
+    clearTimeout(line.standbyTimer);
+    line.standbyTimer = null;
+  }
+  if (line.isVoting && line.votingTimer != null) {
+    await cancelVotingTimer(session, line);
+  }
+
+  // Captured BEFORE the playhead moves (in-sub lines are never parked, so
+  // this only fires for main-flow rewinds).
+  const parkedAtFrame =
+    line.isBarrierWaiting || line.isGroupWaiting
+      ? frameNameForLine(session, line)
+      : null;
+
+  line.historyIndex = value;
+  line.setCurrIdxTo(index);
+
+  // R4, same as the room rewind: a rewound line must not stay parked at the
+  // barrier/group it left — and its devices' "waiting" banner only clears on
+  // MSG_BARRIER_RELEASED.
+  const wasGroupParked = line.isGroupWaiting === true;
+  line.isGroupWaiting = false;
+  if (orch.unparkLine(session, line) || wasGroupParked) {
+    sendToLine(session, line.id, 0, {
+      m: MESSAGES.MSG_BARRIER_RELEASED,
+      frame: parkedAtFrame,
+    });
+    notifyAdminsBarriers(session);
+  }
+
+  // Seed the CURRENT generation with the landing (registry kept — see above).
+  // The pre-rewind frame must not be upgraded to "done" as if the line had
+  // departed it normally: mid-hold refs stay "arrived".
+  line._lastReachedRef = null;
+  recordArrival(session, line);
+  await tryReleaseBarriers(session);
+  // The rewound line may have stepped off a group frame / become incoming
+  // again; waits it participated in must re-evaluate. (Deliberately NOT
+  // parking at the LANDING frame's group: an SM rewind is authoritative,
+  // mirroring jumpScoreForSession and roomRewind.)
+  await tryReleaseGroupWaits(session);
+
+  await session.saveSessionStateToFile();
+  emitHistoryToAdmins(session, line);
+  updateNumberOfConnectionForSession(session);
+
+  if (!session.isPause) {
+    sendToLine(session, line.id, Date.now() + session.preloadDuration, {
+      m: MESSAGES.MSG_SHOW,
+      showIdx: index,
+    });
+  }
+}
+
+async function cancelHoldingTimer(session, line, onOff) {
+  clearTimeout(line.holdingTimer);
+  line.holdingTimer = null;
+  await session.saveSessionStateToFile();
+  sendToLine(session, line.id, 0, {
     m: MESSAGES.MSG_BEGIN_HOLDING,
     endTime: 0,
     duration: onOff,
   });
 }
 
-async function cancelVotingTimer(session) {
-  clearInterval(session.votingTimer);
-  await session.patchState({ votingTimer: null }, true);
-  sendToAllClients(session, 0, {
+async function cancelVotingTimer(session, line) {
+  clearInterval(line.votingTimer);
+  line.votingTimer = null;
+  await session.saveSessionStateToFile();
+  sendToLine(session, line.id, 0, {
     m: MESSAGES.MSG_BEGIN_VOTING,
     endTime: 0,
     duration: 0,
@@ -482,18 +2539,66 @@ async function cancelVotingTimer(session) {
 }
 
 function updateNumberOfConnectionForSession(session) {
-  const countPlayer = wsServer.connections.filter(
-    (conn) => conn.sessionId == session.id && !conn.isAdmin && conn.isStaff,
-  ).length;
-  const countRider = wsServer.connections.filter(
-    (conn) => conn.sessionId == session.id && !conn.isAdmin && !conn.isStaff,
-  ).length;
+  // An admin is a player with extra tools (L3 decision), so admins count as
+  // players here and in the per-line split below — isStaff is true for both
+  // the player and admin passwords. Map-view tabs are observation tools:
+  // never players/riders (they still appear in the raw `devices` count).
+  const performers = wsServer.connections.filter(
+    (conn) => conn.sessionId == session.id && !conn.isMapView,
+  );
+  const countPlayer = performers.filter((conn) => conn.isStaff).length;
+  const countRider = performers.filter((conn) => !conn.isStaff).length;
 
-  sendToAllAdmins(session, 0, {
+  const payload = {
     m: MESSAGES.MSG_SHOW_NUMBER_CONNECTION,
     playerCount: countPlayer,
     riderCount: countRider,
-  });
+  };
+
+  // Session Lines (Chunk M): per-line device distribution so the operator sees
+  // the room's split across lines and can spot stalled ones (dormant, or parked
+  // at a barrier). Omitted for vanilla scores → message byte-identical to today.
+  if (session.hasSessionLines) {
+    payload.splitRewinds = orch.splitRewindOptions({
+      splitEvents: session.splitEvents,
+      lines: session.lines,
+    });
+    payload.lines = session.lines
+      .filter((l) => l.status !== "retired")
+      .map((l) => {
+        const conns = lineConnections(wsServer.connections, session.id, l.id);
+        const linePerformers = conns.filter((c) => !c.isMapView);
+        const mainHistory = mainHistoryStateForLine(l);
+        return {
+          id: l.id,
+          status: l.status,
+          devices: conns.length,
+          players: linePerformers.filter((c) => c.isStaff).length,
+          riders: linePerformers.filter((c) => !c.isStaff).length,
+          frame: frameNameForLine(session, l),
+          inSub: l.subStack.length > 0,
+          sub:
+            l.subStack.length > 0
+              ? l.subStack[l.subStack.length - 1].score
+              : null,
+          waiting: !!(l.isBarrierWaiting || l.isGroupWaiting),
+          voting: !!l.isVoting,
+          holding: !!l.isHolding,
+          // Per-line history (ACTIVE context — a line inside a sub carries its
+          // sub trail), so the map can paint every line's visited trail and
+          // checkpoint, not only the receiving admin's bound line.
+          checkpoint: l.history[l.historyIndex] || null,
+          trail: l.history.slice(0, l.historyIndex + 1),
+          // Main-flow trail for room-wide checkpoint detection while a line is
+          // inside a sub; the active sub trail above still drives the overlay.
+          mainCheckpoint:
+            mainHistory.history[mainHistory.historyIndex] || null,
+          mainTrail: mainHistory.history.slice(0, mainHistory.historyIndex + 1),
+        };
+      });
+  }
+
+  sendToAllAdmins(session, 0, payload);
 }
 
 async function messageHandle(conn, message) {
@@ -511,13 +2616,32 @@ async function messageHandle(conn, message) {
     return;
   }
 
+  // Session Lines: restore barrier bookkeeping after a restart (once, cheap).
+  // Re-evaluate only AFTER the grace window — evaluating now would see zero
+  // reconnected devices, so every missing target would appear unreachable.
+  if (rehydrateBarriers(session)) {
+    setTimeout(() => {
+      tryReleaseBarriers(session)
+        .then(() => tryReleaseGroupWaits(session))
+        .catch((e) =>
+          console.error("post-rehydrate barrier check error", e),
+        );
+    }, ATTRITION_GRACE_MS);
+  }
+
   const isAdmin = password === session.adminPassword;
   if (msg === MESSAGES.MSG_PING) {
-    const { clientTime } = messageData;
+    const { clientTime, did } = messageData;
     conn.sessionId = sessionId;
     conn.isAdmin = isAdmin;
+    // The standalone /map page marks its connection (window.wsMapView): an
+    // observation tool, excluded from all population counting.
+    conn.isMapView = !!messageData.mapView;
     conn.isStaff =
       password === session.playerPassword || password === session.adminPassword;
+    // Session Lines: bind this connection to its device id + line (restores the
+    // device's line on reconnect; one line ⇒ lines[0]).
+    ensureLineAssignment(session, conn, did);
 
     sendToClient(conn, 0, {
       m: MESSAGES.MSG_PING,
@@ -528,10 +2652,13 @@ async function messageHandle(conn, message) {
   }
 
   if (msg === MESSAGES.MSG_TAP) {
+    const line = lineForConn(session, conn);
     const { selectedId } = messageData;
     if (
-      clientIndex !== session.currentIndex ||
-      session.isHolding ||
+      clientIndex !== line.currentIndex ||
+      line.isHolding ||
+      line.isBarrierWaiting ||
+      line.isGroupWaiting ||
       session.isPause ||
       !Boolean(selectedId)
     ) {
@@ -539,92 +2666,170 @@ async function messageHandle(conn, message) {
     }
 
     const { frameVotingDur, nextFrameHoldingDur } = messageData;
-    session.nextFrameHoldingDur = nextFrameHoldingDur;
+    line.nextFrameHoldingDur = nextFrameHoldingDur;
     // selectedId should have format: nextVoteId#currFileName#aEleIndex
     const [nextFrameIndex] = selectedId.split("#");
+    // Session Lines: a tap on a split frame is a CHOICE — it must always open a
+    // choice window (never the instant-advance path), so every device can pick.
+    const splitFrame = isSplitFrame(session, line);
     if (
-      frameVotingDur === "0" ||
-      frameVotingDur === "0%" ||
-      frameVotingDur === "false" ||
-      session.votingDuration === 0
+      !splitFrame &&
+      (frameVotingDur === "0" ||
+        frameVotingDur === "0%" ||
+        frameVotingDur === "false" ||
+        session.votingDuration === 0)
     ) {
-      session.setCurrIdxTo(Number(nextFrameIndex));
-      await session.saveSessionStateToFile();
-
-      sendToAllAdmins(session, 0, {
-        m: MESSAGES.MSG_SELECT_HISTORY,
-        history: session.history,
-        selectedIdx: session.historyIndex,
-      });
-      sendToAllClientsWithDelay(session, session.preloadDuration, {
-        m: MESSAGES.MSG_SHOW,
-        showIdx: session.currentIndex,
-      });
       const customHoldDur = parseCustomDur(
         session.holdDuration,
         nextFrameHoldingDur,
       );
-      if (customHoldDur > 0) {
-        await startHoldingForSessionWithDelay(session, 0);
+      // Session Lines: an instant tap on a session-sub-start link dives (same
+      // rule as a voted advance — choosing the link IS the dive).
+      const subLink = subLinkForAdvanceTarget(
+        session,
+        line,
+        Number(nextFrameIndex),
+      );
+      if (subLink) {
+        await diveViaSubLink(session, line, subLink);
+        if (customHoldDur > 0) {
+          await startHoldingForSessionWithDelay(session, line, 0);
+        }
+        return;
       }
+      line.setCurrIdxTo(Number(nextFrameIndex));
+      await session.saveSessionStateToFile();
+
+      emitHistoryToAdmins(session, line);
+      if (customHoldDur > 0) {
+        await startHoldingForSessionWithDelay(session, line, 0);
+      }
+      await showLineAfterArrivalIfNeeded(session, line);
       return;
     }
 
     //change vote of client to new value
-    if (!session.isStandby) {
-      if (!session.isVoting) {
-        await startVotingForSessionWithDelay(session, 100, frameVotingDur);
+    if (!line.isStandby) {
+      if (!line.isVoting) {
+        // A split's choice window must have a real duration even if the frame
+        // declares voting="0"/"false" — fall back to the session default.
+        const isZeroDur =
+          frameVotingDur === "0" ||
+          frameVotingDur === "0%" ||
+          frameVotingDur === "false";
+        let choiceDur = splitFrame && isZeroDur ? undefined : frameVotingDur;
+        // …and never zero-length even when the SESSION default is 0 (decision
+        // #2: bounded choice window — every device must get a chance to pick).
+        if (
+          splitFrame &&
+          !(parseCustomDur(session.votingDuration, choiceDur) > 0)
+        ) {
+          choiceDur = String(DEFAULT_SPLIT_CHOICE_DUR);
+        }
+        await startVotingForSessionWithDelay(session, line, 100, choiceDur);
       }
 
       conn.currentVoteTo = selectedId;
-      sendUpdateVotingToClient(conn, session);
+      sendUpdateVotingToClient(conn, session, line);
     }
     return;
   }
 
   if (msg === MESSAGES.MSG_NEED_DISPLAY) {
+    // Re-bind the device to its line (a reconnect re-pings then needs display;
+    // restores membership via deviceRegistry — one line ⇒ lines[0]).
+    const line = ensureLineAssignment(session, conn, messageData.did);
+
     if (!session.isPause) {
+      // Session Lines: a device reconnecting into a line that is mid-sub-session
+      // must re-fetch + re-enter the sub, not show a main-flow index.
+      const inSub = session.hasSessionLines && line.subStack.length > 0;
+      if (inSub) {
+        const top = line.subStack[line.subStack.length - 1];
+        sendToClient(conn, 0, {
+          m: MESSAGES.MSG_SUB_ENTER,
+          sub: top.score,
+          showIdx: line.currentIndex,
+        });
+      } else {
+        sendToClient(conn, 0, {
+          m: MESSAGES.MSG_SHOW,
+          showIdx: line.currentIndex,
+        });
+      }
+    }
+
+    if (
+      session.hasSessionLines &&
+      (line.isBarrierWaiting || line.isGroupWaiting)
+    ) {
       sendToClient(conn, 0, {
-        m: MESSAGES.MSG_SHOW,
-        showIdx: session.currentIndex,
+        m: MESSAGES.MSG_BARRIER_WAITING,
+        frame: frameNameForLine(session, line),
       });
     }
 
-    if (session.isVoting) {
+    if (line.isVoting) {
       conn.currentVoteTo = -1;
       sendToClient(conn, 0, {
         m: MESSAGES.MSG_BEGIN_VOTING,
-        endTime: session.currentEndTimeStamp,
-        duration: session.currentVotingDuration,
+        endTime: line.currentEndTimeStamp,
+        duration: line.currentVotingDuration,
       });
     }
 
-    if (session.isHolding) {
+    if (line.isHolding) {
       sendToClient(conn, 0, {
         m: MESSAGES.MSG_BEGIN_HOLDING,
-        endTime: session.currentEndHoldTimeStamp,
-        duration: session.currentHoldingDuration,
+        endTime: line.currentEndHoldTimeStamp,
+        duration: line.currentHoldingDuration,
       });
     }
 
     if (isAdmin) {
-      sendToClient(conn, 0, {
+      const historyPayload = {
         m: MESSAGES.MSG_SELECT_HISTORY,
-        history: session.history,
-        selectedIdx: session.historyIndex,
-      });
+        history: line.history,
+        selectedIdx: line.historyIndex,
+      };
+      // Session Lines: always available:false — the implicit bound-line
+      // rewind is retired (2026-07-19), the dropdown is a read-only trail
+      // display; room-checkpoint, targeted-line, and structural-split rewinds
+      // happen from the score map. Omitted for vanilla scores → message
+      // byte-identical to today.
+      if (session.hasSessionLines) {
+        historyPayload.available = false;
+      }
+      sendToClient(conn, 0, historyPayload);
+      // Restore the admin's barrier force-release panel on reconnect.
+      notifyAdminsBarriers(session);
     }
 
     updateNumberOfConnectionForSession(session);
-    sendToAllClients(session, 0, {
-      m: MESSAGES.MSG_CHECK_HOLD,
-      isHold: session.isHolding,
-    });
-    sendToAllClients(session, 0, {
-      m: MESSAGES.MSG_PAUSE,
-      isPause: session.isPause,
-      showIdx: session.currentIndex,
-    });
+    // Session Lines: these carry ONE line's state — broadcasting them
+    // session-wide (today's vanilla behavior) would yank every other line's
+    // display/hold indicator to this line whenever any device reconnects.
+    if (session.hasSessionLines) {
+      sendToLine(session, line.id, 0, {
+        m: MESSAGES.MSG_CHECK_HOLD,
+        isHold: line.isHolding,
+      });
+      sendToLine(session, line.id, 0, {
+        m: MESSAGES.MSG_PAUSE,
+        isPause: session.isPause,
+        showIdx: line.currentIndex,
+      });
+    } else {
+      sendToAllClients(session, 0, {
+        m: MESSAGES.MSG_CHECK_HOLD,
+        isHold: line.isHolding,
+      });
+      sendToAllClients(session, 0, {
+        m: MESSAGES.MSG_PAUSE,
+        isPause: session.isPause,
+        showIdx: line.currentIndex,
+      });
+    }
     return;
   }
 
@@ -634,16 +2839,34 @@ async function messageHandle(conn, message) {
   }
 
   if (msg === MESSAGES.MSG_CHECK_HOLD) {
-    if (session.isHolding && session.holdingTimer != null) {
-      await cancelHoldingTimer(session, 0);
-    }
-
     const { isHold } = messageData;
-    await session.patchState({ isHolding: isHold }, true);
+    // Session Lines (Chunk M): SM hold is global — apply to EVERY active line
+    // (pause / global-refresh are already global). A vanilla score has exactly
+    // one line, so this reduces to today's behavior.
+    const targetLines = session.hasSessionLines
+      ? activeLines(session)
+      : session.lines;
+    for (const line of targetLines) {
+      if (line.isHolding && line.holdingTimer != null) {
+        await cancelHoldingTimer(session, line, 0);
+      }
+      line.isHolding = isHold;
+    }
+    await session.saveSessionStateToFile();
     sendToAllClients(session, 0, {
       m: MESSAGES.MSG_CHECK_HOLD,
       isHold,
     });
+    // Track-group hold sync (2026-07-20): toggling hold OFF ends occupants'
+    // holding periods, which can release a group that was waiting on them
+    // (tryReleaseGroupWaits only releases, never parks — safe when toggling ON).
+    if (session.hasSessionLines) {
+      await tryReleaseGroupWaits(session);
+    }
+    // Admin map: every line's holding flag just flipped without a landing.
+    if (session.hasSessionLines) {
+      updateNumberOfConnectionForSession(session);
+    }
     return;
   }
 
@@ -656,19 +2879,66 @@ async function messageHandle(conn, message) {
   }
 
   if (msg === MESSAGES.MSG_PAUSE) {
+    const line = lineForConn(session, conn);
     const { isPause } = messageData;
     await session.patchState({ isPause }, true);
-    sendToAllClients(session, 0, {
-      m: MESSAGES.MSG_PAUSE,
-      isPause,
-      showIdx: session.currentIndex,
-    });
+    // Session Lines: pause is global, but each line must resume on ITS own
+    // frame — a session-wide showIdx would yank every line to the admin's.
+    if (session.hasSessionLines) {
+      for (const l of activeLines(session)) {
+        sendToLine(session, l.id, 0, {
+          m: MESSAGES.MSG_PAUSE,
+          isPause,
+          showIdx: l.currentIndex,
+        });
+      }
+    } else {
+      sendToAllClients(session, 0, {
+        m: MESSAGES.MSG_PAUSE,
+        isPause,
+        showIdx: line.currentIndex,
+      });
+    }
     return;
   }
 
   if (msg === MESSAGES.MSG_SELECT_HISTORY) {
+    if (messageData.splitEventId && session.hasSessionLines) {
+      await splitRewind(
+        session,
+        messageData.splitEventId,
+        messageData.frame,
+      );
+      return;
+    }
+    if (messageData.group && session.hasSessionLines) {
+      await roomRewind(session, messageData.group);
+      return;
+    }
+    // Targeted per-line rewind (owner, 2026-07-19): an EXPLICIT, admin-only
+    // jump of one NAMED line within its own active trail (main flow or its
+    // current sub dive). `frame` is the race guard — it must still be the
+    // trail entry at selectedIdx.
+    if (messageData.lineId != null && session.hasSessionLines) {
+      await lineRewind(
+        session,
+        messageData.lineId,
+        messageData.selectedIdx,
+        messageData.frame,
+      );
+      return;
+    }
+    // The IMPLICIT bound-line {selectedIdx} jump stays retired for
+    // session-lines rooms (decided 2026-07-19): rewinds are the room-wide
+    // {group} checkpoint rewind or the explicit {lineId} rewind above — the
+    // clients no longer offer the implicit form, but don't trust them.
+    // Vanilla scores keep {selectedIdx}: their single playhead IS the room.
+    if (session.hasSessionLines) {
+      return;
+    }
+    const line = lineForConn(session, conn);
     const { selectedIdx } = messageData;
-    await jumpScoreForSession(session, selectedIdx);
+    await jumpScoreForSession(session, line, selectedIdx);
     return;
   }
 
@@ -676,6 +2946,17 @@ async function messageHandle(conn, message) {
     sendToAllClients(session, 0, {
       m: MESSAGES.MSG_GLOBAL_REFRESH,
     });
+    return;
+  }
+
+  // Session Lines (Chunk M): admin barrier force-release (defensive valve,
+  // decision #12). The inbound MSG_BARRIER_RELEASED names the stuck barrier's
+  // frame (or none → release all waiting barriers); reuses the Chunk J release
+  // path. Inert for vanilla scores (no barriers).
+  if (msg === MESSAGES.MSG_BARRIER_RELEASED) {
+    if (session.hasSessionLines) {
+      await forceReleaseBarrier(session, messageData.frame);
+    }
     return;
   }
 }
