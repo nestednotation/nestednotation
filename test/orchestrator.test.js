@@ -27,6 +27,9 @@ const {
   revivalLandingFrame,
   commonCheckpoints,
   roomRewindPlan,
+  splitRewindPlan,
+  splitRewindOptions,
+  rewindSplitStructure,
   resolveGroupStay,
   groupLinkWinner,
   canReachFrames,
@@ -46,6 +49,7 @@ function fakeLine(session, id) {
     history: [],
     historyIndex: 0,
     trackGroup: null,
+    splitAncestors: [],
     setCurrIdxTo(index) {
       this.currentIndex = index;
       this.history.push(session.listFiles[index]);
@@ -58,6 +62,8 @@ function fakeSession() {
   return {
     id: "s1",
     nextLineId: 1,
+    nextSplitEventId: 1,
+    splitEvents: [],
     deviceRegistry: {},
     preloadDuration: 0,
     listFiles: ["START.svg", "Left.svg", "Right.svg", "Barrier.svg", "DONE.svg"],
@@ -656,6 +662,11 @@ module.exports = {
     assert.deepStrictEqual(counts, [2, 1]);
     assert.strictEqual(children[0].currentIndex, 1);
     assert.strictEqual(children[1].currentIndex, 2);
+    assert.strictEqual(session.splitEvents.length, 1);
+    assert.strictEqual(session.splitEvents[0].parentLineId, "L0");
+    assert.strictEqual(session.splitEvents[0].frame, "START.svg");
+    assert.deepStrictEqual(children[0].splitAncestors, ["S1"]);
+    assert.deepStrictEqual(children[1].splitAncestors, ["S1"]);
 
     // conns + registry reassigned
     assert.strictEqual(members[0].conn.lineId, children[0].id);
@@ -704,6 +715,140 @@ module.exports = {
     assert.strictEqual(absorbed[0].status, "retired");
     assert.strictEqual(connections[1].lineId, "L1");
     assert.strictEqual(session.deviceRegistry["dB"], "L1");
+  },
+
+  "split rewind recursively collapses nested descendants and preserves room progress": () => {
+    const session = fakeSession();
+    session.reachedTargets = { "left.svg": "done" };
+    session.latestGroupArrival = { frame: "Left.svg", at: 123 };
+    const parent = fakeLine(session, "L0");
+    parent.setCurrIdxTo(0);
+    session.lines.push(parent);
+
+    const connections = [
+      { sessionId: session.id, lineId: "L0", deviceId: "dA" },
+      { sessionId: session.id, lineId: "L0", deviceId: "dB" },
+    ];
+    session.deviceRegistry = { dA: "L0", dB: "L0", dOff: "L0" };
+    const o = createOrchestrator(fakeTransport());
+    const first = o.applySplit({
+      session,
+      parentLine: parent,
+      childFrameIndices: [1, 2],
+      members: [
+        { conn: connections[0], key: "dA", choice: 0 },
+        { conn: connections[1], key: "dB", choice: 1 },
+      ],
+    });
+
+    // L1 later splits again. Its descendants still carry S1, so undoing S1
+    // must collapse L2 + both nested children, not merely the direct children.
+    const nestedParent = first.children[0];
+    nestedParent.setCurrIdxTo(3);
+    const second = o.applySplit({
+      session,
+      parentLine: nestedParent,
+      childFrameIndices: [3, 4],
+      members: [{ conn: connections[0], key: "dA", choice: 0 }],
+    });
+    assert.deepStrictEqual(second.children[0].splitAncestors, ["S1", "S2"]);
+
+    const before = splitRewindPlan({
+      splitEvents: session.splitEvents,
+      lines: session.lines,
+      eventId: "S1",
+      expectedFrame: "START.svg",
+    });
+    assert.strictEqual(before.available, true);
+    assert.deepStrictEqual(
+      before.liveDescendants.map((line) => line.id).sort(),
+      [first.children[1].id, ...second.children.map((line) => line.id)].sort(),
+    );
+
+    const result = rewindSplitStructure({
+      session,
+      eventId: "S1",
+      expectedFrame: "START.svg",
+      connections,
+      now: () => 999,
+    });
+    assert.strictEqual(result.available, true);
+    assert.strictEqual(parent.status, "active");
+    assert.strictEqual(parent.currentIndex, 0);
+    assert.deepStrictEqual(parent.history, ["START.svg"]);
+    assert.ok(result.descendants.every((line) => line.status === "retired"));
+    assert.ok(connections.every((conn) => conn.lineId === "L0"));
+    assert.deepStrictEqual(session.deviceRegistry, {
+      dA: "L0",
+      dB: "L0",
+      dOff: "L0",
+    });
+    assert.ok(session.splitEvents.every((event) => event.status === "undone"));
+    assert.deepStrictEqual(session.reachedTargets, { "left.svg": "done" });
+    assert.deepStrictEqual(session.latestGroupArrival, {
+      frame: "Left.svg",
+      at: 123,
+    });
+  },
+
+  "cross-subtree merge blocks only the split boundary it crossed": () => {
+    const session = fakeSession();
+    const root = fakeLine(session, "L0");
+    root.setCurrIdxTo(0);
+    session.lines.push(root);
+    const o = createOrchestrator(fakeTransport());
+    const top = o.applySplit({
+      session,
+      parentLine: root,
+      childFrameIndices: [1, 2],
+      members: [],
+    });
+    const nestedParent = top.children[0];
+    nestedParent.setCurrIdxTo(3);
+    const nested = o.applySplit({
+      session,
+      parentLine: nestedParent,
+      childFrameIndices: [3, 4],
+      members: [],
+    });
+
+    // L3 belongs to nested S2; L2 is its outside sibling but both remain
+    // inside top-level S1. Their merge blocks S2 and keeps S1 rewindable.
+    o.applyRecombine({
+      session,
+      lineIds: [nested.children[0].id, top.children[1].id],
+      connections: [],
+    });
+    assert.strictEqual(session.splitEvents[0].blockedByMerge, false);
+    assert.strictEqual(session.splitEvents[1].blockedByMerge, true);
+    assert.strictEqual(
+      splitRewindPlan({
+        splitEvents: session.splitEvents,
+        lines: session.lines,
+        eventId: "S1",
+      }).available,
+      true,
+    );
+    assert.deepStrictEqual(
+      splitRewindPlan({
+        splitEvents: session.splitEvents,
+        lines: session.lines,
+        eventId: "S2",
+      }),
+      {
+        available: false,
+        reason: "mixed-merge",
+        event: session.splitEvents[1],
+      },
+    );
+    const options = splitRewindOptions({
+      splitEvents: session.splitEvents,
+      lines: session.lines,
+    });
+    assert.strictEqual(
+      options.find((entry) => entry.eventId === "S2").reason,
+      "mixed-merge",
+    );
   },
 
   // ── full hybrid barrier→rejoin (split→3→barrier→rejoin) ─────────────────
@@ -941,6 +1086,60 @@ module.exports = {
     });
     assert.strictEqual(state.waiting, true);
     assert.deepStrictEqual(state.blockedIds, ["L1"]);
+  },
+
+  "groupArrivalState keeps waiting while a co-occupant is still holding (2026-07-20)": () => {
+    // Both arrived on group frames, but L1 is still in its holding period — the
+    // group waits for the last node's hold to release so they leave together.
+    const lines = [
+      { id: "L1", status: "active", isHolding: true },
+      { id: "L2", status: "active", isHolding: false },
+    ];
+    const frames = { L1: "B.svg", L2: "C.svg" };
+    const state = groupArrivalState(lines, ["B.svg", "C.svg"], {
+      frameNameForLine: (l) => frames[l.id],
+      deviceCount: () => 1,
+      isHolding: (l) => !!l.isHolding,
+      canReach: () => false,
+    });
+    assert.strictEqual(state.waiting, true);
+    assert.deepStrictEqual(state.incomingIds, []);
+    assert.deepStrictEqual(state.holdingIds, ["L1"]);
+  },
+
+  "groupArrivalState releases once every occupant's hold has ended (2026-07-20)": () => {
+    const lines = [
+      { id: "L1", status: "active", isHolding: false },
+      { id: "L2", status: "active", isHolding: false },
+    ];
+    const frames = { L1: "B.svg", L2: "C.svg" };
+    const state = groupArrivalState(lines, ["B.svg", "C.svg"], {
+      frameNameForLine: (l) => frames[l.id],
+      deviceCount: () => 1,
+      isHolding: (l) => !!l.isHolding,
+      canReach: () => false,
+    });
+    assert.strictEqual(state.waiting, false);
+    assert.deepStrictEqual(state.holdingIds, []);
+  },
+
+  "groupArrivalState: a lone holding occupant never self-parks (2026-07-20)": () => {
+    // Only one populated line is on the group (the other is empty and excluded).
+    // Hold sync needs 2+ occupants, so a solo held frame must NOT raise a wait
+    // (which would flash a spurious "waiting for other lines" banner).
+    const lines = [
+      { id: "L1", status: "active", isHolding: true }, // lone occupant, holding
+      { id: "L2", status: "active" }, // empty — excluded
+    ];
+    const frames = { L1: "B.svg", L2: "C.svg" };
+    const state = groupArrivalState(lines, ["B.svg", "C.svg"], {
+      frameNameForLine: (l) => frames[l.id],
+      deviceCount: (l) => (l.id === "L2" ? 0 : 1),
+      isHolding: (l) => !!l.isHolding,
+      canReach: () => false,
+    });
+    assert.strictEqual(state.waiting, false);
+    assert.deepStrictEqual(state.holdingIds, []);
   },
 
   "groupArrivalState treats a sub line as incoming via canReach": () => {

@@ -13,13 +13,14 @@ const assert = require("node:assert");
 const fs = require("node:fs");
 
 const { buildScore } = require("../bin/build-score.js");
+const { buildSessionLinesFixture } = require("./session-lines-fixture");
 const { SERVER_STATE_DIR } = require("../database.js");
 const { BMLine } = require("../lib/session-lines/line");
 const { subReturnIndex } = require("../lib/session-lines/orchestrator");
 
 module.exports = {
   "build: demo produces a Tetra sub-frame cache (memory + .subs.json)": async () => {
-    const session = await buildScore("Session Lines Demo", { id: "__sub_test__" });
+    const session = await buildSessionLinesFixture({ id: "__sub_test__" });
 
     const tetra = session.subFrames && session.subFrames.Tetra;
     assert.ok(tetra, "session.subFrames.Tetra must exist");
@@ -51,14 +52,13 @@ module.exports = {
   },
 
   "runtime: a line dives into Tetra and pops back to the return landing": async () => {
-    const session = await buildScore("Session Lines Demo", { id: "__sub_rt__" });
+    const session = await buildSessionLinesFixture({ id: "__sub_rt__" });
     const idx = (n) => session.listFilesInLowerCase.indexOf(n.toLowerCase());
 
-    // Right.svg is the sub-start; its return landing is Barrier.svg.
-    assert.deepStrictEqual(session.graph.subStart["Right.svg"], {
-      score: "Tetra",
-      returnHref: "Barrier.svg",
-    });
+    // Right.svg carries the sub-start <a> link; its href is the return landing.
+    assert.deepStrictEqual(session.graph.subLinks["Right.svg"], [
+      { score: "Tetra", returnHref: "Barrier.svg" },
+    ]);
 
     const line = new BMLine(session, "L1");
     line.setCurrIdxTo(idx("Right.svg"));

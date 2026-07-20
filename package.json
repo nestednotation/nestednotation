@@ -5,7 +5,7 @@
   "scripts": {
     "start": "node ./bin/www",
     "test": "node test/run.js",
-    "validate-session-lines": "node bin/validate-session-lines.js"
+    "validate-score": "node bin/validate-session-lines.js"
   },
   "dependencies": {
     "apicache": "^1.6.3",

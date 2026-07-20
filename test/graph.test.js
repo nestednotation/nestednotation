@@ -13,12 +13,21 @@ const { parseFrameAttrs } = require("../lib/session-lines/parse");
 const { buildGraph, resolveFrameName } = require("../lib/session-lines/graph");
 
 // Minimal SVG wrapper: session-* attrs on the <svg> root, hrefs as <a> tags.
+// An href entry may be a string, or { href, sub } to mark the <a> with
+// session-sub-start="sub" (link-level dive; href = return landing).
 function frameSvg(attrs = {}, hrefs = []) {
   const attrStr = Object.entries(attrs)
     .map(([k, v]) => `${k}="${v}"`)
     .join(" ");
   const aTags = hrefs
-    .map((h) => `<a xlink:href="${h}"><rect x="0" y="0"/></a>`)
+    .map((h) => {
+      if (typeof h === "string") {
+        return `<a xlink:href="${h}"><rect x="0" y="0"/></a>`;
+      }
+      const sub = h.sub ? ` session-sub-start="${h.sub}"` : "";
+      const href = h.href ? ` xlink:href="${h.href}"` : "";
+      return `<a${sub}${href}><rect x="0" y="0"/></a>`;
+    })
     .join("\n");
   return `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE svg>
@@ -40,7 +49,7 @@ const azFrames = [
   frame("C.svg", { "session-track-group": "alpha" }, ["D.svg"]),
   frame("D.svg", { "session-hold-until": "B.svg, C.svg" }, ["E.svg"]),
   frame("E.svg", { "session-rejoin-at": "A.svg" }, ["A.svg"]),
-  frame("S.svg", { "session-sub-start": "Tetra1" }, ["L.svg"]),
+  frame("S.svg", {}, [{ href: "L.svg", sub: "Tetra1" }]),
   frame("Tetra1/Z.svg", { "session-sub-end": "Tetra1" }, []),
   frame("Z.svg", {}, ["A.svg"]), // plain frame, no session markup
 ];
@@ -76,9 +85,35 @@ module.exports = {
     assert.deepStrictEqual(attrs.holdUntil, []);
     assert.deepStrictEqual(attrs.rejoinAt, []);
     assert.strictEqual(attrs.subStart, null);
+    assert.deepStrictEqual(attrs.subLinks, []);
     assert.strictEqual(attrs.subEnd, null);
+    assert.strictEqual(attrs.voting, null);
+    assert.strictEqual(attrs.holding, null);
     assert.strictEqual(attrs.hasSessionAttr, false);
     assert.deepStrictEqual(attrs.hrefs, ["X.svg"]);
+  },
+
+  "parseFrameAttrs extracts and trims voting/holding overrides": () => {
+    const attrs = parseFrameAttrs(
+      frameSvg({ voting: " 250% ", holding: " 4 " }, ["X.svg"]),
+    );
+    assert.strictEqual(attrs.voting, "250%");
+    assert.strictEqual(attrs.holding, "4");
+    assert.strictEqual(
+      attrs.hasSessionAttr,
+      false,
+      "timing overrides alone do not enable session-lines mode",
+    );
+  },
+
+  "parseFrameAttrs: session-sub-start on an <a> yields a subLink + session flag": () => {
+    const attrs = parseFrameAttrs(
+      frameSvg({}, ["Plain.svg", { href: "L.svg", sub: "Tetra1" }]),
+    );
+    assert.deepStrictEqual(attrs.subLinks, [{ score: "Tetra1", href: "L.svg" }]);
+    assert.strictEqual(attrs.subStart, null);
+    assert.strictEqual(attrs.hasSessionAttr, true);
+    assert.deepStrictEqual(attrs.hrefs, ["Plain.svg", "L.svg"]);
   },
 
   "parseFrameAttrs trims comma lists": () => {
@@ -112,12 +147,11 @@ module.exports = {
     assert.deepStrictEqual(g.rejoinTargets["E.svg"], ["A.svg"]);
   },
 
-  "a-z: sub-start maps score + return href": () => {
+  "a-z: sub-start link maps score + return href": () => {
     const g = buildGraph(azFrames);
-    assert.deepStrictEqual(g.subStart["S.svg"], {
-      score: "Tetra1",
-      returnHref: "L.svg",
-    });
+    assert.deepStrictEqual(g.subLinks["S.svg"], [
+      { score: "Tetra1", returnHref: "L.svg" },
+    ]);
   },
 
   "a-z: sub-end maps to its score": () => {

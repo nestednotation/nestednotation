@@ -1,7 +1,7 @@
 /**
  * Chunk I — split runtime (real BMSession + BMLine, no ws boot).
  *
- * Builds the on-disk "Session Lines Demo" score offline, then drives the same
+ * Builds the test-only session-lines fixture, then drives the same
  * applySplit path bin/www uses (members derived from connection votes via the
  * gated frameLinks) against REAL BMLine objects. This is the headless stand-in
  * for the multi-tab split walkthrough: the START split frame divides L0 into two
@@ -12,6 +12,7 @@
 const assert = require("node:assert");
 
 const { buildScore } = require("../bin/build-score.js");
+const { buildSessionLinesFixture } = require("./session-lines-fixture");
 const { BMLine } = require("../lib/session-lines/line");
 const {
   createOrchestrator,
@@ -19,12 +20,14 @@ const {
   groupOfFrame,
   resolveGroupStay,
   groupLinkWinner,
+  splitRewindOptions,
+  rewindSplitStructure,
 } = require("../lib/session-lines/orchestrator");
 const { MESSAGES } = require("../constants");
 
 module.exports = {
   "split: START divides L0 into Left/Right child lines, parent retired": async () => {
-    const session = await buildScore("Session Lines Demo", {
+    const session = await buildSessionLinesFixture({
       id: "__split_test__",
     });
 
@@ -79,6 +82,13 @@ module.exports = {
     assert.strictEqual(children.length, 2);
     assert.strictEqual(children[0].currentIndex, leftIdx);
     assert.strictEqual(children[1].currentIndex, rightIdx);
+    assert.strictEqual(session.splitEvents.length, 1);
+    assert.strictEqual(session.splitEvents[0].frame, "START.svg");
+    assert.deepStrictEqual(
+      session.splitEvents[0].childLineIds,
+      children.map((l) => l.id),
+    );
+    assert.deepStrictEqual(children[0].splitAncestors, [session.splitEvents[0].id]);
     assert.strictEqual(
       children[0].history[children[0].history.length - 1],
       "Left.svg",
@@ -111,6 +121,67 @@ module.exports = {
     assert.ok(
       sent.some((s) => s.lineId === children[1].id && s.m === MESSAGES.MSG_BEGIN_SPLIT),
     );
+  },
+
+  "Session lines 2: F/H structurally rewind through split back to A": async () => {
+    const session = await buildScore("-test- Session lines 2", {
+      id: "__split_rewind_a_test__",
+    });
+    const idx = (name) =>
+      session.listFilesInLowerCase.indexOf(name.toLowerCase());
+    const parent = session.lines[0];
+    parent.setCurrIdxTo(idx("A.svg"));
+    const conns = [
+      { sessionId: session.id, lineId: parent.id, deviceId: "d1" },
+      { sessionId: session.id, lineId: parent.id, deviceId: "d2" },
+    ];
+    session.deviceRegistry = { d1: parent.id, d2: parent.id };
+    const orch = createOrchestrator({
+      MESSAGES,
+      now: () => 10,
+      createLine: (s, id) => new BMLine(s, id),
+      send: () => {},
+    });
+    const { children } = orch.applySplit({
+      session,
+      parentLine: parent,
+      childFrameIndices: [idx("B.svg"), idx("C.svg")],
+      members: [
+        { conn: conns[0], key: "d1", choice: 0 },
+        { conn: conns[1], key: "d2", choice: 1 },
+      ],
+    });
+    children[0].setCurrIdxTo(idx("D.svg"));
+    children[0].setCurrIdxTo(idx("F.svg"));
+    children[1].setCurrIdxTo(idx("E.svg"));
+    children[1].setCurrIdxTo(idx("H.svg"));
+
+    const option = splitRewindOptions({
+      splitEvents: session.splitEvents,
+      lines: session.lines,
+    }).find((entry) => entry.frame === "A.svg");
+    assert.strictEqual(option.available, true);
+    assert.deepStrictEqual(
+      option.descendantLineIds.sort(),
+      children.map((l) => l.id).sort(),
+    );
+
+    const result = rewindSplitStructure({
+      session,
+      eventId: option.eventId,
+      expectedFrame: "A.svg",
+      connections: conns,
+      now: () => 20,
+    });
+    assert.strictEqual(result.available, true);
+    assert.strictEqual(parent.status, "active");
+    assert.strictEqual(parent.currentIndex, idx("A.svg"));
+    assert.deepStrictEqual(parent.history, ["START.svg", "A.svg"]);
+    assert.ok(conns.every((conn) => conn.lineId === parent.id));
+    assert.deepStrictEqual(session.deviceRegistry, {
+      d1: parent.id,
+      d2: parent.id,
+    });
   },
 
   // Decided 2026-07-17: a SPLIT frame inside a track group still divides its

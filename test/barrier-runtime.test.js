@@ -1,7 +1,7 @@
 /**
  * Chunk J — barrier + rejoin runtime (real BMSession + BMLine, no ws boot).
  *
- * Builds the on-disk "Session Lines Demo" and reproduces the converge phase
+ * Builds the test-only session-lines fixture and reproduces the converge phase
  * under RENDEZVOUS semantics (#6, decided 2026-07-04): the Barrier frame
  * carries hold-until="Left.svg,Tetra/Echo.svg" + rejoin-at="DONE.svg", and it
  * releases once both targets are "done" in the session-global reached
@@ -12,7 +12,7 @@
 
 const assert = require("node:assert");
 
-const { buildScore } = require("../bin/build-score.js");
+const { buildSessionLinesFixture } = require("./session-lines-fixture");
 const { BMLine } = require("../lib/session-lines/line");
 const { createOrchestrator } = require("../lib/session-lines/orchestrator");
 const { performerLineConnections } = require("../lib/session-lines/routing");
@@ -20,7 +20,7 @@ const { MESSAGES } = require("../constants");
 
 module.exports = {
   "barrier releases on rendezvous (targets done anywhere), then rejoins": async () => {
-    const session = await buildScore("Session Lines Demo", {
+    const session = await buildSessionLinesFixture({
       id: "__barrier_test__",
     });
     const idx = (n) => session.listFilesInLowerCase.indexOf(n.toLowerCase());
@@ -117,7 +117,7 @@ module.exports = {
     // the first line to land parks until every populated line that can still
     // REACH a group frame has arrived — reachability computed over the built
     // frameLinks, empty lines excluded.
-    const session = await buildScore("Session Lines Demo", {
+    const session = await buildSessionLinesFixture({
       id: "__group_arrival_test__",
     });
     const idx = (n) => session.listFilesInLowerCase.indexOf(n.toLowerCase());
@@ -189,7 +189,7 @@ module.exports = {
     // group waits for it (the admin's remedies: tap the line forward,
     // force-release, or close the tab and let attrition dissolve the wait).
     // The wait dissolves only when the line truly empties (goes dormant).
-    const session = await buildScore("Session Lines Demo", {
+    const session = await buildSessionLinesFixture({
       id: "__group_admin_test__",
     });
     const idx = (n) => session.listFilesInLowerCase.indexOf(n.toLowerCase());
@@ -259,7 +259,7 @@ module.exports = {
     // pure observer, NOT population (unlike an admin session tab, above). A
     // line held open only by a map tab is treated as empty: it neither
     // occupies a group frame nor is waited for, so the group releases.
-    const session = await buildScore("Session Lines Demo", {
+    const session = await buildSessionLinesFixture({
       id: "__group_map_test__",
     });
     const idx = (n) => session.listFilesInLowerCase.indexOf(n.toLowerCase());

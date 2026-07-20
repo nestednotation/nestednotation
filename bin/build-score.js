@@ -25,11 +25,15 @@ const DEFAULTS = {
   defaultVolume: 80,
   defaultAutoplay: true,
   enableAutoplayByDefault: false,
+  dataDir: null,
 };
 
 async function buildScore(folder, opts = {}) {
   const o = { ...DEFAULTS, ...opts };
   const session = new BMSession();
+  if (o.dataDir) {
+    session.scoreDataDir = o.dataDir;
+  }
   await session.initState(
     o.id,
     o.adminId,

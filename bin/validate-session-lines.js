@@ -54,7 +54,7 @@ function makeSubLoader(scoreDir) {
 function main() {
   const folder = process.argv[2];
   if (!folder) {
-    console.error("Usage: node bin/validate-session-lines.js <score-folder>");
+    console.error("Missing score name (folder), please specify one.");
     process.exit(2);
   }
 

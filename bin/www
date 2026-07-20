@@ -506,13 +506,46 @@ function recordHoldEnded(session, line) {
   return ref ? orch.markReached(session.reachedTargets, ref, true) : false;
 }
 
-// True when a line (on the main flow) sits on a session-sub-start frame.
-function isSubStartFrame(session, line) {
+// The sub link (if any) of the line's current MAIN-FLOW frame whose return
+// landing is the advance target. Taking that link means the line dives into
+// the sub instead of moving — the target frame is where it lands after the
+// sub. Matching is by target frame (vote ids and default fallbacks carry the
+// frame index); only navigation call sites consult this — rewinds and other
+// repositions never dive.
+function subLinkForAdvanceTarget(session, line, targetIdx) {
   if (!session.hasSessionLines || line.subStack.length > 0) {
-    return false;
+    return null;
   }
-  const graph = session.graph || {};
-  return !!(graph.subStart || {})[frameNameForLine(session, line)];
+  const links = ((session.graph || {}).subLinks || {})[
+    frameNameForLine(session, line)
+  ];
+  if (!links || links.length === 0) {
+    return null;
+  }
+  const targetName = session.listFiles[targetIdx];
+  if (!targetName) {
+    return null;
+  }
+  const targetLower = targetName.toLowerCase();
+  return (
+    links.find(
+      (l) =>
+        l.returnHref &&
+        String(l.returnHref).toLowerCase() === targetLower &&
+        session.subFrames &&
+        session.subFrames[l.score],
+    ) || null
+  );
+}
+
+// A navigation advance chose a sub link: dive instead of moving. Mirrors the
+// bookkeeping afterLineArrived's finally would have done for a plain landing
+// (the dive can change group reachability, and admins want the fresh
+// positions snapshot).
+async function diveViaSubLink(session, line, subLink) {
+  await enterSubSession(session, line, subLink);
+  await tryReleaseGroupWaits(session);
+  updateNumberOfConnectionForSession(session);
 }
 
 // True when a line INSIDE a sub sits on that sub's session-sub-end frame. The
@@ -586,10 +619,10 @@ async function resolveSplit(session, line) {
 
   await session.saveSessionStateToFile();
 
-  // A child may land on its own orchestration frame (sub-start dives in; a
-  // barrier parks; a nested split just waits for taps). Run arrival hooks before
-  // scheduling any plain SHOW so redirected/merged lines do not receive stale
-  // frame updates.
+  // A child may land on its own orchestration frame (a barrier parks; a nested
+  // split just waits for taps — split paths are never sub links, the validator
+  // forbids it). Run arrival hooks before scheduling any plain SHOW so
+  // redirected/merged lines do not receive stale frame updates.
   for (const child of children) {
     await showLineAfterArrivalIfNeeded(session, child);
   }
@@ -645,8 +678,10 @@ async function afterLineArrivedInner(session, line) {
     await tryReleaseBarriers(session);
   }
 
-  // Sub-session transitions: sub-start dives in, sub-end pops back. Both drive
-  // the display via MSG_SUB_ENTER / MSG_SUB_EXIT.
+  // Sub-session exit: reaching a session-sub-end frame pops back to the main
+  // flow (MSG_SUB_EXIT drives the display). Dives are NOT arrival-triggered —
+  // a line dives when it takes a session-sub-start <a> link (see
+  // subLinkForAdvanceTarget at the navigation call sites).
   if (await handleSubTransitions(session, line, frameName)) {
     return true;
   }
@@ -694,18 +729,11 @@ async function afterLineArrivedInner(session, line) {
   return false;
 }
 
-// Sub-session entry/exit. Returns true if the arrival was a sub transition (the
-// display is then driven by MSG_SUB_ENTER / MSG_SUB_EXIT, not a plain SHOW).
+// Sub-session exit. Returns true if the arrival was a sub exit (the display is
+// then driven by MSG_SUB_EXIT, not a plain SHOW). Entry is navigation-driven
+// (diveViaSubLink), never an arrival reaction.
 async function handleSubTransitions(session, line, frameName) {
-  const graph = session.graph || {};
-
   if (line.subStack.length === 0) {
-    // Main flow: dive into a sub-start frame's sub-score.
-    const subStart = (graph.subStart || {})[frameName];
-    if (subStart && session.subFrames && session.subFrames[subStart.score]) {
-      await enterSubSession(session, line, subStart);
-      return true;
-    }
     return false;
   }
 
@@ -731,8 +759,8 @@ function subStartIndex(frameList) {
   return pre >= 0 ? pre : 0;
 }
 
-async function enterSubSession(session, line, subStart) {
-  const { score, returnHref } = subStart;
+async function enterSubSession(session, line, subLink) {
+  const { score, returnHref } = subLink;
   const subInfo = session.subFrames[score];
 
   line.enterSub(score, returnHref);
@@ -898,12 +926,12 @@ function subTargetReachableFromStart(session, score, targetFrame) {
 }
 
 function mainCanReachAnySubStart(session, fromFrame, score) {
-  const starts = Object.entries((session.graph || {}).subStart || {})
-    .filter(
-      ([, info]) =>
-        info &&
-        String(info.score).toLowerCase() ===
-          String(score || "").toLowerCase(),
+  const scoreLower = String(score || "").toLowerCase();
+  const starts = Object.entries((session.graph || {}).subLinks || {})
+    .filter(([, links]) =>
+      (links || []).some(
+        (l) => String(l.score).toLowerCase() === scoreLower,
+      ),
     )
     .map(([frameName]) => frameName);
   return (
@@ -1428,6 +1456,11 @@ function groupWaitState(session, group) {
       performerLineConnections(wsServer.connections, session.id, l.id).length,
     inSub: (l) => l.subStack.length > 0,
     isBlocked: (l) => !!l.isBarrierWaiting,
+    // Hold sync (2026-07-20): an occupant still in its holding period keeps the
+    // group parked so everyone leaves the held frame together — the group
+    // unlocks on the last node's hold release. Gated ≥2 occupants in
+    // groupArrivalState, so a lone grouped line never self-parks while holding.
+    isHolding: (l) => !!l.isHolding,
     // Passed ⇒ arrived (owner, 2026-07-19, with the targeted line rewind): a
     // line whose main trail already went through this group is never counted
     // as incoming again — so a line rewound behind the group replays through
@@ -1870,7 +1903,13 @@ async function resolveGroupVoting(session, line) {
       timestamp: new Date().getTime(),
     });
 
-    if (winningId !== "stay") {
+    // A grouped line whose link winner is a session-sub-start link dives into
+    // its sub (the group advanced; this line's advance IS the dive).
+    const subLink =
+      winningId === "stay"
+        ? null
+        : subLinkForAdvanceTarget(session, l, targetIdx);
+    if (winningId !== "stay" && !subLink) {
       l.setCurrIdxTo(targetIdx);
     }
 
@@ -1890,7 +1929,9 @@ async function resolveGroupVoting(session, line) {
 
     emitHistoryToAdmins(session, l);
 
-    if (winningId !== "stay") {
+    if (subLink) {
+      await diveViaSubLink(session, l, subLink);
+    } else if (winningId !== "stay") {
       await showLineAfterArrivalIfNeeded(session, l);
     }
   }
@@ -1950,7 +1991,15 @@ async function stopVotingForSession(session, line) {
     }
   });
 
-  line.setCurrIdxTo(mostVoteRingId);
+  // Session Lines: a winning session-sub-start link DIVES into its sub-score
+  // instead of moving (the link's href is the return landing, reached on exit).
+  const subLink =
+    winningVoteId === "stay"
+      ? null
+      : subLinkForAdvanceTarget(session, line, mostVoteRingId);
+  if (!subLink) {
+    line.setCurrIdxTo(mostVoteRingId);
+  }
   //unlock
   line.standbyTimer = setTimeout(
     async (session, line) => {
@@ -1969,7 +2018,11 @@ async function stopVotingForSession(session, line) {
 
   emitHistoryToAdmins(session, line);
 
-  await showLineAfterArrivalIfNeeded(session, line);
+  if (subLink) {
+    await diveViaSubLink(session, line, subLink);
+  } else {
+    await showLineAfterArrivalIfNeeded(session, line);
+  }
 }
 
 async function startHoldingForSessionWithDelay(session, line, delay) {
@@ -1997,6 +2050,10 @@ async function startHoldingForSessionWithDelay(session, line, delay) {
       if (recordHoldEnded(session, line)) {
         await tryReleaseBarriers(session);
       }
+      // Track-group hold sync (2026-07-20): a group parked on this occupant's
+      // hold releases only now that it ended — the hold-end edge where the
+      // group's blocked set shrinks. Releases when the LAST occupant unholds.
+      await tryReleaseGroupWaits(session);
       await session.saveSessionStateToFile();
       // Admin map: hold ended between landings — refresh the holding flags.
       if (session.hasSessionLines) {
@@ -2167,6 +2224,98 @@ async function roomRewind(session, group) {
         showIdx: index,
       });
     }
+  }
+}
+
+// Structural split rewind (2026-07-19): collapse every current descendant of
+// one split instance back into its original parent at the split frame. Nested
+// descendant splits collapse recursively through splitAncestors. A split event
+// crossed by a later outside merge is refused by splitRewindPlan — that merged
+// population cannot be separated safely without per-device ancestry.
+//
+// Unlike a room-checkpoint rewind, this is a SUBTREE rewind: unrelated lines do
+// not move, so the room's reached registry + latestGroupArrival stay intact.
+async function splitRewind(session, eventId, expectedFrame) {
+  if (!session.hasSessionLines) {
+    return;
+  }
+  const plan = orch.splitRewindPlan({
+    splitEvents: session.splitEvents,
+    lines: session.lines,
+    eventId,
+    expectedFrame,
+  });
+  if (!plan.available) {
+    return;
+  }
+
+  // Synchronous phase cleanup before any connection changes: old child tabs
+  // must receive cancellation / banner-release messages while still addressed
+  // to their child line ids. No await here, so the topology guard cannot race
+  // a landing between validation and commit.
+  for (const line of plan.descendants) {
+    cancelAttritionTimer(line);
+    if (line.isHolding || line.holdingTimer != null) {
+      sendToLine(session, line.id, 0, {
+        m: MESSAGES.MSG_BEGIN_HOLDING,
+        endTime: 0,
+        duration: 1,
+      });
+    }
+    if (line.isVoting || line.votingTimer != null) {
+      sendToLine(session, line.id, 0, {
+        m: MESSAGES.MSG_BEGIN_VOTING,
+        endTime: 0,
+        duration: 0,
+      });
+    }
+    if (line.isBarrierWaiting || line.isGroupWaiting) {
+      sendToLine(session, line.id, 0, {
+        m: MESSAGES.MSG_BARRIER_RELEASED,
+        frame: frameNameForLine(session, line),
+      });
+    }
+    line.clearAllTimer();
+    line.isGroupWaiting = false;
+    orch.unparkLine(session, line);
+  }
+
+  const result = orch.rewindSplitStructure({
+    session,
+    eventId,
+    expectedFrame,
+    connections: wsServer.connections,
+  });
+  if (!result.available) {
+    return;
+  }
+
+  const parent = result.parent;
+  cancelAttritionTimer(parent);
+  parent.trackGroup = orch.groupOfFrame(session.graph, result.event.frame);
+  // Preserve the current room generation, but record the restored parent's
+  // landing in it (same landing rule as a targeted line rewind).
+  parent._lastReachedRef = null;
+  recordArrival(session, parent);
+
+  await tryReleaseBarriers(session);
+  await tryReleaseGroupWaits(session);
+  await session.saveSessionStateToFile();
+
+  // All live + map connections in the collapsed subtree now carry parent.id.
+  sendToLine(session, parent.id, 0, {
+    m: MESSAGES.MSG_LINE_ASSIGNED,
+    lineId: parent.id,
+  });
+  notifyAdminsBarriers(session);
+  pushAdminHistory(session);
+  updateNumberOfConnectionForSession(session);
+
+  if (!session.isPause) {
+    sendToLine(session, parent.id, Date.now() + session.preloadDuration, {
+      m: MESSAGES.MSG_SHOW,
+      showIdx: parent.currentIndex,
+    });
   }
 }
 
@@ -2410,6 +2559,10 @@ function updateNumberOfConnectionForSession(session) {
   // the room's split across lines and can spot stalled ones (dormant, or parked
   // at a barrier). Omitted for vanilla scores → message byte-identical to today.
   if (session.hasSessionLines) {
+    payload.splitRewinds = orch.splitRewindOptions({
+      splitEvents: session.splitEvents,
+      lines: session.lines,
+    });
     payload.lines = session.lines
       .filter((l) => l.status !== "retired")
       .map((l) => {
@@ -2526,14 +2679,28 @@ async function messageHandle(conn, message) {
         frameVotingDur === "false" ||
         session.votingDuration === 0)
     ) {
-      line.setCurrIdxTo(Number(nextFrameIndex));
-      await session.saveSessionStateToFile();
-
-      emitHistoryToAdmins(session, line);
       const customHoldDur = parseCustomDur(
         session.holdDuration,
         nextFrameHoldingDur,
       );
+      // Session Lines: an instant tap on a session-sub-start link dives (same
+      // rule as a voted advance — choosing the link IS the dive).
+      const subLink = subLinkForAdvanceTarget(
+        session,
+        line,
+        Number(nextFrameIndex),
+      );
+      if (subLink) {
+        await diveViaSubLink(session, line, subLink);
+        if (customHoldDur > 0) {
+          await startHoldingForSessionWithDelay(session, line, 0);
+        }
+        return;
+      }
+      line.setCurrIdxTo(Number(nextFrameIndex));
+      await session.saveSessionStateToFile();
+
+      emitHistoryToAdmins(session, line);
       if (customHoldDur > 0) {
         await startHoldingForSessionWithDelay(session, line, 0);
       }
@@ -2627,8 +2794,8 @@ async function messageHandle(conn, message) {
       };
       // Session Lines: always available:false — the implicit bound-line
       // rewind is retired (2026-07-19), the dropdown is a read-only trail
-      // display; rewinding (room-wide by checkpoint, or a targeted line)
-      // happens from the score map. Omitted for vanilla scores → message
+      // display; room-checkpoint, targeted-line, and structural-split rewinds
+      // happen from the score map. Omitted for vanilla scores → message
       // byte-identical to today.
       if (session.hasSessionLines) {
         historyPayload.available = false;
@@ -2690,6 +2857,12 @@ async function messageHandle(conn, message) {
       m: MESSAGES.MSG_CHECK_HOLD,
       isHold,
     });
+    // Track-group hold sync (2026-07-20): toggling hold OFF ends occupants'
+    // holding periods, which can release a group that was waiting on them
+    // (tryReleaseGroupWaits only releases, never parks — safe when toggling ON).
+    if (session.hasSessionLines) {
+      await tryReleaseGroupWaits(session);
+    }
     // Admin map: every line's holding flag just flipped without a landing.
     if (session.hasSessionLines) {
       updateNumberOfConnectionForSession(session);
@@ -2730,6 +2903,14 @@ async function messageHandle(conn, message) {
   }
 
   if (msg === MESSAGES.MSG_SELECT_HISTORY) {
+    if (messageData.splitEventId && session.hasSessionLines) {
+      await splitRewind(
+        session,
+        messageData.splitEventId,
+        messageData.frame,
+      );
+      return;
+    }
     if (messageData.group && session.hasSessionLines) {
       await roomRewind(session, messageData.group);
       return;

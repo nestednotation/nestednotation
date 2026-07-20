@@ -907,12 +907,36 @@ body.ipad {
 #session-map-status {
   color: #777;
 }
-#session-map-relayout {
+#session-map-relayout,
+#session-map-zoom button {
   border: 1px solid #ccc;
   background: #f4f4f4;
   border-radius: 0.3em;
   padding: 0.1em 0.6em;
   cursor: pointer;
+}
+/* Floating zoom control pinned over the canvas. Below the context menu
+   (z-index 1001) so an open menu still covers it. */
+#session-map-zoom {
+  position: fixed;
+  right: 1em;
+  bottom: 1em;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  gap: 0.3em;
+  padding: 0.25em 0.4em;
+  font-size: 0.85em;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid #ccc;
+  border-radius: 0.4em;
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.15);
+}
+#session-map-zoom-value {
+  min-width: 3.2em;
+  text-align: center;
+  color: #555;
+  font-variant-numeric: tabular-nums;
 }
 #session-map-back {
   margin-left: auto;

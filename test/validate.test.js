@@ -2,8 +2,8 @@
  * Validator tests (pure).
  *
  * Builds graphs from inline fixtures and asserts validateScore catches the
- * broken cases (split N != hrefs, dangling rejoin/hold-until, sub missing
- * START / sub-end) and passes valid ones.
+ * broken cases (unresolved links, split N != hrefs, dangling
+ * rejoin/hold-until, sub missing START / sub-end) and passes valid ones.
  */
 
 const assert = require("node:assert");
@@ -12,11 +12,23 @@ const { parseFrameAttrs } = require("../lib/session-lines/parse");
 const { buildGraph } = require("../lib/session-lines/graph");
 const { validateScore } = require("../lib/session-lines/validate");
 
+// An href entry may be a string, or { href, sub } to mark the <a> with
+// session-sub-start="sub" (link-level dive; href = return landing; href may
+// be omitted to model a marked <a> with no return).
 function frameSvg(attrs = {}, hrefs = []) {
   const attrStr = Object.entries(attrs)
     .map(([k, v]) => `${k}="${v}"`)
     .join(" ");
-  const aTags = hrefs.map((h) => `<a xlink:href="${h}"><rect/></a>`).join("\n");
+  const aTags = hrefs
+    .map((h) => {
+      if (typeof h === "string") {
+        return `<a xlink:href="${h}"><rect/></a>`;
+      }
+      const sub = h.sub ? ` session-sub-start="${h.sub}"` : "";
+      const href = h.href ? ` xlink:href="${h.href}"` : "";
+      return `<a${sub}${href}><rect/></a>`;
+    })
+    .join("\n");
   return `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" ${attrStr}>${aTags}</svg>`;
 }
 
@@ -54,6 +66,26 @@ module.exports = {
     const { errors, warnings } = validateScore(g, frames.map((f) => f.name), () => null);
     assert.deepStrictEqual(errors, [], `unexpected errors: ${JSON.stringify(errors)}`);
     assert.deepStrictEqual(warnings, [], `unexpected warnings: ${JSON.stringify(warnings)}`);
+  },
+
+  "ordinary link to a missing main-score frame is an error": () => {
+    const frames = [frame("START.svg", {}, ["Missing.svg"])];
+    const g = buildGraph(frames);
+    const { errors } = validateScore(g, frames.map((f) => f.name), () => null);
+    const hits = errors.filter((e) => e.code === "link-unresolved");
+    assert.strictEqual(hits.length, 1, JSON.stringify(errors));
+    assert.strictEqual(hits[0].frame, "START.svg");
+    assert.ok(hits[0].message.includes("Missing.svg"), JSON.stringify(hits[0]));
+  },
+
+  "ordinary links resolve case-insensitively": () => {
+    const frames = [
+      frame("START.svg", {}, ["next.SVG"]),
+      frame("Next.svg", {}, []),
+    ];
+    const g = buildGraph(frames);
+    const { errors } = validateScore(g, frames.map((f) => f.name), () => null);
+    assert.ok(!codes(errors).includes("link-unresolved"), JSON.stringify(errors));
   },
 
   "split N != href count is an error": () => {
@@ -144,7 +176,7 @@ module.exports = {
 
   "sub-start referencing a missing sub-score is an error": () => {
     const frames = [
-      frame("START.svg", { "session-sub-start": "DoesNotExist" }, ["B.svg"]),
+      frame("START.svg", {}, [{ href: "B.svg", sub: "DoesNotExist" }]),
       frame("B.svg", {}, []),
     ];
     const g = buildGraph(frames);
@@ -154,7 +186,7 @@ module.exports = {
 
   "sub-score missing START / sub-end are errors": () => {
     const frames = [
-      frame("START.svg", { "session-sub-start": "BadSub" }, ["B.svg"]),
+      frame("START.svg", {}, [{ href: "B.svg", sub: "BadSub" }]),
       frame("B.svg", {}, []),
     ];
     const g = buildGraph(frames);
@@ -172,7 +204,7 @@ module.exports = {
 
   "valid sub-session with good sub-loader passes": () => {
     const frames = [
-      frame("START.svg", { "session-sub-start": "Tetra1" }, ["Landing.svg"]),
+      frame("START.svg", {}, [{ href: "Landing.svg", sub: "Tetra1" }]),
       frame("Landing.svg", {}, []),
     ];
     const g = buildGraph(frames);
@@ -180,16 +212,68 @@ module.exports = {
     assert.deepStrictEqual(errors, [], JSON.stringify(errors));
   },
 
-  "sub-start with no return href is an error": () => {
-    const frames = [frame("START.svg", { "session-sub-start": "Tetra1" }, [])];
+  "ordinary link to a missing sub-score frame is an error": () => {
+    const frames = [
+      frame("START.svg", {}, [{ href: "Landing.svg", sub: "BrokenSub" }]),
+      frame("Landing.svg", {}, []),
+    ];
+    const g = buildGraph(frames);
+    const brokenSubLoader = (name) => {
+      if (name !== "BrokenSub") return null;
+      const subFrames = [
+        frame("START.svg", {}, ["End.svg", "Missing.svg"]),
+        frame("End.svg", { "session-sub-end": "BrokenSub" }, []),
+      ];
+      return {
+        frameNames: subFrames.map((f) => f.name),
+        graph: buildGraph(subFrames),
+      };
+    };
+    const { errors } = validateScore(
+      g,
+      frames.map((f) => f.name),
+      brokenSubLoader,
+    );
+    const hits = errors.filter((e) => e.code === "link-unresolved");
+    assert.strictEqual(hits.length, 1, JSON.stringify(errors));
+    assert.strictEqual(hits[0].frame, "START.svg");
+    assert.strictEqual(hits[0].score, "BrokenSub");
+  },
+
+  "sub-start link with no href is an error": () => {
+    const frames = [frame("START.svg", {}, [{ sub: "Tetra1" }])];
     const g = buildGraph(frames);
     const { errors } = validateScore(g, frames.map((f) => f.name), goodSubLoader);
     assert.ok(codes(errors).includes("sub-start-no-return"), JSON.stringify(errors));
   },
 
+  "legacy session-sub-start on the <svg> root is an error": () => {
+    const frames = [
+      frame("START.svg", { "session-sub-start": "Tetra1" }, ["Landing.svg"]),
+      frame("Landing.svg", {}, []),
+    ];
+    const g = buildGraph(frames);
+    const { errors } = validateScore(g, frames.map((f) => f.name), goodSubLoader);
+    assert.ok(codes(errors).includes("sub-start-on-root"), JSON.stringify(errors));
+  },
+
+  "sub-start link on a split frame is an error": () => {
+    const frames = [
+      frame("START.svg", { "session-split": "2" }, [
+        "B.svg",
+        { href: "C.svg", sub: "Tetra1" },
+      ]),
+      frame("B.svg", {}, []),
+      frame("C.svg", {}, []),
+    ];
+    const g = buildGraph(frames);
+    const { errors } = validateScore(g, frames.map((f) => f.name), goodSubLoader);
+    assert.ok(codes(errors).includes("split-sub-link"), JSON.stringify(errors));
+  },
+
   "sub frame with no path to a sub-end is an error (stranded line)": () => {
     const frames = [
-      frame("START.svg", { "session-sub-start": "Trap" }, ["Landing.svg"]),
+      frame("START.svg", {}, [{ href: "Landing.svg", sub: "Trap" }]),
       frame("Landing.svg", {}, []),
     ];
     const g = buildGraph(frames);
@@ -213,7 +297,7 @@ module.exports = {
 
   "sub cycle that can always exit passes the dead-end check": () => {
     const frames = [
-      frame("START.svg", { "session-sub-start": "Loop" }, ["Landing.svg"]),
+      frame("START.svg", {}, [{ href: "Landing.svg", sub: "Loop" }]),
       frame("Landing.svg", {}, []),
     ];
     const g = buildGraph(frames);
@@ -255,6 +339,55 @@ module.exports = {
     const { errors, warnings } = validateScore(g, frames.map((f) => f.name), () => null);
     assert.deepStrictEqual(errors, [], JSON.stringify(errors));
     assert.ok(codes(warnings).includes("track-group-singleton"), JSON.stringify(warnings));
+  },
+
+  "track-group members with the same voting and holding attributes pass": () => {
+    const timing = {
+      "session-track-group": "g",
+      voting: "250%",
+      holding: "4",
+    };
+    const frames = [
+      frame("START.svg", { "session-split": "2" }, ["B.svg", "C.svg"]),
+      frame("B.svg", timing, ["D.svg"]),
+      frame("C.svg", timing, ["D.svg"]),
+      frame("D.svg", {}, []),
+    ];
+    const g = buildGraph(frames);
+    const { errors } = validateScore(g, frames.map((f) => f.name), () => null);
+    assert.deepStrictEqual(
+      errors.filter((e) => e.code.startsWith("track-group-")),
+      [],
+      JSON.stringify(errors),
+    );
+  },
+
+  "track-group members with different voting attributes are an error": () => {
+    const frames = [
+      frame("START.svg", { "session-split": "2" }, ["B.svg", "C.svg"]),
+      frame("B.svg", { "session-track-group": "g", voting: "200%" }, ["D.svg"]),
+      frame("C.svg", { "session-track-group": "g", voting: "5" }, ["D.svg"]),
+      frame("D.svg", {}, []),
+    ];
+    const g = buildGraph(frames);
+    const { errors } = validateScore(g, frames.map((f) => f.name), () => null);
+    const hits = errors.filter((e) => e.code === "track-group-voting-mismatch");
+    assert.strictEqual(hits.length, 1, JSON.stringify(errors));
+    assert.strictEqual(hits[0].group, "g");
+  },
+
+  "track-group members with different holding attributes are an error": () => {
+    const frames = [
+      frame("START.svg", { "session-split": "2" }, ["B.svg", "C.svg"]),
+      frame("B.svg", { "session-track-group": "g", holding: "200%" }, ["D.svg"]),
+      frame("C.svg", { "session-track-group": "g" }, ["D.svg"]),
+      frame("D.svg", {}, []),
+    ];
+    const g = buildGraph(frames);
+    const { errors } = validateScore(g, frames.map((f) => f.name), () => null);
+    const hits = errors.filter((e) => e.code === "track-group-holding-mismatch");
+    assert.strictEqual(hits.length, 1, JSON.stringify(errors));
+    assert.strictEqual(hits[0].group, "g");
   },
 
   "unreachable barrier target is a warning": () => {

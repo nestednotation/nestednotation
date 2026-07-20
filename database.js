@@ -6,7 +6,6 @@ const jade = require("jade");
 // Session Lines: pure graph builder (no behavior change for vanilla scores).
 const { parseFrameAttrs } = require("./lib/session-lines/parse");
 const { buildGraph } = require("./lib/session-lines/graph");
-const { validateScore } = require("./lib/session-lines/validate");
 // Session Lines: per-playhead line model + persistence helpers.
 const { BMLine, migrateState } = require("./lib/session-lines/line");
 
@@ -36,8 +35,12 @@ const regexWithPattern = (str, pattern, groupId) => {
   return match[groupId];
 };
 
-const buildAboutSvgAsync = async (contentDir, svgIdSuffix) => {
-  const dir = `${DATA_DIR}/${contentDir}`;
+const buildAboutSvgAsync = async (
+  contentDir,
+  svgIdSuffix,
+  dataDir = DATA_DIR,
+) => {
+  const dir = `${dataDir}/${contentDir}`;
   if (!fs.existsSync(dir)) {
     console.log(`${dir} not found`);
     return null;
@@ -106,7 +109,7 @@ let hostAddress = null;
 const aboutNestedNotationSvg = buildAboutSvg(ABOUT_DATA_DIR, "-about-nn");
 
 const serverIp = process.env.SERVER_IP;
-const wsPath = `ws://192.168.0.2:2382`;
+const wsPath = `wss://${serverIp}`;
 console.log(`Websocket path is ${wsPath}`);
 
 class BMAdmin {
@@ -179,6 +182,10 @@ class BMAdminTable {
 }
 
 class BMSession {
+  // Offline tools may point a session at test fixtures outside public/data.
+  // Runtime sessions keep the production data directory default.
+  scoreDataDir = DATA_DIR;
+
   // Session Lines: the playhead(s). A session always has >= 1 line; until a
   // split occurs it has exactly one (`lines[0]`). The per-line fields that used
   // to live flat on BMSession are now owned entirely by BMLine — the runtime
@@ -186,6 +193,11 @@ class BMSession {
   // etc.), and BMSession's own playhead helpers below delegate to `lines[0]`.
   lines = [new BMLine(this)];
   nextLineId = 1;
+  // Structural split history used by the score map's "undo split" operation.
+  // Events are append-only (active → undone) so ids remain race-safe across
+  // restarts and repeated visits to the same split frame.
+  splitEvents = [];
+  nextSplitEventId = 1;
   deviceRegistry = {};
   // Rendezvous barriers (#6): session-global registry of frame refs reached by
   // any line — { "<lower ref>": "arrived" | "done" }. Sub frames use the
@@ -223,7 +235,7 @@ class BMSession {
   }
 
   checkScoreHasSounds(score) {
-    const dir = `${DATA_DIR}/${score}`;
+    const dir = `${this.scoreDataDir}/${score}`;
 
     if (!fs.existsSync(dir)) {
       return;
@@ -330,7 +342,7 @@ class BMSession {
   }
 
   async getSoundList(folder) {
-    const dir = `${DATA_DIR}/${folder}/Sounds`;
+    const dir = `${this.scoreDataDir}/${folder}/Sounds`;
     if (!fs.existsSync(dir)) {
       return [];
     }
@@ -340,9 +352,9 @@ class BMSession {
   }
 
   async buildSVGContent() {
-    const dir = this.hasSounds
-      ? `${DATA_DIR}/${this.folder}/Frames`
-      : `${DATA_DIR}/${this.folder}`;
+    const scoreDir = `${this.scoreDataDir}/${this.folder}`;
+    const framesDir = `${scoreDir}/Frames`;
+    const dir = fs.existsSync(framesDir) ? framesDir : scoreDir;
     if (!fs.existsSync(dir)) {
       return;
     }
@@ -450,29 +462,10 @@ class BMSession {
     // removed for vanilla scores so build output stays byte-identical).
     await this.buildSubFramesContent(sessionGraph);
 
-    // Session Lines: validation pass before the score is used (spec —
-    // "a validator runs before a score is used in a session"). Surfaced to the
-    // server console; non-blocking (the CLI covers pre-upload linting).
-    if (this.hasSessionLines) {
-      const { errors, warnings } = validateScore(
-        this.graph,
-        this.listFiles,
-        (score) => {
-          const sub = this.subFrames[score];
-          return sub ? { frameNames: sub.frameList, graph: sub.graph } : null;
-        },
-      );
-      for (const w of warnings) {
-        console.warn(`[session-lines] ${this.folder}: WARN ${w.message}`);
-      }
-      for (const e of errors) {
-        console.error(`[session-lines] ${this.folder}: ERROR ${e.message}`);
-      }
-    }
-
     const aboutSvg = await buildAboutSvgAsync(
       `${this.folder}/Documentation`,
       "-about-score",
+      this.scoreDataDir,
     );
 
     if (aboutSvg) {
@@ -564,7 +557,11 @@ class BMSession {
     }
 
     const scores = [
-      ...new Set(Object.values(graph.subStart || {}).map((s) => s.score)),
+      ...new Set(
+        Object.values(graph.subLinks || {})
+          .flat()
+          .map((l) => l.score),
+      ),
     ];
 
     for (const score of scores) {
@@ -592,7 +589,7 @@ class BMSession {
   }
 
   async buildOneSubScore(score) {
-    const base = `${DATA_DIR}/${this.folder}/Subscores/${score}`;
+    const base = `${this.scoreDataDir}/${this.folder}/Subscores/${score}`;
     const framesDir = fs.existsSync(`${base}/Frames`) ? `${base}/Frames` : base;
     if (!fs.existsSync(framesDir)) {
       console.log(`Sub-score frames not found at ${framesDir}`);
@@ -722,6 +719,8 @@ class BMSession {
       selectedCooldownTimeIndex: this.selectedCooldownTimeIndex,
       selectedHoldTimeIndex: this.selectedHoldTimeIndex,
       nextLineId: this.nextLineId,
+      splitEvents: this.splitEvents,
+      nextSplitEventId: this.nextSplitEventId,
       deviceRegistry: this.deviceRegistry,
       reachedTargets: this.reachedTargets,
       reachedGeneration: this.reachedGeneration,

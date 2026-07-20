@@ -28,6 +28,7 @@ module.exports = {
     line.isHolding = true;
     line.currentHoldingDuration = 4;
     line.subStack = [{ score: "S", returnHref: "R.svg" }];
+    line.splitAncestors = ["S1", "S2"];
     const votingTimer = setInterval(() => {}, 1e6);
     line.votingTimer = votingTimer;
 
@@ -41,6 +42,7 @@ module.exports = {
     assert.strictEqual(json.currentIndex, 3);
     assert.deepStrictEqual(json.history, ["x", "y", "z"]);
     assert.deepStrictEqual(json.subStack, [{ score: "S", returnHref: "R.svg" }]);
+    assert.deepStrictEqual(json.splitAncestors, ["S1", "S2"]);
     assert.strictEqual(json.id, "L0");
     assert.strictEqual(json.status, "active");
 
@@ -51,6 +53,7 @@ module.exports = {
     assert.deepStrictEqual(restored.history, ["x", "y", "z"]);
     assert.strictEqual(restored.id, "L0");
     assert.strictEqual(restored.currentHoldingDuration, 4);
+    assert.deepStrictEqual(restored.splitAncestors, ["S1", "S2"]);
     // session back-ref restored + non-enumerable (never leaks to JSON).
     assert.strictEqual(restored.session, session);
     assert.ok(
@@ -98,6 +101,8 @@ module.exports = {
     assert.strictEqual(v2.votingDuration, 10);
     assert.deepStrictEqual(v2.deviceRegistry, {});
     assert.strictEqual(v2.nextLineId, 1);
+    assert.deepStrictEqual(v2.splitEvents, []);
+    assert.strictEqual(v2.nextSplitEventId, 1);
 
     // per-line + re-derivable fields removed from the top level:
     for (const k of [
@@ -152,6 +157,8 @@ module.exports = {
     assert.strictEqual(json.lines[0].currentIndex, 1);
     assert.ok(!("currentIndex" in json), "no flat per-line field in v2 toJSON");
     assert.ok("deviceRegistry" in json);
+    assert.deepStrictEqual(json.splitEvents, []);
+    assert.strictEqual(json.nextSplitEventId, 1);
   },
 
   "enterSub/exitSub preserve the main-flow history across the dive": () => {
@@ -188,6 +195,56 @@ module.exports = {
     ]);
     assert.strictEqual(line.historyIndex, 2);
     assert.strictEqual(line.savedHistories.length, 0);
+  },
+
+  "setCurrIdxTo records no trail entry when landing on the current frame": () => {
+    const session = { listFiles: ["A.svg", "B.svg", "C.svg"] };
+    const line = new BMLine(session, "L2");
+    line.setCurrIdxTo(2); // trail: [C.svg]
+
+    // roomRewind lands EVERY line, including one already sitting at its
+    // landing frame (historyIndex assignment mirrors the rewind call sites).
+    line.historyIndex = 0;
+    line.isVoting = true;
+    line.setCurrIdxTo(2);
+
+    assert.deepStrictEqual(
+      line.history,
+      ["C.svg"],
+      "stay-in-place rewind must not append a duplicate trail entry",
+    );
+    assert.strictEqual(line.historyIndex, 0);
+    assert.strictEqual(line.currentIndex, 2);
+    assert.strictEqual(line.isVoting, false, "vote window still cleared");
+
+    // Proceeding afterwards appends normally.
+    line.setCurrIdxTo(1);
+    assert.deepStrictEqual(line.history, ["C.svg", "B.svg"]);
+    assert.strictEqual(line.historyIndex, 1);
+  },
+
+  "setCurrIdxTo rewind truncation keeps loop visits, collapses stale dups": () => {
+    const session = { listFiles: ["A.svg", "B.svg", "C.svg"] };
+    const line = new BMLine(session, "L2");
+    line.setCurrIdxTo(0);
+    line.setCurrIdxTo(1);
+    line.setCurrIdxTo(0);
+    line.setCurrIdxTo(1); // genuine loop: A, B, A, B
+
+    // Rewind to the SECOND A: redo entries truncate, the earlier loop visit
+    // survives as its own distinct entry.
+    line.historyIndex = 2;
+    line.setCurrIdxTo(0);
+    assert.deepStrictEqual(line.history, ["A.svg", "B.svg", "A.svg"]);
+    assert.strictEqual(line.historyIndex, 2);
+
+    // A trail corrupted by the old double-push heals on rewind: landing on
+    // "visit 2" of an adjacent duplicate collapses it.
+    line.history = ["C.svg", "C.svg", "B.svg", "A.svg"];
+    line.historyIndex = 1;
+    line.setCurrIdxTo(2);
+    assert.deepStrictEqual(line.history, ["C.svg"]);
+    assert.strictEqual(line.historyIndex, 0);
   },
 
   "clearAllTimer clears every line's timers": () => {

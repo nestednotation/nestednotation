@@ -24,14 +24,18 @@
   // the history overlay is painted from here in session-lines mode.
   let lastLines = null;
 
+  // Active structural split instances ride with the lines snapshot. The
+  // original parent is retired (and absent from lastLines), so this separate
+  // projection drives split-undo buttons and blocked-merge explanations.
+  let lastSplitRewinds = [];
+
   // History of the line this admin connection is assigned to, as pushed via
   // MSG_SELECT_HISTORY. VANILLA MODE ONLY: it drives the per-step rewind menu
-  // (right-click / tap-hold a visited node → "rewind here" {selectedIdx} —
+  // (click / tap a visited node → "rewind here" {selectedIdx} —
   // legitimate there, the single playhead IS the room) and paints the overlay
   // before the first lines push. In session-lines mode the implicit bound-line
-  // rewind is retired (2026-07-19): the menu offers the room-wide track-group
-  // checkpoint rewind plus EXPLICIT line-targeted rewinds ({lineId}), both
-  // built from the lines[] payload — which also drives the overlay.
+  // rewind is retired (2026-07-19): the menu offers room-wide track-group,
+  // explicit line-targeted, and structural split rewinds.
   let historyState = { history: [], selectedIdx: -1 };
 
   // Vanilla mode: a score without session-* markup is presented as a
@@ -146,7 +150,8 @@
         if (/^START/i.test(name)) classes.push("start");
         if ((graph.splits || {})[name]) classes.push("split");
         if ((graph.holdUntilTargets || {})[name]) classes.push("barrier");
-        if ((graph.subStart || {})[name]) classes.push("substart");
+        if (((graph.subLinks || {})[name] || []).length > 0)
+          classes.push("substart");
         if ((graph.subEnd || {})[name]) classes.push("subend");
         const trackGroup = ((graph.byFrame || {})[name] || {}).trackGroup || "";
         if (trackGroup) classes.push("grouped");
@@ -168,7 +173,13 @@
     const addHrefEdges = (graph, prefix) => {
       for (const name of graph.frames) {
         const attrs = graph.byFrame[name] || {};
-        const isSubStart = !!(graph.subStart || {})[name];
+        // Hrefs of this frame's session-sub-start <a> links: walked only
+        // AFTER their sub (the link dives; the href is the return landing).
+        const subReturns = new Set(
+          ((graph.subLinks || {})[name] || [])
+            .map((l) => String(l.returnHref || "").toLowerCase())
+            .filter((h) => h),
+        );
         const rejoinAt = (rejoinSources[name] || []).map((t) =>
           String(t).toLowerCase(),
         );
@@ -179,9 +190,9 @@
           if ((graph.splits || {})[name]) classes.push("split-edge");
           if (rejoinAt.includes(target.toLowerCase()))
             classes.push("merge-edge");
-          // A sub-start's href is walked only AFTER the sub (dive → …sub… →
-          // return); dot it so the real path through the sub reads clearly.
-          if (isSubStart) classes.push("via-sub");
+          // Dot the return-landing href so the real path through the sub
+          // (dive → …sub… → return) reads clearly.
+          if (subReturns.has(target.toLowerCase())) classes.push("via-sub");
           edge(`${prefix}${name}`, `${prefix}${target}`, classes.join(" "));
         }
       }
@@ -200,25 +211,27 @@
       addHrefEdges(sub, `sub:${score}:`);
     }
 
-    // Dive / return edges around each sub-start frame.
-    for (const [name, info] of Object.entries(main.subStart || {})) {
-      const sub = (subs || {})[info.score];
-      if (!sub) continue;
-      const startFrame =
-        sub.frames.find((f) => /^START/i.test(f)) || sub.frames[0];
-      if (startFrame) {
-        edge(`main:${name}`, `sub:${info.score}:${startFrame}`, "dive");
-      }
-      const returnTarget =
-        info.returnHref &&
-        main.frameNameByLower[String(info.returnHref).toLowerCase()];
-      if (returnTarget) {
-        for (const endFrame of Object.keys(sub.subEnd || {})) {
-          edge(
-            `sub:${info.score}:${endFrame}`,
-            `main:${returnTarget}`,
-            "return",
-          );
+    // Dive / return edges around each session-sub-start link.
+    for (const [name, links] of Object.entries(main.subLinks || {})) {
+      for (const info of links) {
+        const sub = (subs || {})[info.score];
+        if (!sub) continue;
+        const startFrame =
+          sub.frames.find((f) => /^START/i.test(f)) || sub.frames[0];
+        if (startFrame) {
+          edge(`main:${name}`, `sub:${info.score}:${startFrame}`, "dive");
+        }
+        const returnTarget =
+          info.returnHref &&
+          main.frameNameByLower[String(info.returnHref).toLowerCase()];
+        if (returnTarget) {
+          for (const endFrame of Object.keys(sub.subEnd || {})) {
+            edge(
+              `sub:${info.score}:${endFrame}`,
+              `main:${returnTarget}`,
+              "return",
+            );
+          }
         }
       }
     }
@@ -234,23 +247,44 @@
     return elements;
   }
 
+  // Node label = frame name + optional ⟨group⟩ + optional live badge lines.
+  function nodeLabelLines(ele) {
+    const lines = [ele.data("label")];
+    if (ele.data("trackGroup")) lines.push(`⟨${ele.data("trackGroup")}⟩`);
+    if (ele.data("badge")) lines.push(ele.data("badge"));
+    return lines;
+  }
+
+  // Explicit label-box sizing. width/height "label" (deprecated upstream) is a
+  // trap here: cytoscape measures label text lazily AFTER the first layout and
+  // paint, so dagre ranks 0-size boxes (cramped rows) and the style cache can
+  // lock never-retouched nodes invisible — exactly the ungrouped frames, since
+  // grouped/live ones get re-touched by badges and lines pushes. The label is
+  // 11px monospace, so its box is computable up front: ~6.6px per char, ~13px
+  // per line (padding is separate).
+  function nodeLabelWidth(ele) {
+    const longest = Math.max(
+      ...nodeLabelLines(ele).map((line) => String(line).length),
+    );
+    return Math.max(20, longest * 6.6 + 4);
+  }
+
+  function nodeLabelHeight(ele) {
+    return nodeLabelLines(ele).length * 13 + 4;
+  }
+
   const STYLE = [
     {
       selector: "node",
       style: {
         shape: "round-rectangle",
-        width: "label",
-        height: "label",
+        width: nodeLabelWidth,
+        height: nodeLabelHeight,
         padding: "6px",
         "background-color": "#f4f4f4",
         "border-width": 1,
         "border-color": "#999",
-        label: (ele) => {
-          const lines = [ele.data("label")];
-          if (ele.data("trackGroup")) lines.push(`⟨${ele.data("trackGroup")}⟩`);
-          if (ele.data("badge")) lines.push(ele.data("badge"));
-          return lines.join("\n");
-        },
+        label: (ele) => nodeLabelLines(ele).join("\n"),
         "text-wrap": "wrap",
         "text-valign": "center",
         "text-halign": "center",
@@ -406,14 +440,100 @@
         };
   }
 
+  // The automatic layout must read top-down: START on the top rank, flow
+  // continuing below it. Two edge kinds would break that by giving START (or
+  // other early frames) in-edges that drag them down dagre's ranking: barrier
+  // "waits" annotations and hrefs that loop back to an ancestor frame. Both
+  // stay visible — they are only left out of the collection the layout ranks.
+  // Back edges are found by DFS from the START nodes (an edge whose target is
+  // still on the DFS stack closes a cycle).
+  function flowLayoutElements() {
+    let excluded = cy.edges(".waits");
+    const state = {}; // node id → "active" (on the DFS stack) | "done"
+    const visit = (rootId) => {
+      if (state[rootId]) return;
+      state[rootId] = "active";
+      const stack = [{ id: rootId, edges: null, i: 0 }];
+      while (stack.length > 0) {
+        const top = stack[stack.length - 1];
+        if (!top.edges) {
+          top.edges = cy
+            .getElementById(top.id)
+            .outgoers("edge")
+            .not(excluded)
+            .toArray();
+        }
+        if (top.i >= top.edges.length) {
+          state[top.id] = "done";
+          stack.pop();
+          continue;
+        }
+        const edge = top.edges[top.i++];
+        const targetId = edge.target().id();
+        if (state[targetId] === "active") {
+          excluded = excluded.union(edge);
+        } else if (!state[targetId]) {
+          state[targetId] = "active";
+          stack.push({ id: targetId, edges: null, i: 0 });
+        }
+      }
+    };
+    cy.nodes(".start").forEach((n) => visit(n.id()));
+    // Anything not reachable from a START (isolated frames, cycles with no
+    // entry) roots its own DFS so its internal loops are still broken.
+    cy.nodes().forEach((n) => {
+      if (!n.isParent()) visit(n.id());
+    });
+    return cy.elements().not(excluded);
+  }
+
+  function runAutoLayout() {
+    flowLayoutElements().layout(autoLayoutOptions()).run();
+  }
+
   function relayout() {
     try {
       localStorage.removeItem(positionsKey());
     } catch (e) {
       // ignore
     }
-    cy.layout(autoLayoutOptions()).run();
+    runAutoLayout();
     cy.fit(undefined, 20);
+  }
+
+  // Initial view: 100% zoom with START near the top of the viewport (the flow
+  // reads down from it), instead of a whole-graph fit — large scores fit to an
+  // unreadably small zoom. Scores without a START frame keep the fit.
+  function focusStart() {
+    let start = cy.nodes('.start[id ^= "main:"]');
+    if (start.empty()) start = cy.nodes(".start");
+    if (start.empty()) {
+      cy.fit(undefined, 20);
+      return;
+    }
+    const pos = start[0].position();
+    cy.zoom(1);
+    cy.pan({
+      x: cy.width() / 2 - pos.x,
+      y: Math.min(cy.height() * 0.15, 120) - pos.y,
+    });
+  }
+
+  const ZOOM_STEP = 1.25;
+
+  function updateZoomValue() {
+    const el = document.getElementById("session-map-zoom-value");
+    if (el && cy) el.textContent = `${Math.round(cy.zoom() * 100)}%`;
+  }
+
+  // Button zoom keeps the viewport center fixed (wheel/pinch zoom on the
+  // cursor instead — cytoscape's default).
+  function zoomBy(factor) {
+    if (!cy) return;
+    cy.zoom({
+      level: cy.zoom() * factor,
+      renderedPosition: { x: cy.width() / 2, y: cy.height() / 2 },
+    });
   }
 
   function render(container, elements) {
@@ -421,9 +541,15 @@
       container,
       elements,
       style: STYLE,
-      layout: autoLayoutOptions(),
-      wheelSensitivity: 0.2,
+      // No layout here: runAutoLayout ranks only the forward flow (see
+      // flowLayoutElements), which needs the cy instance to exist first.
+      layout: { name: "preset" },
+      // Bounds keep the zoom buttons (and wheel/pinch) inside a useful range;
+      // fit() clamps to them, which any realistic score stays well within.
+      minZoom: 0.05,
+      maxZoom: 8,
     });
+    runAutoLayout();
     const saved = loadSavedPositions();
     if (saved) {
       cy.batch(() => {
@@ -432,11 +558,19 @@
         });
       });
     }
-    cy.fit(undefined, 20);
+    focusStart();
     cy.on("dragfree", "node", savePositions);
     const relayoutBtn = document.getElementById("session-map-relayout");
     if (relayoutBtn) relayoutBtn.addEventListener("click", relayout);
-    wireContextMenu(container);
+    const zoomInBtn = document.getElementById("session-map-zoom-in");
+    if (zoomInBtn) zoomInBtn.addEventListener("click", () => zoomBy(ZOOM_STEP));
+    const zoomOutBtn = document.getElementById("session-map-zoom-out");
+    if (zoomOutBtn)
+      zoomOutBtn.addEventListener("click", () => zoomBy(1 / ZOOM_STEP));
+    // Covers buttons, wheel, pinch, and every fit() — they all end in a zoom.
+    cy.on("zoom", updateZoomValue);
+    updateZoomValue();
+    wireNodeMenu(container);
     renderHistory(); // history may have arrived before the graph was ready
   }
 
@@ -508,7 +642,7 @@
     );
   }
 
-  // ── History overlay + rewind context menu ──────────────────────────────────
+  // ── History overlay + rewind node menu ─────────────────────────────────────
 
   function latestGroupTrailOccurrence(trail, groupFrames) {
     const set = new Set((groupFrames || []).map(lc));
@@ -622,8 +756,11 @@
       menu.id = "session-map-menu";
       menu.style.display = "none";
       document.body.appendChild(menu);
-      // Any interaction elsewhere dismisses the menu.
-      document.addEventListener("click", (e) => {
+      // Any pointer interaction elsewhere dismisses the menu. Use pointerdown
+      // rather than click: Cytoscape emits its node `tap` before the browser's
+      // synthetic click, which would otherwise immediately close a menu that
+      // was just opened by an ordinary mouse click or touch tap.
+      document.addEventListener("pointerdown", (e) => {
         if (!menu.contains(e.target)) hideMenu();
       });
       document.addEventListener("keydown", (e) => {
@@ -656,6 +793,20 @@
     );
     if (!ok) return;
     sendToServer(MSG_SELECT_HISTORY, { group });
+  }
+
+  function requestSplitRewind(eventId, frame, parentLineId, descendantCount) {
+    hideMenu();
+    const ok = confirm(
+      `Undo the split at "${frameLabel(frame)}"? ` +
+        `${descendantCount} descendant line${descendantCount === 1 ? "" : "s"} ` +
+        `will collapse back into ${parentLineId}. ` +
+        `All progress after this split will be discarded.`,
+    );
+    if (!ok) return;
+    // Both values are a race guard: a stale menu cannot undo a later visit to
+    // the same split frame.
+    sendToServer(MSG_SELECT_HISTORY, { splitEventId: eventId, frame });
   }
 
   // Session-lines: targeted rewind of one named line within its own trail
@@ -697,6 +848,30 @@
     return html;
   }
 
+  function splitRewindHtml(frameName) {
+    let html = "";
+    for (const entry of lastSplitRewinds || []) {
+      if (lc(entry.frame) !== lc(frameName)) continue;
+      if (entry.available) {
+        const count = (entry.descendantLineIds || []).length;
+        html += `<button type="button" data-split-event="${escapeHtml(
+          entry.eventId,
+        )}" data-split-frame="${escapeHtml(
+          entry.frame,
+        )}" data-split-parent="${escapeHtml(
+          entry.parentLineId,
+        )}" data-split-count="${count}">⏪⏪ undo split ${escapeHtml(
+          entry.parentLineId,
+        )} here (${count} line${count === 1 ? "" : "s"} → 1)</button>`;
+      } else if (entry.reason === "mixed-merge") {
+        html +=
+          `<div class="menu-note">split rewind unavailable — ` +
+          `a later merge mixed this branch with another split subtree</div>`;
+      }
+    }
+    return html;
+  }
+
   function showNodeMenu(node, clientX, clientY) {
     const menu = ensureMenu();
     const label = node.data("label");
@@ -707,11 +882,11 @@
 
     let html = `<div class="menu-title">${escapeHtml(label)}</div>`;
     if (!vanillaMode) {
-      // Session-lines rooms (2026-07-19): rewinds are the room-wide
-      // track-group checkpoint rewind plus EXPLICIT per-line rewinds within a
-      // line's own trail — main flow, or its current sub dive (a sub is its
-      // own session). The implicit bound-line rewind stays retired.
+      // Session-lines rooms (2026-07-19): room checkpoint, explicit line, and
+      // structural split rewinds. The implicit bound-line rewind stays retired.
       if (isMain) {
+        const splitHtml = splitRewindHtml(frameName);
+        html += splitHtml;
         const group = groupForMainFrame(frameName);
         const roomCheckpoint =
           group &&
@@ -731,7 +906,7 @@
           frameName,
         );
         html += lineButtons;
-        if (!roomCheckpoint && !lineButtons) {
+        if (!splitHtml && !roomCheckpoint && !lineButtons) {
           html += `<div class="menu-note">${
             group
               ? "not a room checkpoint yet — some line hasn't passed this group"
@@ -772,6 +947,16 @@
       }
     }
     menu.innerHTML = html;
+    for (const btn of menu.querySelectorAll("button[data-split-event]")) {
+      btn.addEventListener("click", () =>
+        requestSplitRewind(
+          btn.dataset.splitEvent,
+          btn.dataset.splitFrame,
+          btn.dataset.splitParent,
+          parseInt(btn.dataset.splitCount, 10),
+        ),
+      );
+    }
     for (const btn of menu.querySelectorAll("button[data-room-group]")) {
       btn.addEventListener("click", () => requestRoomRewind(btn.dataset.roomGroup));
     }
@@ -803,10 +988,10 @@
     menu.style.top = `${Math.min(clientY, window.innerHeight - rect.height - 4)}px`;
   }
 
-  function wireContextMenu(container) {
-    // Native context menu would cover ours on right-click.
-    container.addEventListener("contextmenu", (e) => e.preventDefault());
-    cy.on("cxttap taphold", "node", (evt) => {
+  function wireNodeMenu(container) {
+    // Cytoscape's `tap` covers an ordinary primary-button click and a touch
+    // tap. Right-click and tap-hold retain their normal browser behavior.
+    cy.on("tap", "node", (evt) => {
       const node = evt.target;
       if (node.isParent()) return; // sub boxes have no actions
       const box = container.getBoundingClientRect();
@@ -878,6 +1063,9 @@
     }
     if (msg === MSG_SHOW_NUMBER_CONNECTION) {
       if (Array.isArray(data.lines)) {
+        lastSplitRewinds = Array.isArray(data.splitRewinds)
+          ? data.splitRewinds
+          : [];
         updateLines(data.lines);
       } else if (vanillaMode) {
         vanillaState.players = data.playerCount || 0;
