@@ -3,6 +3,11 @@ const fs = require("fs");
 
 const jade = require("jade");
 
+// Every directory read goes through here: fs.readdir's raw order is
+// filesystem-dependent, and frame position is load-bearing (svg<N> ids,
+// data-next-file-idx, the persisted currentIndex).
+const { readDirSorted, readDirSortedSync } = require("./utils/readDir");
+
 // Session Lines: pure graph builder (no behavior change for vanilla scores).
 const { parseFrameAttrs } = require("./lib/session-lines/parse");
 const { buildGraph } = require("./lib/session-lines/graph");
@@ -46,7 +51,7 @@ const buildAboutSvgAsync = async (
     return null;
   }
 
-  let fileList = await fs.promises.readdir(dir);
+  let fileList = await readDirSorted(dir);
   if (fileList.length <= 0) {
     console.log(`No data in ${dir} folder`);
     return null;
@@ -79,7 +84,7 @@ const buildAboutSvg = (contentDir, svgIdSuffix) => {
     return null;
   }
 
-  let fileList = fs.readdirSync(dir);
+  let fileList = readDirSortedSync(dir);
   if (fileList.length <= 0) {
     console.log(`No data in ${dir} folder`);
     return null;
@@ -241,7 +246,7 @@ class BMSession {
       return;
     }
 
-    const fileList = fs.readdirSync(dir);
+    const fileList = readDirSortedSync(dir);
     return fileList.includes("Sounds") && fileList.includes("Frames");
   }
 
@@ -346,7 +351,7 @@ class BMSession {
     if (!fs.existsSync(dir)) {
       return [];
     }
-    const files = await fs.promises.readdir(dir, { recursive: true });
+    const files = await readDirSorted(dir, { recursive: true });
 
     return files.map((file) => file.replace("\\", "/"));
   }
@@ -359,7 +364,7 @@ class BMSession {
       return;
     }
 
-    this.listFiles = await fs.promises.readdir(dir);
+    this.listFiles = await readDirSorted(dir);
 
     if (this.listFiles.length <= 0) {
       return;
@@ -596,9 +601,7 @@ class BMSession {
       return null;
     }
 
-    const frameList = (await fs.promises.readdir(framesDir)).filter((f) =>
-      f.toLowerCase().endsWith(".svg"),
-    );
+    const frameList = await readDirSorted(framesDir, { ext: ".svg" });
     if (frameList.length <= 0) {
       return null;
     }
@@ -607,7 +610,7 @@ class BMSession {
     let soundList = [];
     const soundsDir = `${base}/Sounds`;
     if (fs.existsSync(soundsDir)) {
-      const files = await fs.promises.readdir(soundsDir, { recursive: true });
+      const files = await readDirSorted(soundsDir, { recursive: true });
       // Normalize EVERY path separator (a single .replace only fixes the first
       // level of nesting on Windows).
       soundList = files.map((f) => String(f).replace(/\\/g, "/"));
@@ -836,18 +839,19 @@ class BMSessionTable {
   }
 
   async loadStoredSessionStates() {
-    const sessionStateFiles = await fs.promises.readdir(SERVER_STATE_DIR, {
-      withFileTypes: true,
-    });
+    // Runs once, from BMDatabase.init() at boot. The listing is memoized, so a
+    // second call would not see sessions created/deleted since — clearDirCache
+    // (SERVER_STATE_DIR) first if this ever needs to run again.
+    const sessionStateFiles = await readDirSorted(SERVER_STATE_DIR);
 
-    for (const file of sessionStateFiles) {
-      if (file.name.endsWith(".html") || file.name.endsWith(".svg")) {
+    for (const fileName of sessionStateFiles) {
+      if (fileName.endsWith(".html") || fileName.endsWith(".svg")) {
         continue;
       }
 
       const newSession = new BMSession();
       const state = JSON.parse(
-        await fs.promises.readFile(`${SERVER_STATE_DIR}/${file.name}`, "utf8"),
+        await fs.promises.readFile(`${SERVER_STATE_DIR}/${fileName}`, "utf8"),
       );
       // Bring legacy v1 (flat) state up to v2 (lines:[one]) before applying.
       await newSession.patchState(migrateState(state));
@@ -909,7 +913,7 @@ class BMDatabase {
   }
 
   getListScore() {
-    var listFiles = fs.readdirSync(DATA_DIR);
+    var listFiles = readDirSortedSync(DATA_DIR);
     var scoreList = [];
     for (var i = 0; i < listFiles.length; i++) {
       var path = DATA_DIR + "/" + listFiles[i];

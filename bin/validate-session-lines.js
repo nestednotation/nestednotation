@@ -17,9 +17,12 @@ const { DATA_DIR } = require("../database.js");
 const { parseFrameAttrs } = require("../lib/session-lines/parse");
 const { buildGraph } = require("../lib/session-lines/graph");
 const { validateScore } = require("../lib/session-lines/validate");
+// Same sorted read the runtime build uses — otherwise the validator lints a
+// frame order the build would never produce.
+const { readDirSortedSync } = require("../utils/readDir");
 
 function resolveFramesDir(scoreDir) {
-  const entries = fs.readdirSync(scoreDir);
+  const entries = readDirSortedSync(scoreDir);
   if (entries.includes("Sounds") && entries.includes("Frames")) {
     return path.join(scoreDir, "Frames");
   }
@@ -27,13 +30,10 @@ function resolveFramesDir(scoreDir) {
 }
 
 function loadFrames(framesDir) {
-  return fs
-    .readdirSync(framesDir)
-    .filter((f) => f.toLowerCase().endsWith(".svg"))
-    .map((name) => {
-      const svg = fs.readFileSync(path.join(framesDir, name), "utf8");
-      return { name, svg, attrs: parseFrameAttrs(svg) };
-    });
+  return readDirSortedSync(framesDir, { ext: ".svg" }).map((name) => {
+    const svg = fs.readFileSync(path.join(framesDir, name), "utf8");
+    return { name, svg, attrs: parseFrameAttrs(svg) };
+  });
 }
 
 function makeSubLoader(scoreDir) {
