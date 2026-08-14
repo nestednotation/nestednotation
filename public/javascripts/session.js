@@ -438,7 +438,10 @@ function renderLineDistribution(lines) {
     const stalled = l.status === "dormant" || l.waiting;
     html +=
       `<span class="line-info${stalled ? " line-stalled" : ""}">` +
-      `${l.id}: ${l.devices} dev @ ${l.frame || "?"}${flagStr}</span>`;
+      // Performers only (`players`/`riders`), never the raw `devices` total: a
+      // /map tab is an observation tool and must leave no footprint in the
+      // room's numbers. Same reading as the map's own `L0·2p+1r` badge.
+      `${l.id}: ${l.players}p+${l.riders}r @ ${l.frame || "?"}${flagStr}</span>`;
   }
   panel.innerHTML = html;
 }

@@ -13,8 +13,9 @@ const os = require("os");
 const BMDatabase = require("../database.js");
 const { MESSAGES } = require("../constants.js");
 // Session Lines: pure connection routing (line selection / late-join policy).
+// Only the performer-filtered view is used here: every count, tally and
+// membership decision in the room is over performers, never map-view tabs.
 const {
-  lineConnections,
   performerLineConnections,
   smallestLineId,
 } = require("../lib/session-lines/routing");
@@ -291,13 +292,21 @@ function ensureLineAssignment(session, conn, deviceId) {
   }
 
   conn.lineId = lineId;
-  if (deviceId) {
-    session.deviceRegistry[deviceId] = lineId;
-  }
   // A map-view tab is an observer: binding it must not keep the line alive
-  // (attrition), revive a dormant line, or trigger adoption parking.
+  // (attrition), revive a dormant line, or trigger adoption parking — and it
+  // must leave NO PERSISTED trace either, hence the return BEFORE the registry
+  // write. `conn.lineId` above is just an address to send to and dies with the
+  // socket; a registry entry would outlive it in saved state, and a split's
+  // offline-device sweep (applySplit) would then treat the observer as a real
+  // device, spending one child's balancing slot on a tab that never plays. A
+  // refreshed map tab simply re-binds via smallestLineId, which is free: the
+  // map renders the room from the broadcast lines[] snapshot, not from its own
+  // line's messages.
   if (conn.isMapView) {
     return line;
+  }
+  if (deviceId) {
+    session.deviceRegistry[deviceId] = lineId;
   }
   // A device claimed the line again — cancel any pending attrition grace timer.
   cancelAttritionTimer(line);
@@ -1593,11 +1602,16 @@ function winningVoteIdForLine(session, line, votingData) {
   return defaultOutgoingVoteIdForLine(session, line);
 }
 
-// Tally votes for one line: only connections bound to line.id count, and the
+// Tally votes for one line: only PERFORMERS bound to line.id count, and the
 // leader-stabilization state lives on the line. With a single line this is
-// exactly today's session-wide tally.
+// exactly today's session-wide tally. Map-view tabs are excluded here rather
+// than relying on the map page never sending a vote.
 function countVoteForLine(session, line) {
-  const listConn = lineConnections(wsServer.connections, session.id, line.id);
+  const listConn = performerLineConnections(
+    wsServer.connections,
+    session.id,
+    line.id,
+  );
   const voteData = listConn
     .map((o) => o.currentVoteTo)
     .filter((vote) => isValidVoteForLine(session, line, vote));
@@ -2541,8 +2555,8 @@ async function cancelVotingTimer(session, line) {
 function updateNumberOfConnectionForSession(session) {
   // An admin is a player with extra tools (L3 decision), so admins count as
   // players here and in the per-line split below — isStaff is true for both
-  // the player and admin passwords. Map-view tabs are observation tools:
-  // never players/riders (they still appear in the raw `devices` count).
+  // the player and admin passwords. Map-view tabs are observation tools and
+  // appear in NO count this payload carries: a tool must leave no footprint.
   const performers = wsServer.connections.filter(
     (conn) => conn.sessionId == session.id && !conn.isMapView,
   );
@@ -2566,13 +2580,15 @@ function updateNumberOfConnectionForSession(session) {
     payload.lines = session.lines
       .filter((l) => l.status !== "retired")
       .map((l) => {
-        const conns = lineConnections(wsServer.connections, session.id, l.id);
-        const linePerformers = conns.filter((c) => !c.isMapView);
+        const linePerformers = performerLineConnections(
+          wsServer.connections,
+          session.id,
+          l.id,
+        );
         const mainHistory = mainHistoryStateForLine(l);
         return {
           id: l.id,
           status: l.status,
-          devices: conns.length,
           players: linePerformers.filter((c) => c.isStaff).length,
           riders: linePerformers.filter((c) => !c.isStaff).length,
           frame: frameNameForLine(session, l),
