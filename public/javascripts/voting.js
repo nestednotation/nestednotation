@@ -24,10 +24,24 @@ window.addEventListener(
   }, 200)
 );
 
+// The destination frame's `holding`, addressed by the frame's UNIQUE element id
+// rather than by its `file="<name>"` attribute.
+//
+// Main frames (`id="svg<N>"`) and sub frames (`id="sub-<score>-<N>"`) both carry
+// a bare `file=`, every visited sub is injected into the same container, and the
+// main frames come first in the page — so a `[file="…"]` lookup from inside a
+// sub silently returned the MAIN namesake's holding time. Every score and every
+// sub ships a START.svg, so that collision is present in every score.
+//
+// `voteIdx` indexes the ACTIVE frame list (window.listFiles is swapped to the
+// sub's frameList on dive), which is exactly the index each id was built from.
+// getElementById also needs no escaping, so score names with spaces or quotes
+// are safe here in a way the old attribute selector was not.
 function getFrameHoldingDur(voteIdx) {
-  const nextSvgFile = window.listFiles[voteIdx];
-  const nextSvgEle = document.querySelector(`[file="${nextSvgFile}"]`);
-  return nextSvgEle?.getAttribute("holding");
+  const ctx = window.frameContext || { type: "main" };
+  const id =
+    ctx.type === "sub" ? `sub-${ctx.name}-${voteIdx}` : `svg${voteIdx}`;
+  return document.getElementById(id)?.getAttribute("holding");
 }
 
 function handleSelectLink(aElement) {

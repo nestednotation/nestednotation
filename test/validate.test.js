@@ -441,4 +441,84 @@ module.exports = {
     const { errors } = validateScore(g, frames.map((f) => f.name), () => null);
     assert.deepStrictEqual(errors, [], JSON.stringify(errors));
   },
+
+  // Ambiguous dive targets — the runtime routes by target frame and never sees
+  // which <a> was tapped, so a shared target involving a dive misroutes silently.
+  "a plain link and a dive link sharing a target are an error": () => {
+    // Case differs deliberately: the runtime compares lowercased, so the
+    // validator must too.
+    const frames = [
+      frame("START.svg", {}, [
+        "Landing.svg",
+        { href: "landing.svg", sub: "Tetra1" },
+      ]),
+      frame("Landing.svg", {}, []),
+    ];
+    const g = buildGraph(frames);
+    const { errors } = validateScore(g, frames.map((f) => f.name), goodSubLoader);
+    assert.ok(
+      codes(errors).includes("ambiguous-sub-link-target"),
+      JSON.stringify(errors),
+    );
+  },
+
+  "two dive links sharing a target are an error (second sub unreachable)": () => {
+    const twoSubLoader = (name) => {
+      if (name !== "Tetra1" && name !== "Tetra2") return null;
+      const subFrames = [
+        frame("START.svg", {}, ["X.svg"]),
+        frame("X.svg", { "session-sub-end": name }, []),
+      ];
+      return {
+        frameNames: subFrames.map((f) => f.name),
+        graph: buildGraph(subFrames),
+      };
+    };
+    const frames = [
+      frame("START.svg", {}, [
+        { href: "Landing.svg", sub: "Tetra1" },
+        { href: "Landing.svg", sub: "Tetra2" },
+      ]),
+      frame("Landing.svg", {}, []),
+    ];
+    const g = buildGraph(frames);
+    const { errors } = validateScore(g, frames.map((f) => f.name), twoSubLoader);
+    const hits = errors.filter((e) => e.code === "ambiguous-sub-link-target");
+    // One error per ambiguous TARGET, not one per link on it.
+    assert.strictEqual(hits.length, 1, JSON.stringify(errors));
+  },
+
+  "a dive with its own target passes alongside other links": () => {
+    const frames = [
+      frame("START.svg", {}, [
+        "B.svg",
+        { href: "Landing.svg", sub: "Tetra1" },
+      ]),
+      frame("B.svg", {}, []),
+      frame("Landing.svg", {}, []),
+    ];
+    const g = buildGraph(frames);
+    const { errors } = validateScore(g, frames.map((f) => f.name), goodSubLoader);
+    assert.deepStrictEqual(errors, [], JSON.stringify(errors));
+  },
+
+  "duplicate PLAIN links are not flagged when the dive targets elsewhere": () => {
+    // Only targets a dive is involved in are ambiguous — two plain links to one
+    // frame are harmless, since either tap routes to the same place.
+    const frames = [
+      frame("START.svg", {}, [
+        "B.svg",
+        "B.svg",
+        { href: "Landing.svg", sub: "Tetra1" },
+      ]),
+      frame("B.svg", {}, []),
+      frame("Landing.svg", {}, []),
+    ];
+    const g = buildGraph(frames);
+    const { errors } = validateScore(g, frames.map((f) => f.name), goodSubLoader);
+    assert.ok(
+      !codes(errors).includes("ambiguous-sub-link-target"),
+      JSON.stringify(errors),
+    );
+  },
 };

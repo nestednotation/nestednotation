@@ -99,4 +99,27 @@ module.exports = {
     ];
     assert.strictEqual(smallestLineId(lines, [], "s1"), "L1");
   },
+
+  "smallestLineId counts performers only, not map-view observers": () => {
+    const lines = [
+      { id: "L0", status: "active" },
+      { id: "L1", status: "dormant" },
+    ];
+    // L1 is dormant with nobody performing on it — only a /map tab bound to it
+    // for addressing. It must still read as 0 population and win the newcomer,
+    // otherwise an observer silently costs a dead path its revival.
+    const c = [
+      { sessionId: "s1", lineId: "L0" },
+      { sessionId: "s1", lineId: "L1", isMapView: true },
+    ];
+    assert.strictEqual(smallestLineId(lines, c, "s1"), "L1");
+
+    // And an admin on the SESSION page is still population (L3), so a line
+    // carrying one is not the emptiest.
+    const withAdmin = [
+      { sessionId: "s1", lineId: "L1", isAdmin: true },
+      { sessionId: "s1", lineId: "L0", isMapView: true },
+    ];
+    assert.strictEqual(smallestLineId(lines, withAdmin, "s1"), "L0");
+  },
 };

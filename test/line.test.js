@@ -247,6 +247,58 @@ module.exports = {
     assert.strictEqual(line.historyIndex, 0);
   },
 
+  "setCurrIdxTo rewind then advance keeps the frame rewound to": () => {
+    const session = { listFiles: ["A.svg", "B.svg", "C.svg"] };
+    const line = new BMLine(session, "L2");
+    line.setCurrIdxTo(0);
+    line.setCurrIdxTo(1);
+    line.setCurrIdxTo(2); // trail: A, B, C
+
+    // Rewind to B — the call sites always land ON history[historyIndex].
+    line.historyIndex = 1;
+    line.setCurrIdxTo(1);
+    assert.deepStrictEqual(
+      line.history,
+      ["A.svg", "B.svg"],
+      "the redo tail truncates, the rewind point itself survives",
+    );
+    assert.strictEqual(line.historyIndex, 1);
+
+    // Moving on afterwards must not have eaten the frame we rewound to.
+    line.setCurrIdxTo(2);
+    assert.deepStrictEqual(line.history, ["A.svg", "B.svg", "C.svg"]);
+    assert.strictEqual(line.historyIndex, 2);
+  },
+
+  "setCurrIdxTo warns but keeps the trail when a caller breaks the invariant": () => {
+    const session = { listFiles: ["A.svg", "B.svg", "C.svg"] };
+    const line = new BMLine(session, "L2");
+    line.setCurrIdxTo(0);
+    line.setCurrIdxTo(1);
+    line.setCurrIdxTo(2); // trail: A, B, C
+
+    // No caller does this today (every rewind derives its landing FROM the
+    // trail entry) — this guards the defensive path for the one that might.
+    const warnings = [];
+    const realWarn = console.warn;
+    console.warn = (msg) => warnings.push(msg);
+    try {
+      line.historyIndex = 1; // says "rewind to B"…
+      line.setCurrIdxTo(0); // …but lands on A
+    } finally {
+      console.warn = realWarn;
+    }
+
+    assert.strictEqual(warnings.length, 1, "the mismatch must be reported");
+    assert.match(warnings[0], /L2/);
+    assert.deepStrictEqual(
+      line.history,
+      ["A.svg", "B.svg", "A.svg"],
+      "B must not be swallowed by the truncation",
+    );
+    assert.strictEqual(line.historyIndex, 2);
+  },
+
   "clearAllTimer clears every line's timers": () => {
     const session = new BMSession();
     const line2 = new BMLine(session, "L1");

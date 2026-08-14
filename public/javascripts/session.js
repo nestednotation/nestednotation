@@ -313,7 +313,6 @@ async function enterSubSessionView(subName) {
     );
     if (!res.ok) throw new Error(`sub fetch ${res.status}`);
     data = await res.json();
-    window.__subCache[subName] = data;
 
     const container = document.getElementById("SubSessionContent");
     if (!container.querySelector(`svg[id^="sub-${subName}-"]`)) {
@@ -324,6 +323,12 @@ async function enterSubSessionView(subName) {
       }
       window.sessionInstance?.registerSubFrames(subName, data.soundList);
     }
+
+    // Cache only once the frames are actually in the page. Caching first meant
+    // a throw mid-injection left an empty sub cached forever: every later dive
+    // took the cache hit, skipped injection, and showed a blank sub with no
+    // error. Now a failed dive leaves nothing behind and the next one retries.
+    window.__subCache[subName] = data;
   }
 
   window.listFiles = data.frameList;
@@ -463,16 +468,37 @@ function renderAdminBarrierPanel(barriers) {
     return;
   }
   panel.style.display = "flex";
-  let html = "<span>Barriers waiting:</span>";
+  panel.innerHTML = "";
+
+  const heading = document.createElement("span");
+  heading.textContent = "Barriers waiting:";
+  panel.appendChild(heading);
+
+  // Built as elements with attached handlers rather than an assembled
+  // onclick="…('<frame>')" string: a frame named `Don't Stop.svg` closed the
+  // quoted argument early and left that one button inert (release all still
+  // worked). Any filename is safe here.
   for (const b of barriers) {
     const parked = (b.parked || []).join(",") || "none";
-    html +=
-      `<span class="barrier-info">${b.frame} [parked: ${parked}] ` +
-      `<button type="button" onclick="sendForceReleaseBarrier('${b.frame}')">release</button>` +
-      `</span>`;
+
+    const info = document.createElement("span");
+    info.className = "barrier-info";
+    info.textContent = `${b.frame} [parked: ${parked}] `;
+
+    const release = document.createElement("button");
+    release.type = "button";
+    release.textContent = "release";
+    release.addEventListener("click", () => sendForceReleaseBarrier(b.frame));
+    info.appendChild(release);
+
+    panel.appendChild(info);
   }
-  html += `<button type="button" onclick="sendForceReleaseBarrier()">release all</button>`;
-  panel.innerHTML = html;
+
+  const releaseAll = document.createElement("button");
+  releaseAll.type = "button";
+  releaseAll.textContent = "release all";
+  releaseAll.addEventListener("click", () => sendForceReleaseBarrier());
+  panel.appendChild(releaseAll);
 }
 
 // Ask the server to force-release a chosen barrier (by frame) or all waiting

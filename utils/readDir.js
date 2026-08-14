@@ -79,7 +79,6 @@ async function readDirSorted(dir, opts = {}) {
     cache.set(dir, entries);
   }
 
-  console.log({ listCache, recursiveCache });
   return viewOf(entries, ext.toLowerCase());
 }
 
@@ -103,7 +102,6 @@ function readDirSortedSync(dir, opts = {}) {
     cache.set(dir, entries);
   }
 
-  console.log({ listCache, recursiveCache });
   return viewOf(entries, ext.toLowerCase());
 }
 

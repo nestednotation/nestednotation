@@ -300,9 +300,11 @@ Rules:
 - The named sub-score must exist (in `Subscores/`, see below) and must contain a `START`
   frame and at least one exit frame (`session-sub-end`, next section).
 - A frame may mix normal links and sub links — the dive is just one of the choices — and
-  may even offer doors into **different** sub-scores. Just don't point a marked link and
-  an unmarked link of the same frame at the same target frame (the door is recognized by
-  its target).
+  may even offer doors into **different** sub-scores. But **every link on the frame needs
+  its own target frame.** A door is recognized by *where it points*, not by which shape was
+  tapped, so if a marked and an unmarked link share a target, both behave as the door —
+  tapping the plain link dives too. Two doors sharing a target are just as bad: only the
+  first is reachable. The validator refuses either (`ambiguous-sub-link-target`).
 - A **split frame's links can't be doors** (validator error): give the split path an
   ordinary in-between frame and put the sub link there.
 - If the frame's *only* link is a sub link, a round with no votes auto-continues into the
@@ -484,6 +486,7 @@ line tells you the frame and the problem. What the messages mean:
 | `sub-start-no-return` / `sub-start-return-unresolved` | The marked `<a>` has no `href`, or its `href` points at a nonexistent frame. | The sub-start link needs an `href` to a real main-score frame — that's the return landing. |
 | `sub-start-on-root` | `session-sub-start` is on the `<svg>` tag (the old markup style). | Move it onto the `<a>` link whose `href` is the return landing (section 3.5). |
 | `split-sub-link` | A split frame's link carries `session-sub-start`. | Split paths can't be doors — land the path on an in-between frame and put the sub link there. |
+| `ambiguous-sub-link-target` | Two of the frame's links point at the **same** target frame, and at least one of them is a `session-sub-start` door. | Give the door a target frame of its own. The app routes by target and never sees which shape was tapped, so every advance to that frame would dive — even a tap on the plain link. (Two doors on one target: only the first sub-score is ever reachable.) |
 | `track-group-voting-mismatch` / `track-group-holding-mismatch` | Frames in one track group use different timing overrides. | Give every group member the same attribute values, or omit the attributes from all members to use the session defaults. |
 | `track-group-singleton` (warning) | A track group has only one frame. | Add the other frame(s), or remove the group. |
 
