@@ -583,14 +583,15 @@ function isSplitFrame(session, line) {
   return !!session.graph.splits[frameNameForLine(session, line)];
 }
 
-// Resolve a split: the choice window has closed on a split frame. Spawn the N
-// child lines, distribute choosers + balance stragglers, hard-retire the parent,
-// reassign connections, then let each child react to its landing frame.
-async function resolveSplit(session, line) {
+// The split frame's ordered child links plus the member list they are resolved
+// against. ONE builder for both the live per-device destination preview and the
+// real resolution below, so the destination a device is shown mid-window is
+// exactly the one it gets when the window closes.
+function splitPlanForLine(session, line) {
   const frameName = frameNameForLine(session, line);
   const childFrameIndices = (session.graph.frameLinks || {})[frameName] || [];
   if (childFrameIndices.length < 2) {
-    return; // not a real split (validator should have caught this)
+    return null; // not a real split (validator should have caught this)
   }
 
   const members = performerLineConnections(
@@ -603,12 +604,70 @@ async function resolveSplit(session, line) {
     return { conn, key: conn.deviceId, choice: slot >= 0 ? slot : null };
   });
 
-  const { children } = orch.applySplit({
+  return { frameName, childFrameIndices, members };
+}
+
+// A split partition (member index → child slot) keyed by connection instead:
+// each device's destination as the vote id of the child link it lands on.
+function splitDestinationsByConn(plan, assignment) {
+  const voteIds = orch.splitDestinationVoteIds(
+    plan.frameName,
+    plan.childFrameIndices,
+    assignment,
+  );
+  const destinations = new Map();
+  plan.members.forEach((m, i) => {
+    if (m.conn && voteIds[i]) {
+      destinations.set(m.conn, voteIds[i]);
+    }
+  });
+  return destinations;
+}
+
+// Per-device destinations on a split frame: the child link each connection
+// would land on if the window closed right now. A split has no single winning
+// vote — the line DIVIDES — so each device is told its own destination instead
+// of one shared winner (see sendVotingUpdateToLine). Recomputed from the live
+// votes on every tick, so it tracks other devices' choices as they come in.
+function splitDestinationPreview(session, line) {
+  const plan = splitPlanForLine(session, line);
+  if (!plan) {
+    return new Map();
+  }
+  const { assignment } = orch.planSplitPartition(
+    plan.members,
+    plan.childFrameIndices.length,
+  );
+  return splitDestinationsByConn(plan, assignment);
+}
+
+// Resolve a split: the choice window has closed on a split frame. Spawn the N
+// child lines, distribute choosers + balance stragglers, hard-retire the parent,
+// reassign connections, then let each child react to its landing frame.
+async function resolveSplit(session, line) {
+  const plan = splitPlanForLine(session, line);
+  if (!plan) {
+    return; // not a real split (validator should have caught this)
+  }
+  // Tallied BEFORE applySplit — the counts still describe the window that just
+  // closed, and conn.currentVoteTo is reset a few lines below.
+  const finalCounts = countVoteForLine(session, line);
+
+  const { children, assignment } = orch.applySplit({
     session,
     parentLine: line,
-    childFrameIndices,
-    members,
+    childFrameIndices: plan.childFrameIndices,
+    members: plan.members,
   });
+
+  // Settle every device's destination marker on the child it ACTUALLY got,
+  // before the new frame replaces the split frame. Driven by applySplit's own
+  // assignment, so this final marker cannot disagree with the split; it only
+  // corrects the last tick when a late tap moved someone's balanced slot.
+  const finalDestinations = splitDestinationsByConn(plan, assignment);
+  sendSplitVotingUpdate(finalCounts, finalDestinations, [
+    ...finalDestinations.keys(),
+  ]);
 
   // Map-view observers are not split members — re-bind any still on the
   // retired parent to wherever the registry sweep sent their device id.
@@ -1560,14 +1619,66 @@ async function tryReleaseGroupWaits(session) {
   }
 }
 
+// MSG_UPDATE_VOTING on a split frame, addressed per device. `winningVoteId` is
+// stripped: a split frame has no winner — the line divides — so a single shared
+// glow would point every device at one link most of them are not taking. Each
+// connection instead gets `splitDestinationVoteId`, the child link the server
+// currently has it going to (null for anyone outside the partition, e.g. a
+// map-view tab). Splits are session-lines-only, so vanilla payloads are
+// untouched.
+//
+// `conns` is passed in rather than filtered by line here: the final settle runs
+// AFTER applySplit has already re-pointed every conn.lineId at its child.
+function sendSplitVotingUpdate(countDic, destinations, conns) {
+  const counts = { ...countDic };
+  delete counts.winningVoteId;
+  const timestamp = new Date().getTime();
+  for (const conn of conns) {
+    sendToClient(conn, 0, {
+      m: MESSAGES.MSG_UPDATE_VOTING,
+      countDic: counts,
+      splitDestinationVoteId: destinations.get(conn) || null,
+      timestamp,
+    });
+  }
+}
+
+// Every MSG_UPDATE_VOTING for a whole line goes through here so the split frame
+// case (per-device destinations, above) can never be missed on one of the
+// paths.
+function sendVotingUpdateToLine(session, line, countDic) {
+  if (isSplitFrame(session, line)) {
+    sendSplitVotingUpdate(
+      countDic,
+      splitDestinationPreview(session, line),
+      // Performers only — a map tab has no destination of its own and the map
+      // page ignores MSG_UPDATE_VOTING (it reads the `lines` payload instead).
+      performerLineConnections(wsServer.connections, session.id, line.id),
+    );
+    return;
+  }
+  sendToLine(session, line.id, 0, {
+    m: MESSAGES.MSG_UPDATE_VOTING,
+    countDic,
+    timestamp: new Date().getTime(),
+  });
+}
+
 function sendUpdateVotingToClient(conn, session, line) {
   const countDic = countVoteForLine(session, line);
   const timestamp = new Date().getTime();
-  sendToClient(conn, 0, {
+  const payload = {
     m: MESSAGES.MSG_UPDATE_VOTING,
     countDic,
     timestamp,
-  });
+  };
+  // The tapper's own immediate echo — same split rule as the broadcast path.
+  if (isSplitFrame(session, line)) {
+    delete countDic.winningVoteId;
+    payload.splitDestinationVoteId =
+      splitDestinationPreview(session, line).get(conn) || null;
+  }
+  sendToClient(conn, 0, payload);
 }
 
 const isValidVote = (vote) => {
@@ -1686,12 +1797,16 @@ const parseCustomDur = (defaultDur, customDur) => {
   }
 };
 
+// `initiator` is the tap that OPENED this window ({ conn, voteId }), if any: a
+// vote already cast, which must survive the reset below so the split's opening
+// push already knows where the tapper is going (see there).
 async function startVotingForSessionWithDelay(
   session,
   line,
   timeDelay,
   customDur,
   skipGroupSync = false,
+  initiator = null,
 ) {
   const sessionId = session.id;
   line.currentVotingDuration = customDur
@@ -1719,13 +1834,7 @@ async function startVotingForSessionWithDelay(
         return;
       }
 
-      const countDic = countVoteForLine(session, line);
-      const timestamp = new Date().getTime();
-      sendToLine(session, line.id, 0, {
-        m: MESSAGES.MSG_UPDATE_VOTING,
-        countDic,
-        timestamp,
-      });
+      sendVotingUpdateToLine(session, line, countVoteForLine(session, line));
 
       if (
         !line.didSendStopVoting &&
@@ -1753,11 +1862,33 @@ async function startVotingForSessionWithDelay(
     }
   });
 
+  // …except the tap that opened this window: the reset above clears the votes
+  // of the PREVIOUS window, and that one belongs to the new one. Re-applying it
+  // here rather than leaving it to the caller (which only resumes after this
+  // whole function has run) is what keeps the split push below from describing
+  // the tapper as an unassigned straggler.
+  if (initiator && initiator.conn) {
+    initiator.conn.currentVoteTo = initiator.voteId;
+  }
+
   sendToLine(session, line.id, 0, {
     m: MESSAGES.MSG_BEGIN_VOTING,
     endTime: line.currentEndTimeStamp,
     duration: line.currentVotingDuration,
   });
+
+  // A split's choice window opens with every device already assigned a
+  // destination (stragglers ⇒ a balanced spread). Push it now instead of
+  // leaving play-mode devices — which cannot tap, so this marker is their only
+  // cue — with a blank frame until the first tick.
+  //
+  // The opening tap must be in hand by here (`initiator`, above). Computed
+  // without it, this push tells the tapper it was balanced somewhere — a blue
+  // "auto" marker that flashes for the few ms until its own echo replaces it
+  // with orange, reading as the app overriding a choice just made.
+  if (isSplitFrame(session, line)) {
+    sendVotingUpdateToLine(session, line, countVoteForLine(session, line));
+  }
 
   // Session Lines: a track-group's voting windows are time-synchronized. When a
   // line on a grouped frame starts voting, open matching windows on the other
@@ -1909,13 +2040,11 @@ async function resolveGroupVoting(session, line) {
       }
     });
 
-    // Final glow update: the client follows countDic.winningVoteId.
+    // Final glow update: the client follows countDic.winningVoteId. (Split
+    // lines never reach here — they were delegated to resolveSplit above, which
+    // sends per-device destinations instead of one shared winner.)
     counts.winningVoteId = winningId;
-    sendToLine(session, l.id, 0, {
-      m: MESSAGES.MSG_UPDATE_VOTING,
-      countDic: counts,
-      timestamp: new Date().getTime(),
-    });
+    sendVotingUpdateToLine(session, l, counts);
 
     // A grouped line whose link winner is a session-sub-start link dives into
     // its sub (the group advanced; this line's advance IS the dive).
@@ -2742,7 +2871,17 @@ async function messageHandle(conn, message) {
         ) {
           choiceDur = String(DEFAULT_SPLIT_CHOICE_DUR);
         }
-        await startVotingForSessionWithDelay(session, line, 100, choiceDur);
+        // The tap travels with the window it opens: a split's opening push
+        // already carries per-device destinations, and one computed without
+        // this vote would tell the tapper it had been auto-assigned elsewhere.
+        await startVotingForSessionWithDelay(
+          session,
+          line,
+          100,
+          choiceDur,
+          false,
+          { conn, voteId: selectedId },
+        );
       }
 
       conn.currentVoteTo = selectedId;

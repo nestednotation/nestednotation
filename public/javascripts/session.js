@@ -102,6 +102,7 @@ function parseMessage(data) {
     //reset all
     window.winningVoteId = null;
     window.currVoteId = null;
+    window.splitDestinationVoteId = null;
     clearVotingIndicator();
     window.countDic = null;
 
@@ -116,11 +117,15 @@ function parseMessage(data) {
   }
 
   if (msg === MSG_UPDATE_VOTING) {
-    const { countDic, timestamp } = data;
+    const { countDic, timestamp, splitDestinationVoteId } = data;
     if (timestamp <= votingDataTimeStamp) {
       return;
     }
 
+    // Session Lines: on a `session-split` frame the server sends no shared
+    // winner (the line divides) — it addresses THIS device its own destination
+    // instead. Absent on every other frame, which keeps the winner behavior.
+    window.splitDestinationVoteId = splitDestinationVoteId || null;
     showVotingIndicator(countDic);
     window.countDic = countDic;
     votingDataTimeStamp = timestamp;

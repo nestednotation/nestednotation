@@ -99,9 +99,54 @@ function clearVotingIndicator() {
   }
 }
 
+// The circle's content: the link's vote count, plus an "auto" label when the
+// SERVER placed this device here rather than the performer choosing it.
+//
+// Whether the label is legible is left to CSS, not decided here: play mode
+// renders the marker as a bare glow (`color: transparent`), so the label is
+// invisible there without any JS involvement. That matters because switching
+// modes never re-renders these indicators — a mode test in JS would go stale
+// the moment the performer toggled guide mode.
+function setIndicatorContent(indicatorEle, voteCount, isAuto) {
+  const count = voteCount == null ? "" : String(voteCount);
+  if (!isAuto) {
+    indicatorEle.textContent = count;
+    return;
+  }
+
+  indicatorEle.textContent = "";
+  if (count !== "") {
+    const countEle = document.createElement("span");
+    countEle.className = "vote-count";
+    countEle.textContent = count;
+    indicatorEle.appendChild(countEle);
+  }
+  const label = document.createElement("span");
+  label.className = "auto-label";
+  label.textContent = "auto";
+  indicatorEle.appendChild(label);
+}
+
 function showVotingIndicator(voteDic) {
   window.winningVoteId = voteDic.winningVoteId;
   const { votingIndicatorMap, currVoteId, winningVoteId } = window;
+  // This device's own destination out of a `session-split` frame (null on every
+  // other frame, where the shared winner is marked instead). A split has no
+  // winner — the line divides — so the server hands each device the child it is
+  // going to, and this marker answers "where do I arrive?" for the whole window.
+  //
+  // It is marked even once it IS the device's own vote. Suppressing it then
+  // (the first cut of this) was wrong in practice: the marker visibly vanished
+  // the moment a performer guided their device, which reads as the app losing
+  // track of them. It now just stacks with `current-vote` — same link, one
+  // marker saying both "my choice" and "where I land".
+  const destinationVoteId = window.splitDestinationVoteId || null;
+  // …but the two cases are still told apart by colour: a destination the device
+  // did NOT choose was assigned by the server's balancing, so it renders BLUE
+  // with an "auto" label, while a path the performer tapped keeps the orange of
+  // an ordinary vote. Every play-mode device is in the auto case (it cannot
+  // tap), as is a guide-mode device that has not chosen yet.
+  const autoAssigned = !!destinationVoteId && destinationVoteId !== currVoteId;
 
   const removedWinningDic = { ...voteDic };
   delete removedWinningDic.winningVoteId;
@@ -113,16 +158,34 @@ function showVotingIndicator(voteDic) {
     document.getElementById("stay").classList.remove("visible");
   }
 
-  for (const [voteId, voteCount] of dicEntries) {
+  // The destination is marked even when nobody voted for that path — it is an
+  // assignment, not a tally — so it gets a countless indicator of its own.
+  const renderEntries = [...dicEntries];
+  if (
+    destinationVoteId &&
+    destinationVoteId !== "stay" &&
+    !Object.hasOwn(removedWinningDic, destinationVoteId)
+  ) {
+    renderEntries.push([destinationVoteId, ""]);
+  }
+
+  for (const [voteId, voteCount] of renderEntries) {
+    const isDestination = voteId === destinationVoteId;
+    const isAuto = isDestination && autoAssigned;
+
     if (votingIndicatorMap.has(voteId)) {
       const indicatorEle = votingIndicatorMap.get(voteId);
       if (!indicatorEle) {
         continue;
       }
 
-      indicatorEle.innerHTML = voteCount;
+      setIndicatorContent(indicatorEle, voteCount, isAuto);
 
-      if (voteId === winningVoteId) {
+      indicatorEle.classList.toggle("destination", isDestination);
+      indicatorEle.classList.toggle("auto", isAuto);
+      // The destination reuses the winning marker's look: on a split frame it
+      // takes the winner's place, so it must read the same in both modes.
+      if (voteId === winningVoteId || isDestination) {
         indicatorEle.classList.add("winning");
       } else {
         indicatorEle.classList.remove("winning");
@@ -141,7 +204,10 @@ function showVotingIndicator(voteDic) {
       continue;
     }
 
-    const injectedIndicator = injectVoteIndicator(voteId, voteCount);
+    const injectedIndicator = injectVoteIndicator(voteId, voteCount, {
+      isDestination,
+      isAuto,
+    });
     if (injectedIndicator) {
       votingIndicatorMap.set(voteId, injectedIndicator);
     }
@@ -151,9 +217,13 @@ function showVotingIndicator(voteDic) {
     updateStayButtonState(0);
   }
 
-  // Remove all voting indicator element that not in dic
+  // Remove all voting indicator element that not in dic (the destination marker
+  // is kept — it survives on zero votes).
   for (const [voteId, indicatorEle] of votingIndicatorMap.entries()) {
-    if (Object.hasOwn(removedWinningDic, voteId)) {
+    if (
+      Object.hasOwn(removedWinningDic, voteId) ||
+      voteId === destinationVoteId
+    ) {
       continue;
     }
 
@@ -162,7 +232,8 @@ function showVotingIndicator(voteDic) {
   }
 }
 
-function injectVoteIndicator(voteId, voteCount) {
+function injectVoteIndicator(voteId, voteCount, marks = {}) {
+  const { isDestination, isAuto } = marks;
   const { currVoteId, winningVoteId } = window;
   const containerElement = document.getElementById(voteId);
   if (!containerElement) {
@@ -183,15 +254,27 @@ function injectVoteIndicator(voteId, voteCount) {
 
   const indicatorBtn = document.createElement("div");
   indicatorBtn.classList.add("vote-indicator");
-  indicatorBtn.style.top = indicatorPosition.top;
-  indicatorBtn.style.left = indicatorPosition.left;
-  indicatorBtn.innerHTML = voteCount;
+  // Units required: assigning a bare number to a CSS length is an invalid
+  // declaration, which the CSSOM silently DROPS — every indicator then fell
+  // back to the stylesheet's `top/left: 0` and piled up in the viewport's
+  // top-left corner instead of sitting on its link.
+  indicatorBtn.style.top = `${indicatorPosition.top}px`;
+  indicatorBtn.style.left = `${indicatorPosition.left}px`;
+  setIndicatorContent(indicatorBtn, voteCount, isAuto);
 
   if (voteId === currVoteId) {
     indicatorBtn.classList.add("current-vote");
   }
 
-  if (voteId === winningVoteId) {
+  if (isDestination) {
+    indicatorBtn.classList.add("destination");
+  }
+
+  if (isAuto) {
+    indicatorBtn.classList.add("auto");
+  }
+
+  if (voteId === winningVoteId || isDestination) {
     indicatorBtn.classList.add("winning");
   }
 

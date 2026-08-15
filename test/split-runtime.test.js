@@ -10,13 +10,16 @@
  */
 
 const assert = require("node:assert");
+const fs = require("node:fs");
 
-const { buildScore } = require("../bin/build-score.js");
+const { buildScore, SERVER_STATE_DIR } = require("../bin/build-score.js");
 const { buildSessionLinesFixture } = require("./session-lines-fixture");
 const { BMLine } = require("../lib/session-lines/line");
 const {
   createOrchestrator,
   parseVoteTargetIndex,
+  planSplitPartition,
+  splitDestinationVoteIds,
   groupOfFrame,
   resolveGroupStay,
   groupLinkWinner,
@@ -24,6 +27,14 @@ const {
   rewindSplitStructure,
 } = require("../lib/session-lines/orchestrator");
 const { MESSAGES } = require("../constants");
+
+// The members bin/www's splitPlanForLine builds from a line's connections.
+const splitMembers = (conns, childFrameIndices) =>
+  conns.map((conn) => {
+    const votedIdx = parseVoteTargetIndex(conn.currentVoteTo, -1);
+    const slot = childFrameIndices.indexOf(votedIdx);
+    return { conn, key: conn.deviceId, choice: slot >= 0 ? slot : null };
+  });
 
 module.exports = {
   "split: START divides L0 into Left/Right child lines, parent retired": async () => {
@@ -57,11 +68,7 @@ module.exports = {
       { sessionId: session.id, lineId: parent.id, deviceId: "dB", currentVoteTo: `${rightIdx}#START.svg#1` },
       { sessionId: session.id, lineId: parent.id, deviceId: "dC", currentVoteTo: -1 },
     ];
-    const members = conns.map((conn) => {
-      const votedIdx = parseVoteTargetIndex(conn.currentVoteTo, -1);
-      const slot = childFrameIndices.indexOf(votedIdx);
-      return { conn, key: conn.deviceId, choice: slot >= 0 ? slot : null };
-    });
+    const members = splitMembers(conns, childFrameIndices);
 
     const sent = [];
     const orch = createOrchestrator({
@@ -121,6 +128,114 @@ module.exports = {
     assert.ok(
       sent.some((s) => s.lineId === children[1].id && s.m === MESSAGES.MSG_BEGIN_SPLIT),
     );
+  },
+
+  // A split frame has no shared winning vote — the line divides — so every
+  // device is shown its OWN destination instead. Two things must hold for that
+  // marker to be usable: the id has to address a real link element in the page,
+  // and the destination shown while the window is open has to be the one the
+  // device actually gets when it closes.
+  "split destinations: ids address the split frame's own link elements": async () => {
+    const session = await buildSessionLinesFixture({
+      id: "__split_dest_ids_test__",
+    });
+    const childFrameIndices = session.graph.frameLinks["START.svg"];
+
+    // Three non-voters — the state a play-mode room is in for the whole window.
+    const conns = ["dA", "dB", "dC"].map((deviceId) => ({
+      sessionId: session.id,
+      lineId: session.lines[0].id,
+      deviceId,
+      currentVoteTo: -1,
+    }));
+    const members = splitMembers(conns, childFrameIndices);
+    const { assignment } = planSplitPartition(members, childFrameIndices.length);
+    const destinations = splitDestinationVoteIds(
+      "START.svg",
+      childFrameIndices,
+      assignment,
+    );
+
+    // Nobody is left without a destination, and they spread over both children.
+    assert.strictEqual(destinations.length, 3);
+    assert.ok(destinations.every((id) => id != null));
+    assert.strictEqual(new Set(destinations).size, 2);
+
+    // Every destination id is the id of an <a> on the split frame in the built
+    // page — this is what the client's getElementById(voteId) resolves.
+    const built = fs.readFileSync(
+      `${SERVER_STATE_DIR}/${session.id}.content.svg`,
+      "utf8",
+    );
+    for (const id of new Set(destinations)) {
+      assert.ok(
+        built.includes(`<a id="${id}"`),
+        `destination ${id} has no link element on the split frame`,
+      );
+    }
+  },
+
+  "split destinations: the preview equals the assignment the split executes": async () => {
+    const session = await buildSessionLinesFixture({
+      id: "__split_dest_match_test__",
+    });
+    const idx = (name) =>
+      session.listFilesInLowerCase.indexOf(name.toLowerCase());
+    const childFrameIndices = session.graph.frameLinks["START.svg"];
+    const parent = session.lines[0];
+
+    // Mid-window state: one guide-mode device has tapped Right, the rest have
+    // not chosen. This is the tally the last preview tick would be built from.
+    const conns = [
+      { sessionId: session.id, lineId: parent.id, deviceId: "dA", currentVoteTo: -1 },
+      { sessionId: session.id, lineId: parent.id, deviceId: "dB", currentVoteTo: `${idx("Right.svg")}#START.svg#1` },
+      { sessionId: session.id, lineId: parent.id, deviceId: "dC", currentVoteTo: -1 },
+      { sessionId: session.id, lineId: parent.id, deviceId: "dD", currentVoteTo: -1 },
+    ];
+    const members = splitMembers(conns, childFrameIndices);
+    const preview = splitDestinationVoteIds(
+      "START.svg",
+      childFrameIndices,
+      planSplitPartition(members, childFrameIndices.length).assignment,
+    );
+
+    // The window closes on that same state: the split runs and the devices land.
+    const orch = createOrchestrator({
+      MESSAGES,
+      now: () => 0,
+      createLine: (s, id) => new BMLine(s, id),
+      send: () => {},
+    });
+    const { children, assignment } = orch.applySplit({
+      session,
+      parentLine: parent,
+      childFrameIndices,
+      members,
+    });
+    const settled = splitDestinationVoteIds(
+      "START.svg",
+      childFrameIndices,
+      assignment,
+    );
+
+    // What each device was shown is what each device got.
+    assert.deepStrictEqual(preview, settled);
+
+    // …and the destination really names the child line's frame: the id's target
+    // index is the frame the device's new line now sits on.
+    conns.forEach((conn, i) => {
+      const child = children.find((l) => l.id === conn.lineId);
+      assert.strictEqual(
+        Number(preview[i].split("#")[0]),
+        child.currentIndex,
+        `${conn.deviceId} was shown a destination it did not land on`,
+      );
+    });
+
+    // The tapper landed on its own choice — from that point its destination is
+    // just its vote, which is why the client hands the marker back to the
+    // ordinary current-vote feedback in guide mode.
+    assert.strictEqual(preview[1], conns[1].currentVoteTo);
   },
 
   "Session lines 2: F/H structurally rewind through split back to A": async () => {

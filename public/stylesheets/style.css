@@ -696,11 +696,19 @@ body.ipad {
 }
 
 .vote-indicator {
+  /* The marker's colour is the ONLY thing a variant changes — every size,
+     shape, gradient stop and animation below is shared, so a variant that
+     re-declares them can (and did) drift. `--marker-ink` paints the border and
+     text, `--marker-glow` is the pulse/gradient colour as raw RGB channels so
+     the stops can vary its alpha. See `.vote-indicator.auto`. */
+  --marker-ink: #ff7700;
+  --marker-glow: 255, 164, 0;
+
   width: 9vmin;
   height: 9vmin;
   border-radius: 100000px;
-  border: 0.5vmin solid #ff7700;
-  color: #ff7700;
+  border: 0.5vmin solid var(--marker-ink);
+  color: var(--marker-ink);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -731,9 +739,9 @@ body.ipad {
 .play-mode .vote-indicator.winning {
   background: radial-gradient(
     circle,
-    rgba(255, 164, 0, 1) 0%,
-    rgba(255, 164, 0, 1) 10%,
-    rgba(255, 164, 0, 0.5) 55%,
+    rgba(var(--marker-glow), 1) 0%,
+    rgba(var(--marker-glow), 1) 10%,
+    rgba(var(--marker-glow), 0.5) 55%,
     rgb(255 255 255 / 0%) 70%
   );
   background-repeat: no-repeat;
@@ -745,6 +753,36 @@ body.ipad {
   overflow: hidden;
   color: transparent;
   animation: play-mode-winning-pulse infinite 5s;
+}
+
+/* Session Lines — a `session-split` destination the SERVER placed this device
+   on, as opposed to a path the performer tapped. Blue rather than the orange of
+   a vote, so "I was put here" reads differently from "I picked this" at a
+   glance. Only ever set on a split frame (see voting.js).
+
+   Recolouring is ALL this does: it re-points the two colour variables and adds
+   the "auto" label's stacking. Both pulses come from the shared rules above, so
+   the blue marker animates identically to the orange one by construction. (An
+   earlier cut re-declared the play-mode `background` shorthand here, which reset
+   the `background-repeat`/`position`/`size` the orange rule sets right after
+   its own shorthand — the glow tiled from the top-left instead of pulsing from
+   the centre.) */
+.vote-indicator.auto {
+  --marker-ink: #1e6fff;
+  --marker-glow: 64, 150, 255;
+
+  background: var(--marker-ink);
+  color: #fff;
+  flex-direction: column;
+  line-height: 1.05;
+}
+
+/* Legible in guide mode only — play mode paints the marker as a bare glow with
+   `color: transparent` above, which hides the label without any JS mode test. */
+.vote-indicator.auto .auto-label {
+  font-size: 2.1vmin;
+  letter-spacing: 0.06em;
+  opacity: 0.85;
 }
 
 .stay-btn {
@@ -808,18 +846,20 @@ body.ipad {
   pointer-events: none;
 }
 
+/* Reads --marker-glow off the animated element, so one keyframe set serves both
+   the orange vote marker and the blue server-assigned one. */
 @keyframes guide-mode-winning-pulse {
   0%,
   100% {
     box-shadow:
-      0 0 0 0 rgba(255, 164, 0, 0),
-      0 0 0 0 rgba(255, 164, 0, 0);
+      0 0 0 0 rgba(var(--marker-glow), 0),
+      0 0 0 0 rgba(var(--marker-glow), 0);
   }
 
   50% {
     box-shadow:
-      0 0 0 2vmin #ffa400,
-      0 0 4vmin 4vmin #ffa400;
+      0 0 0 2vmin rgba(var(--marker-glow), 1),
+      0 0 4vmin 4vmin rgba(var(--marker-glow), 1);
   }
 }
 
