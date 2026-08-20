@@ -30,6 +30,10 @@ html
       button(id="session-map-relayout", type="button", title="discard manual arrangement and re-run automatic layout") re-layout
       a(id="session-map-back", href="#") back to session
     div(id="ws-reconnect-indicator")
+    //- Waiting hold-until barriers / track-group arrival waits, with the
+    //- operator's valves (release, release all, force advance stragglers).
+    //- Hidden by session-map.js whenever nothing is waiting.
+    div(id="session-map-barriers", style="display:none")
     div(id="session-map-canvas")
     div(id="session-map-zoom")
       button(id="session-map-zoom-out", type="button", title="zoom out") −

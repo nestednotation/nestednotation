@@ -31,6 +31,22 @@ if (!fs.existsSync(SERVER_STATE_DIR)) {
   fs.mkdirSync(SERVER_STATE_DIR);
 }
 
+// A half-written state file is unreadable at the next boot, so anything the
+// server must survive a restart is published atomically: the whole payload goes
+// to a sibling temp file first, then one rename swaps it in. A reader (or a
+// crash) therefore sees either the previous snapshot or the new one, never a
+// splice of the two.
+const writeFileAtomic = async (filePath, data) => {
+  const tmpPath = `${filePath}.${process.pid}.tmp`;
+  await fs.promises.writeFile(tmpPath, data);
+  try {
+    await fs.promises.rename(tmpPath, filePath);
+  } catch (err) {
+    await fs.promises.rm(tmpPath, { force: true });
+    throw err;
+  }
+};
+
 const regexWithPattern = (str, pattern, groupId) => {
   const match = str.match(pattern);
   if (match === null) {
@@ -224,6 +240,9 @@ class BMSession {
 
   isPause = false;
   isSessionDeleted = false;
+
+  // Serializes this session's state-file writes; see saveSessionStateToFile.
+  #stateWrites = Promise.resolve();
 
   synTimeInterval = 0.5;
   standbyDuration = 3;
@@ -737,10 +756,28 @@ class BMSession {
       return;
     }
 
-    const stateData = this.toJSON();
-
+    // Snapshot now, publish in turn. fs.writeFile truncates at open and writes
+    // afterwards, so two overlapping saves interleave: the shorter payload
+    // lands on top of the longer one and the longer one's tail survives past
+    // the end of the JSON, leaving a state file the next boot cannot parse.
+    // Queueing each save behind the last keeps writes one at a time, and
+    // writeFileAtomic keeps the file whole if the process dies mid-save.
+    const payload = JSON.stringify(this.toJSON());
     const stateFilePath = `${SERVER_STATE_DIR}/${this.id}.json`;
-    await fs.promises.writeFile(stateFilePath, JSON.stringify(stateData));
+
+    this.#stateWrites = this.#stateWrites
+      // A failed write must not poison the queue for the saves behind it; the
+      // caller that owns the failure still sees it through the await below.
+      .catch(() => {})
+      .then(() => {
+        // The session may have been deleted while this save waited its turn.
+        if (this.isSessionDeleted) {
+          return undefined;
+        }
+        return writeFileAtomic(stateFilePath, payload);
+      });
+
+    await this.#stateWrites;
 
     console.log(
       `Write session ${this.sessionName} state to file: ${stateFilePath}`,
@@ -748,6 +785,11 @@ class BMSession {
   }
 
   async deleteStateFile() {
+    // Latch first, then drain: queued saves re-check this flag before writing,
+    // so none of them can resurrect the files removed below.
+    this.isSessionDeleted = true;
+    await this.#stateWrites.catch(() => {});
+
     const stateFilePath = `${SERVER_STATE_DIR}/${this.id}.json`;
     if (fs.existsSync(stateFilePath)) {
       await fs.promises.rm(stateFilePath);
@@ -767,7 +809,6 @@ class BMSession {
       await fs.promises.rm(aboutSvgFilePath);
     }
 
-    this.isSessionDeleted = true;
     console.log(
       `Deleted session ${this.sessionName} state files: ${stateFilePath}, ${htmlFilePath}, ${svgFilePath}`,
     );
@@ -845,14 +886,30 @@ class BMSessionTable {
     const sessionStateFiles = await readDirSorted(SERVER_STATE_DIR);
 
     for (const fileName of sessionStateFiles) {
-      if (fileName.endsWith(".html") || fileName.endsWith(".svg")) {
+      // Whole-session snapshots only. The same directory also holds the
+      // rendered .html/.content.svg, the ${id}.subs.json sub-frame cache and
+      // (after a crash mid-save) a .json.tmp leftover — none of which describe
+      // a session, and all of which patchState would happily absorb as junk.
+      if (!fileName.endsWith(".json") || fileName.endsWith(".subs.json")) {
+        continue;
+      }
+
+      const stateFilePath = `${SERVER_STATE_DIR}/${fileName}`;
+      let state;
+      try {
+        state = JSON.parse(await fs.promises.readFile(stateFilePath, "utf8"));
+      } catch (err) {
+        // One unreadable file must not cost the operator every other session at
+        // boot. Move it aside so it stays recoverable by hand, and carry on.
+        const quarantinePath = `${stateFilePath}.corrupt-${Date.now()}`;
+        await fs.promises.rename(stateFilePath, quarantinePath);
+        console.error(
+          `Unreadable session state ${fileName} (${err.message}); moved to ${quarantinePath} and skipped`,
+      );
         continue;
       }
 
       const newSession = new BMSession();
-      const state = JSON.parse(
-        await fs.promises.readFile(`${SERVER_STATE_DIR}/${fileName}`, "utf8"),
-      );
       // Bring legacy v1 (flat) state up to v2 (lines:[one]) before applying.
       await newSession.patchState(migrateState(state));
       await newSession.buildSVGContent();

@@ -582,6 +582,23 @@ body.ipad {
   display: none;
 }
 
+/* Session Lines — the barrier banner is a NAVIGATION message, so it is shown in
+   GUIDE MODE ONLY (owner, 2026-08-16): in play mode it sat over the frame the
+   performer was sounding and said nothing they could act on there. Driven from
+   the stylesheet, off the role session.js stamps on the element, so toggling
+   play/guide needs no JS and can never go stale. */
+.guide-mode #barrier-waiting-indicator[data-role] {
+  display: block;
+}
+
+/* The "your move" seat of a track-group wait is a prompt, not a status: it asks
+   the performer to act, so it carries the app's accent instead of the passive
+   grey the parked banner shares with the loading indicator. */
+#barrier-waiting-indicator[data-role="straggler"] {
+  color: #d98200;
+  border: 1px solid #ffa400;
+}
+
 #loading-sound-indicator::before {
   content: "";
   display: block;
@@ -980,6 +997,39 @@ body.ipad {
 }
 #session-map-back {
   margin-left: auto;
+}
+/* Barrier valve strip — same information and commands as the session page's
+   admin-barrier-panel, shown between the header and the canvas so a stall is
+   resolvable without leaving the map. Only in the flow while something waits
+   (session-map.js toggles display), so the canvas keeps the full height
+   otherwise. */
+#session-map-barriers {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4em;
+  padding: 0.3em 0.8em;
+  font-size: 0.8em;
+  background: #fff6e6;
+  border-bottom: 1px solid #ffa400;
+}
+#session-map-barriers .map-barrier-heading {
+  font-weight: bold;
+}
+#session-map-barriers .map-barrier-info {
+  padding: 0.1em 0.5em;
+  border: 1px solid #ccc;
+  border-radius: 0.4em;
+  background: #fff;
+  white-space: nowrap;
+}
+#session-map-barriers button {
+  border: 1px solid #ccc;
+  background: #f4f4f4;
+  border-radius: 0.3em;
+  padding: 0.1em 0.6em;
+  margin-left: 0.3em;
+  cursor: pointer;
 }
 #session-map-canvas {
   flex: 1;

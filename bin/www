@@ -338,6 +338,20 @@ function ensureLineAssignment(session, conn, deviceId) {
   return line;
 }
 
+// How many OTHER active main-flow lines currently sit on `frameName` — the
+// input to the least-occupied landing rule (orch.revivalLandingFrame), shared
+// by the dormant-line revival below and the operator's forced advance of a
+// track group's stragglers (forceAdvanceStragglers).
+function frameOccupancyExcluding(session, frameName, exclude) {
+  return activeLines(session).filter((l) => {
+    if (l === exclude || l.subStack.length > 0) {
+      return false;
+    }
+    const fn = frameNameForLine(session, l);
+    return fn != null && fn.toLowerCase() === frameName.toLowerCase();
+  }).length;
+}
+
 // Decision #13 revision (2026-07-18): a dormant line being revived abandons its
 // frozen position and lands on the room's latest track group — on that group's
 // least-occupied frame, so revivals fill missing track slots rather than
@@ -354,14 +368,7 @@ async function fastForwardRevivedLine(session, line) {
     listFiles: session.listFiles,
     latestGroupFrame: record && record.frame,
     line,
-    occupancy: (frameName) =>
-      activeLines(session).filter((l) => {
-        if (l === line || l.subStack.length > 0) {
-          return false;
-        }
-        const fn = frameNameForLine(session, l);
-        return fn != null && fn.toLowerCase() === frameName.toLowerCase();
-      }).length,
+    occupancy: (frameName) => frameOccupancyExcluding(session, frameName, line),
   });
   if (!target) {
     return;
@@ -1320,6 +1327,11 @@ async function finalizeAttrition(session, line) {
   await tryReleaseGroupWaits(session);
   notifyAdminsBarriers(session);
   await session.saveSessionStateToFile();
+  // The ws close handler pushed the per-line snapshot 8s ago, when this line
+  // still had its pre-dormancy flags; nothing has pushed since. Without this
+  // the operator's line panel and the map keep showing the line as active and
+  // the room as still waiting on it, long after both stopped being true.
+  updateNumberOfConnectionForSession(session);
 }
 
 // ── Session manager controls across lines (Chunk M) ──────────────────────────
@@ -1416,6 +1428,12 @@ function notifyAdminsBarriers(session) {
   if (!session.hasSessionLines) {
     return;
   }
+  // Recompute the straggler set FIRST: the panel and the players' banners are
+  // two views of one state, refreshed from exactly the same edges, and the
+  // `stragglers[]` below is built from the result. Refreshing afterwards left
+  // the panel one edge behind — visible after a restart, where player devices
+  // reconnect one at a time and each reconnect changes who is being waited on.
+  refreshStragglerNotices(session);
   const barriers = session._barrier
     ? Object.keys(session._barrier.byFrame).map((frame) => {
         const entry = session._barrier.byFrame[frame];
@@ -1435,6 +1453,13 @@ function notifyAdminsBarriers(session) {
       targets:
         group == null ? [] : orch.groupFramesLower(session.graph, group),
       parked: lines.map((l) => l.id),
+      // Who the group is still waiting on from OUTSIDE — the operator's
+      // "force advance stragglers" targets (hold-until entries have none:
+      // that valve is the plain release).
+      stragglers:
+        group == null
+          ? []
+          : groupStragglerLines(session, group).map((l) => l.id),
     });
   }
   sendToAllAdmins(session, 0, {
@@ -1442,6 +1467,14 @@ function notifyAdminsBarriers(session) {
     admin: true,
     barriers,
   });
+}
+
+// "group:<name>" panel entries are track-group arrival waits, not hold-until
+// frames; anything else (including no frame at all → "every barrier") is not.
+function parseGroupRef(frameName) {
+  return typeof frameName === "string" && frameName.startsWith("group:")
+    ? frameName.slice("group:".length)
+    : null;
 }
 
 // Admin force-release (defensive valve). Releases a chosen barrier (by frame) or
@@ -1452,11 +1485,7 @@ async function forceReleaseBarrier(session, frameName) {
   if (!session.hasSessionLines) {
     return;
   }
-  // "group:<name>" entries are track-group arrival waits, not hold-until frames.
-  const groupRef =
-    typeof frameName === "string" && frameName.startsWith("group:")
-      ? frameName.slice("group:".length)
-      : null;
+  const groupRef = parseGroupRef(frameName);
   if (session._barrier && groupRef == null) {
     const frames = frameName
       ? [frameName]
@@ -1483,6 +1512,10 @@ async function forceReleaseBarrier(session, frameName) {
     }
   }
   notifyAdminsBarriers(session);
+  // A force-release is the one release with no landing behind it, so nothing
+  // else refreshes the per-line snapshot: without this the line panel and the
+  // map's ⏳/⏩ badges keep showing the wait the operator just resolved.
+  updateNumberOfConnectionForSession(session);
 }
 
 // ── Track-group ARRIVAL barrier (decided 2026-07-16) ─────────────────────────
@@ -1617,6 +1650,215 @@ async function tryReleaseGroupWaits(session) {
       await releaseGroupWaitLines(session, lines);
     }
   }
+  // A landing can change who a still-waiting group is waiting ON without
+  // releasing anything, so the banners and the panel refresh here too
+  // (idempotent — releaseGroupWaitLines above already went through this).
+  notifyAdminsBarriers(session);
+}
+
+// ── Stragglers (owner, 2026-08-16) ───────────────────────────────────────────
+// The lines a track group's arrival barrier is still waiting on from OUTSIDE
+// the group. The parked lines see "waiting for other lines…"; until now the
+// lines being waited FOR saw nothing at all, so nobody in the room knew whose
+// move it was. They are now told — see refreshStragglerNotices — and the
+// operator can either let the group go without them (force-release) or bring
+// them in (forceAdvanceStragglers).
+//
+// The parked-lines-are-not-stragglers rule lives in orch.groupStragglerIds
+// (pure, unit-tested); this resolves it back to line objects.
+function groupStragglerLines(session, group) {
+  if (group == null) {
+    return [];
+  }
+  const lines = activeLines(session);
+  const ids = new Set(
+    orch.groupStragglerIds(groupWaitState(session, group), {
+      lines,
+      isParked: (l) => !!(l.isBarrierWaiting || l.isGroupWaiting),
+    }),
+  );
+  return lines.filter((l) => ids.has(l.id));
+}
+
+// Push/clear the per-line straggler banner, diffed against `line.isGroupStraggler`
+// so a line is only messaged when its role actually changes. The flag is
+// TRANSIENT (absent from BMLine's persistence allowlist): it is derived from
+// live positions, and re-derived from scratch on the first post-restart edge.
+//
+// Only groups that already have someone parked are considered: a group nobody
+// has reached yet is not waiting on anyone.
+function refreshStragglerNotices(session) {
+  if (!session.hasSessionLines) {
+    return;
+  }
+  const stragglerGroups = new Map(); // lineId → group holding for it
+  for (const [group] of groupWaitParkedByGroup(session)) {
+    for (const l of groupStragglerLines(session, group)) {
+      if (!stragglerGroups.has(l.id)) {
+        stragglerGroups.set(l.id, group);
+      }
+    }
+  }
+
+  for (const line of session.lines || []) {
+    if (!line || line.status === "retired") {
+      continue;
+    }
+    const group = stragglerGroups.get(line.id) || null;
+    const was = line.isGroupStraggler || null;
+    line.isGroupStraggler = group;
+    if (group && !was) {
+      sendToLine(session, line.id, 0, {
+        m: MESSAGES.MSG_BARRIER_WAITING,
+        frame: frameNameForLine(session, line),
+        group,
+        straggler: true,
+      });
+    } else if (!group && was && !line.isBarrierWaiting && !line.isGroupWaiting) {
+      // Ordering guard: the usual way to STOP being a straggler is to arrive
+      // and park, and maybeParkAtGroup has already sent that line its parked
+      // banner by now. Clearing here would wipe it off the screen.
+      sendToLine(session, line.id, 0, {
+        m: MESSAGES.MSG_BARRIER_RELEASED,
+        frame: frameNameForLine(session, line),
+      });
+    }
+  }
+}
+
+// Admin "force advance stragglers" — the complement of a force-release. Rather
+// than letting a stuck group go WITHOUT the lines it is still expecting, bring
+// those lines in: each straggler teleports onto the group's least-occupied
+// frame (the same landing rule a dormant-line revival uses, decision #13
+// revision, so forced arrivals fill empty track slots instead of doubling
+// covered ones). The group then fills and releases down the ordinary path.
+//
+// `groupRef` names one group (from the panel's "group:<name>" entry); null
+// advances the stragglers of every waiting group.
+async function forceAdvanceStragglers(session, groupRef) {
+  if (!session.hasSessionLines || !session.graph) {
+    return;
+  }
+  const advanced = [];
+  for (const [group, parkedLines] of groupWaitParkedByGroup(session)) {
+    if (group == null || (groupRef != null && group !== groupRef)) {
+      continue;
+    }
+    // Anchor: where the group actually sits in the current frame list. Taken
+    // from a parked line rather than the graph so a group whose frames were
+    // renamed under saved state simply yields nothing to advance to.
+    const anchor = frameNameForLine(session, parkedLines[0]);
+    if (!anchor) {
+      continue;
+    }
+    for (const line of groupStragglerLines(session, group)) {
+      const wasInSub = line.subStack.length > 0;
+      if (await advanceLineToGroup(session, line, anchor)) {
+        advanced.push({ line, wasInSub });
+      }
+    }
+  }
+  if (advanced.length === 0) {
+    notifyAdminsBarriers(session);
+    return;
+  }
+
+  // A forced arrival is still an arrival: if the group is STILL waiting on
+  // someone else, the line just brought in parks with the rest.
+  for (const { line } of advanced) {
+    await maybeParkAtGroup(session, line, frameNameForLine(session, line));
+  }
+  await tryReleaseGroupWaits(session);
+  await session.saveSessionStateToFile();
+  notifyAdminsBarriers(session);
+  pushAdminHistory(session);
+  updateNumberOfConnectionForSession(session);
+
+  // A line dragged out of a sub-score needs MSG_SUB_EXIT, not a bare MSG_SHOW.
+  // Its devices still hold the SUB's injected frame list and `frameContext`, so
+  // a main-flow index resolves to no frame there: the display goes blank and
+  // the audio player throws on the unresolvable id. Sent even while paused —
+  // the stale sub context must not outlive the move, or the eventual unpause
+  // (which drives the display with a main-flow index too) breaks the same way —
+  // with the pause placeholder restored right after.
+  for (const { line, wasInSub } of advanced) {
+    if (!wasInSub) {
+      continue;
+    }
+    sendToLine(session, line.id, 0, {
+      m: MESSAGES.MSG_SUB_EXIT,
+      showIdx: line.currentIndex,
+    });
+    if (session.isPause) {
+      sendToLine(session, line.id, 0, {
+        m: MESSAGES.MSG_PAUSE,
+        isPause: true,
+        showIdx: line.currentIndex,
+      });
+    }
+  }
+
+  if (!session.isPause) {
+    for (const { line, wasInSub } of advanced) {
+      if (wasInSub) {
+        continue; // MSG_SUB_EXIT above already drove this line's display
+      }
+      sendToLine(session, line.id, Date.now() + session.preloadDuration, {
+        m: MESSAGES.MSG_SHOW,
+        showIdx: line.currentIndex,
+      });
+    }
+  }
+}
+
+// Teleport one straggler onto `anchorFrame`'s track group. Mirrors
+// fastForwardRevivedLine — same least-occupied landing, same leave-the-sub /
+// unpark / record-arrival sequence — but operator-driven, so it also cancels
+// any window the line had running (it is being moved out from under it).
+// Returns true when the line actually moved.
+async function advanceLineToGroup(session, line, anchorFrame) {
+  const target = orch.revivalLandingFrame({
+    graph: session.graph,
+    listFiles: session.listFiles,
+    latestGroupFrame: anchorFrame,
+    line,
+    occupancy: (frameName) => frameOccupancyExcluding(session, frameName, line),
+  });
+  if (!target) {
+    return false;
+  }
+  const idx = session.listFilesInLowerCase.indexOf(target.toLowerCase());
+  if (idx < 0) {
+    return false;
+  }
+
+  if (line.isHolding && line.holdingTimer != null) {
+    await cancelHoldingTimer(session, line, 1);
+  }
+  if (line.standbyTimer) {
+    clearTimeout(line.standbyTimer);
+    line.standbyTimer = null;
+  }
+  if (line.isVoting && line.votingTimer != null) {
+    await cancelVotingTimer(session, line);
+  }
+
+  while (line.subStack.length > 0) {
+    line.exitSub();
+  }
+  line.setCurrIdxTo(idx);
+  line.isGroupWaiting = false;
+  orch.unparkLine(session, line);
+
+  // Landing semantics identical to a revival fast-forward: seed the CURRENT
+  // generation with the new position (leaving the old frame completes it,
+  // which can release barriers parked elsewhere).
+  line._lastReachedRef = null;
+  if (recordArrival(session, line)) {
+    await tryReleaseBarriers(session);
+  }
+  session.latestGroupArrival = { frame: target, at: Date.now() };
+  return true;
 }
 
 // MSG_UPDATE_VOTING on a split frame, addressed per device. `winningVoteId` is
@@ -2727,6 +2969,9 @@ function updateNumberOfConnectionForSession(session) {
               ? l.subStack[l.subStack.length - 1].score
               : null,
           waiting: !!(l.isBarrierWaiting || l.isGroupWaiting),
+          // A group is held open waiting for THIS line — the map marks it so
+          // the operator can see at a glance who is holding the room up.
+          straggler: !!l.isGroupStraggler,
           voting: !!l.isVoting,
           holding: !!l.isHolding,
           // Per-line history (ACTIVE context — a line inside a sub carries its
@@ -2895,6 +3140,15 @@ async function messageHandle(conn, message) {
     // restores membership via deviceRegistry — one line ⇒ lines[0]).
     const line = ensureLineAssignment(session, conn, messageData.did);
 
+    // This device may have just made its line populated (empty lines are not
+    // waited for), which can make it a group's straggler — and changes who the
+    // operator's panel should name. Re-derive + re-push before the banner
+    // decision below, so the arriving device is told the truth. (A PLAYER
+    // reconnecting matters here: the admin-only push further down fires just
+    // for admins, which after a restart left the panel naming whoever happened
+    // to have reconnected first.)
+    notifyAdminsBarriers(session);
+
     if (!session.isPause) {
       // Session Lines: a device reconnecting into a line that is mid-sub-session
       // must re-fetch + re-enter the sub, not show a main-flow index.
@@ -2921,6 +3175,15 @@ async function messageHandle(conn, message) {
       sendToClient(conn, 0, {
         m: MESSAGES.MSG_BARRIER_WAITING,
         frame: frameNameForLine(session, line),
+      });
+    } else if (session.hasSessionLines && line.isGroupStraggler) {
+      // The other half of the banner protocol: a reconnecting device on a line
+      // a group is still waiting for gets its "your move" prompt back.
+      sendToClient(conn, 0, {
+        m: MESSAGES.MSG_BARRIER_WAITING,
+        frame: frameNameForLine(session, line),
+        group: line.isGroupStraggler,
+        straggler: true,
       });
     }
 
@@ -3108,9 +3371,16 @@ async function messageHandle(conn, message) {
   // decision #12). The inbound MSG_BARRIER_RELEASED names the stuck barrier's
   // frame (or none → release all waiting barriers); reuses the Chunk J release
   // path. Inert for vanilla scores (no barriers).
+  //
+  // `{advance: true}` is the opposite resolution (2026-08-16): don't let the
+  // group go without its stragglers — bring the stragglers to the group.
   if (msg === MESSAGES.MSG_BARRIER_RELEASED) {
     if (session.hasSessionLines) {
-      await forceReleaseBarrier(session, messageData.frame);
+      if (messageData.advance) {
+        await forceAdvanceStragglers(session, parseGroupRef(messageData.frame));
+      } else {
+        await forceReleaseBarrier(session, messageData.frame);
+      }
     }
     return;
   }

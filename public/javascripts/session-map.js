@@ -29,6 +29,11 @@
   // projection drives split-undo buttons and blocked-merge explanations.
   let lastSplitRewinds = [];
 
+  // Currently-waiting barriers (admin-flagged MSG_BARRIER_WAITING) — the same
+  // payload the session page's admin panel consumes, so the map offers the same
+  // operator valves without a trip back to the session tab.
+  let lastBarriers = [];
+
   // History of the line this admin connection is assigned to, as pushed via
   // MSG_SELECT_HISTORY. VANILLA MODE ONLY: it drives the per-step rewind menu
   // (click / tap a visited node → "rewind here" {selectedIdx} —
@@ -596,7 +601,10 @@
         // players (and riders when present) — admins count as players.
         const who = `${l.players}p${l.riders ? `+${l.riders}r` : ""}`;
         const phase = `${l.voting ? "✅" : ""}${l.holding ? "✋" : ""}`;
-        const mark = `${l.id}·${who}${l.waiting ? "⏳" : ""}${phase}`;
+        // ⏳ this line is waiting on others; ⏩ others are waiting on IT.
+        const mark =
+          `${l.id}·${who}${l.waiting ? "⏳" : ""}` +
+          `${l.straggler ? "⏩" : ""}${phase}`;
         node.data("badge", badge ? `${badge} ${mark}` : mark);
         node.addClass("here");
         if (l.voting) node.addClass("here-voting");
@@ -640,6 +648,107 @@
       `single line · ${vanillaState.players} players` +
         (vanillaState.riders ? ` · ${vanillaState.riders} riders` : ""),
     );
+  }
+
+  // ── Barrier valves (release / release all / force advance stragglers) ──────
+  // The map is where the operator watches a stall develop, so the resolutions
+  // live here too — the same commands the session page's admin panel sends
+  // (MSG_BARRIER_RELEASED, optionally `advance`-flagged). The strip only exists
+  // while something is waiting.
+
+  function renderBarrierPanel() {
+    const panel = document.getElementById("session-map-barriers");
+    if (!panel) return;
+    const barriers = lastBarriers || [];
+    if (barriers.length === 0) {
+      panel.style.display = "none";
+      panel.innerHTML = "";
+      return;
+    }
+    panel.style.display = "flex";
+    panel.innerHTML = "";
+
+    const heading = document.createElement("span");
+    heading.className = "map-barrier-heading";
+    heading.textContent = "waiting:";
+    panel.appendChild(heading);
+
+    let anyStragglers = false;
+    for (const b of barriers) {
+      const parked = (b.parked || []).join(",") || "none";
+      const stragglers = b.stragglers || [];
+
+      const info = document.createElement("span");
+      info.className = "map-barrier-info";
+      // "group:<name>" entries are track-group arrival waits; anything else is
+      // a hold-until frame. Shown as authored either way.
+      info.textContent =
+        `${frameLabel(b.frame)} [parked: ${parked}]` +
+        (stragglers.length ? ` [waiting on: ${stragglers.join(",")}]` : "") +
+        " ";
+
+      const release = document.createElement("button");
+      release.type = "button";
+      release.title = "let this barrier go without the lines it is waiting for";
+      release.textContent = "release";
+      release.addEventListener("click", () => sendBarrierCommand(b.frame));
+      info.appendChild(release);
+
+      if (stragglers.length) {
+        anyStragglers = true;
+        const advance = document.createElement("button");
+        advance.type = "button";
+        advance.title = "move the waited-for lines onto this group instead";
+        advance.textContent = "force advance";
+        advance.addEventListener("click", () =>
+          confirmAdvanceStragglers(stragglers, b.frame),
+        );
+        info.appendChild(advance);
+      }
+
+      panel.appendChild(info);
+    }
+
+    const releaseAll = document.createElement("button");
+    releaseAll.type = "button";
+    releaseAll.textContent = "release all";
+    releaseAll.addEventListener("click", () => sendBarrierCommand());
+    panel.appendChild(releaseAll);
+
+    if (anyStragglers) {
+      const advanceAll = document.createElement("button");
+      advanceAll.type = "button";
+      advanceAll.textContent = "advance all stragglers";
+      advanceAll.addEventListener("click", () =>
+        confirmAdvanceStragglers(
+          barriers.reduce((ids, b) => ids.concat(b.stragglers || []), []),
+        ),
+      );
+      panel.appendChild(advanceAll);
+    }
+  }
+
+  // `frame` names one barrier; omitted means every waiting one. `advance` picks
+  // the bring-them-in resolution over the let-it-go one.
+  function sendBarrierCommand(frame, advance) {
+    const payload = frame ? { frame } : {};
+    if (advance) payload.advance = true;
+    sendToServer(MSG_BARRIER_RELEASED, payload);
+  }
+
+  // Confirmed, unlike release: this MOVES performers' devices to another frame.
+  function confirmAdvanceStragglers(lineIds, frame) {
+    const ids = lineIds || [];
+    const where = frame
+      ? `⟨${frameLabel(frame).replace(/^group:/, "")}⟩`
+      : "their waiting groups";
+    const ok = confirm(
+      `Force ${ids.length} straggler line${ids.length === 1 ? "" : "s"} ` +
+        `(${ids.join(", ") || "none"}) onto ${where}? ` +
+        `Those lines jump to the group from wherever they are now.`,
+    );
+    if (!ok) return;
+    sendBarrierCommand(frame, true);
   }
 
   // ── History overlay + rewind node menu ─────────────────────────────────────
@@ -1071,6 +1180,16 @@
         vanillaState.players = data.playerCount || 0;
         vanillaState.riders = data.riderCount || 0;
         renderVanilla();
+      }
+      return;
+    }
+    // Only the admin-flagged variant matters here: the map is bound to a line
+    // like any other connection, but it is an observation tool — a banner for
+    // "its" line would be meaningless. The barrier LIST drives the valves.
+    if (msg === MSG_BARRIER_WAITING) {
+      if (data.admin) {
+        lastBarriers = data.barriers || [];
+        renderBarrierPanel();
       }
       return;
     }

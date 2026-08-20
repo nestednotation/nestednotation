@@ -116,6 +116,11 @@ router.get("/:sessionId/map", function (req, res) {
       // states in the `lines` payload instead).
       MSG_BEGIN_VOTING: MESSAGES.MSG_BEGIN_VOTING,
       MSG_BEGIN_HOLDING: MESSAGES.MSG_BEGIN_HOLDING,
+      // Barrier valve strip: the admin-flagged waiting list comes in on
+      // MSG_BARRIER_WAITING, and release / force-advance go back out on
+      // MSG_BARRIER_RELEASED.
+      MSG_BARRIER_WAITING: MESSAGES.MSG_BARRIER_WAITING,
+      MSG_BARRIER_RELEASED: MESSAGES.MSG_BARRIER_RELEASED,
     }),
   });
 });

@@ -34,6 +34,7 @@ const {
   groupLinkWinner,
   canReachFrames,
   groupArrivalState,
+  groupStragglerIds,
   subReturnIndex,
   createOrchestrator,
 } = require("../lib/session-lines/orchestrator");
@@ -1180,6 +1181,99 @@ module.exports = {
     });
     assert.strictEqual(state.waiting, false);
     assert.deepStrictEqual(state.incomingIds, []);
+  },
+
+  "groupStragglerIds: the incoming lines the group is waiting on (2026-08-16)": () => {
+    // L1 occupies a group frame; L2 and L3 are still travelling. Both are what
+    // the room is waiting for, so both are told "your move".
+    const lines = [
+      { id: "L1", status: "active" },
+      { id: "L2", status: "active" },
+      { id: "L3", status: "active" },
+    ];
+    const frames = { L1: "B.svg", L2: "A.svg", L3: "A.svg" };
+    const state = groupArrivalState(lines, ["B.svg", "C.svg"], {
+      frameNameForLine: (l) => frames[l.id],
+      deviceCount: () => 1,
+      canReach: (l) => l.id !== "L1",
+    });
+    assert.deepStrictEqual(state.incomingIds, ["L2", "L3"]);
+    assert.deepStrictEqual(
+      groupStragglerIds(state, { lines, isParked: () => false }),
+      ["L2", "L3"],
+    );
+  },
+
+  "groupStragglerIds: a parked incoming line is NOT a straggler (2026-08-16)": () => {
+    // L2 can still reach the group but is held at its own hold-until barrier,
+    // and L3 is parked at ANOTHER group's arrival barrier. The group keeps
+    // waiting on both (incomingIds is unchanged — dropping them would release
+    // it early), but neither can act, so neither is prompted to move.
+    const lines = [
+      { id: "L1", status: "active" },
+      { id: "L2", status: "active", isBarrierWaiting: true },
+      { id: "L3", status: "active", isGroupWaiting: true },
+      { id: "L4", status: "active" },
+    ];
+    const frames = { L1: "B.svg", L2: "A.svg", L3: "Z.svg", L4: "A.svg" };
+    const state = groupArrivalState(lines, ["B.svg", "C.svg"], {
+      frameNameForLine: (l) => frames[l.id],
+      deviceCount: () => 1,
+      canReach: (l) => l.id !== "L1",
+    });
+    assert.strictEqual(state.waiting, true);
+    assert.deepStrictEqual(state.incomingIds, ["L2", "L3", "L4"]);
+    assert.deepStrictEqual(
+      groupStragglerIds(state, {
+        lines,
+        isParked: (l) => !!(l.isBarrierWaiting || l.isGroupWaiting),
+      }),
+      ["L4"],
+    );
+  },
+
+  "groupStragglerIds: a blocked OCCUPANT is never a straggler (2026-08-16)": () => {
+    // L1 has arrived but its own hold-until has not released. The group waits
+    // (blockedIds), yet there is nobody to prompt: nothing is travelling.
+    const lines = [
+      { id: "L1", status: "active", isBarrierWaiting: true },
+      { id: "L2", status: "active" },
+    ];
+    const frames = { L1: "B.svg", L2: "C.svg" };
+    const state = groupArrivalState(lines, ["B.svg", "C.svg"], {
+      frameNameForLine: (l) => frames[l.id],
+      deviceCount: () => 1,
+      isBlocked: (l) => !!l.isBarrierWaiting,
+      canReach: () => false,
+    });
+    assert.strictEqual(state.waiting, true);
+    assert.deepStrictEqual(state.blockedIds, ["L1"]);
+    assert.deepStrictEqual(
+      groupStragglerIds(state, {
+        lines,
+        isParked: (l) => !!l.isBarrierWaiting,
+      }),
+      [],
+    );
+  },
+
+  "revivalLandingFrame doubles as the forced-advance landing (2026-08-16)": () => {
+    // "Force advance stragglers" reuses the revival rule with the group's
+    // CURRENT position as the anchor: the straggler lands on the group's
+    // least-occupied frame, so a forced arrival fills the empty track slot.
+    const graph = {
+      groups: { g: ["B.svg", "C.svg"] },
+      byFrame: { "B.svg": { trackGroup: "g" }, "C.svg": { trackGroup: "g" } },
+    };
+    const straggler = { currentIndex: 0, subStack: [] }; // sitting on A.svg
+    const got = revivalLandingFrame({
+      graph,
+      listFiles: ["A.svg", "B.svg", "C.svg"],
+      latestGroupFrame: "B.svg", // anchor: where a parked line already sits
+      line: straggler,
+      occupancy: (name) => (name === "B.svg" ? 1 : 0),
+    });
+    assert.strictEqual(got, "C.svg");
   },
 
   "groupArrivalState: a rewound line (truncated trail) must re-arrive": () => {

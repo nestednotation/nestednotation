@@ -250,20 +250,21 @@ function parseMessage(data) {
     return;
   }
 
-  // Session Lines: this line is parked at a hold-until barrier, waiting for the
-  // other lines to converge. The admin-flagged variant (data.admin) carries the
-  // full set of waiting barriers so the operator can force-release a stuck one.
+  // Session Lines: a barrier message for this line — either it is parked and
+  // waiting for the others (default), or a track group is waiting for IT
+  // (`data.straggler`). The admin-flagged variant (data.admin) carries the full
+  // set of waiting barriers so the operator can resolve a stuck one.
   if (msg === MSG_BARRIER_WAITING) {
     if (data.admin) {
       renderAdminBarrierPanel(data.barriers || []);
     } else {
-      showBarrierWaiting(true);
+      showBarrierWaiting(data.straggler ? "straggler" : "parked");
     }
     return;
   }
 
   if (msg === MSG_BARRIER_RELEASED) {
-    showBarrierWaiting(false);
+    showBarrierWaiting(null);
     return;
   }
 
@@ -349,19 +350,40 @@ function exitSubSessionView() {
   showSubContainer(false);
 }
 
-// The barrier banner is created on demand so it never appears in the shared,
-// apicache-cached HTML (vanilla scores stay byte-identical).
-function showBarrierWaiting(show) {
+// The two sides of a track-group wait, sharing one banner and one clear signal
+// (MSG_BARRIER_RELEASED):
+//   parked    — this line is held (hold-until barrier, or a group's arrival
+//               barrier) until the others converge;
+//   straggler — the opposite seat: a group is held open waiting for THIS line,
+//               which until 2026-08-16 was told nothing at all.
+const BARRIER_BANNER_TEXT = {
+  parked: "waiting for other lines…",
+  straggler: "Your move, proceed when ready…",
+};
+
+// Both banners are GUIDE-MODE ONLY (owner, 2026-08-16): they are navigation
+// messages, and in play mode they only sat over the frame the performer was
+// sounding. Visibility is left entirely to the stylesheet (`.guide-mode
+// #barrier-waiting-indicator[data-role]`) rather than an inline display —
+// switching modes never comes back through here, so a JS test would go stale
+// the moment the performer guided their device.
+//
+// The element is also created on demand, so a vanilla score that never receives
+// a barrier message keeps its shared, apicache-cached HTML byte-identical.
+function showBarrierWaiting(role) {
   let el = document.getElementById("barrier-waiting-indicator");
   if (!el) {
     el = document.createElement("div");
     el.id = "barrier-waiting-indicator";
-    el.textContent = "waiting for other lines…";
-    el.style.display = "none";
     document.body.appendChild(el);
   }
-  el.style.display = show ? "block" : "none";
-  document.body.classList.toggle("barrier-waiting", show);
+  if (role) {
+    el.textContent = BARRIER_BANNER_TEXT[role] || BARRIER_BANNER_TEXT.parked;
+    el.dataset.role = role;
+  } else {
+    delete el.dataset.role;
+  }
+  document.body.classList.toggle("barrier-waiting", !!role);
 }
 
 function updateNumberOfConnection(numPlayer, numRider, lines) {
@@ -438,9 +460,11 @@ function renderLineDistribution(lines) {
     const flags = [];
     if (l.status === "dormant") flags.push("dormant");
     if (l.waiting) flags.push("waiting");
+    if (l.straggler) flags.push("straggler");
     if (l.inSub) flags.push("sub");
     const flagStr = flags.length ? ` (${flags.join(",")})` : "";
-    const stalled = l.status === "dormant" || l.waiting;
+    // A straggler is the reason the room is stalled, so it highlights too.
+    const stalled = l.status === "dormant" || l.waiting || l.straggler;
     html +=
       `<span class="line-info${stalled ? " line-stalled" : ""}">` +
       // Performers only (`players`/`riders`), never the raw `devices` total: a
@@ -486,18 +510,39 @@ function renderAdminBarrierPanel(barriers) {
   // onclick="…('<frame>')" string: a frame named `Don't Stop.svg` closed the
   // quoted argument early and left that one button inert (release all still
   // worked). Any filename is safe here.
+  let anyStragglers = false;
   for (const b of barriers) {
     const parked = (b.parked || []).join(",") || "none";
+    const stragglers = b.stragglers || [];
 
     const info = document.createElement("span");
     info.className = "barrier-info";
-    info.textContent = `${b.frame} [parked: ${parked}] `;
+    // The two halves of the wait: who is held here, and who it is held for.
+    info.textContent =
+      `${b.frame} [parked: ${parked}]` +
+      (stragglers.length ? ` [waiting on: ${stragglers.join(",")}]` : "") +
+      " ";
 
     const release = document.createElement("button");
     release.type = "button";
+    release.title = "let this barrier go without the lines it is waiting for";
     release.textContent = "release";
     release.addEventListener("click", () => sendForceReleaseBarrier(b.frame));
     info.appendChild(release);
+
+    // The opposite resolution — only offered where there is someone to bring
+    // in (track-group waits; a hold-until barrier's valve is the release).
+    if (stragglers.length) {
+      anyStragglers = true;
+      const advance = document.createElement("button");
+      advance.type = "button";
+      advance.title = "move the waited-for lines onto this group instead";
+      advance.textContent = "force advance";
+      advance.addEventListener("click", () =>
+        confirmForceAdvanceStragglers(stragglers, b.frame),
+      );
+      info.appendChild(advance);
+    }
 
     panel.appendChild(info);
   }
@@ -507,6 +552,18 @@ function renderAdminBarrierPanel(barriers) {
   releaseAll.textContent = "release all";
   releaseAll.addEventListener("click", () => sendForceReleaseBarrier());
   panel.appendChild(releaseAll);
+
+  if (anyStragglers) {
+    const advanceAll = document.createElement("button");
+    advanceAll.type = "button";
+    advanceAll.textContent = "advance all stragglers";
+    advanceAll.addEventListener("click", () =>
+      confirmForceAdvanceStragglers(
+        barriers.reduce((ids, b) => ids.concat(b.stragglers || []), []),
+      ),
+    );
+    panel.appendChild(advanceAll);
+  }
 }
 
 // Ask the server to force-release a chosen barrier (by frame) or all waiting
@@ -514,6 +571,31 @@ function renderAdminBarrierPanel(barriers) {
 // admin command (server → Chunk J release path).
 function sendForceReleaseBarrier(frame) {
   sendToServer(MSG_BARRIER_RELEASED, frame ? { frame } : {});
+}
+
+// The other resolution of a stuck track group: instead of letting it go without
+// its stragglers, teleport the stragglers onto it (server picks each one's
+// least-occupied group frame). Same inbound command, `advance` flagged.
+function sendForceAdvanceStragglers(frame) {
+  sendToServer(
+    MSG_BARRIER_RELEASED,
+    frame ? { frame, advance: true } : { advance: true },
+  );
+}
+
+// Confirmed, unlike release: this MOVES performers' devices to another frame.
+function confirmForceAdvanceStragglers(lineIds, frame) {
+  const ids = lineIds || [];
+  const ok = confirm(
+    `Force ${ids.length} straggler line${ids.length === 1 ? "" : "s"} ` +
+      `(${ids.join(", ") || "none"}) onto ` +
+      `${frame ? frame.replace(/^group:/, "track group ⟨") + "⟩" : "their waiting groups"}? ` +
+      `Those lines jump to the group from wherever they are now.`,
+  );
+  if (!ok) {
+    return;
+  }
+  sendForceAdvanceStragglers(frame);
 }
 
 function setCheckHold(value) {
