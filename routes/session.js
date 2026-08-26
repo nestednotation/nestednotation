@@ -121,6 +121,12 @@ router.get("/:sessionId/map", function (req, res) {
       // MSG_BARRIER_RELEASED.
       MSG_BARRIER_WAITING: MESSAGES.MSG_BARRIER_WAITING,
       MSG_BARRIER_RELEASED: MESSAGES.MSG_BARRIER_RELEASED,
+      // The score itself can change under the map: the session manager swaps
+      // this session's folder (or stops the session), or the operator hits
+      // "global refresh". Both reload the session page — the map has to
+      // follow, or it keeps drawing a score the room has already left.
+      MSG_CHANGE_FOLDER: MESSAGES.MSG_CHANGE_FOLDER,
+      MSG_GLOBAL_REFRESH: MESSAGES.MSG_GLOBAL_REFRESH,
     }),
   });
 });

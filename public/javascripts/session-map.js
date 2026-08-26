@@ -410,8 +410,14 @@
 
   // Manual arrangement: nodes are draggable; positions persist per session so
   // an arrangement survives reloads. "re-layout" clears them.
+  //
+  // Keyed by SCORE as well as session: the session manager can repoint a
+  // session at a different folder, and node ids are frame names — under a
+  // session-only key the frames the two scores happen to share (START.svg…)
+  // would be dragged to their old coordinates on top of the new layout.
   function positionsKey() {
-    return `mapPos:${window.sessionId}`;
+    const folder = (document.body && document.body.dataset.scoreFolder) || "";
+    return `mapPos:${window.sessionId}:${folder}`;
   }
 
   function loadSavedPositions() {
@@ -1201,6 +1207,23 @@
         selectedIdx: data.selectedIdx ?? -1,
       };
       renderHistory();
+      return;
+    }
+    // The score under the map just changed, or the operator asked every
+    // device to reload: the session manager broadcasts MSG_CHANGE_FOLDER when
+    // "Update session" swaps the folder (and when a session is stopped), and
+    // the session page's "global refresh" button broadcasts
+    // MSG_GLOBAL_REFRESH. Everything here is derived from the score — the
+    // graph fetch, the title, the saved arrangement — so reload the page the
+    // way the session page does instead of patching the pieces.
+    //
+    // window.-qualified on purpose: this file is served straight from disk
+    // while routes/session.js (which builds the constants blob) lives in the
+    // running process, so a not-yet-restarted server sends a blob without
+    // these two. A bare identifier would throw ReferenceError and take every
+    // other message down with it; an undefined comparison just never matches.
+    if (msg === window.MSG_CHANGE_FOLDER || msg === window.MSG_GLOBAL_REFRESH) {
+      window.location.reload();
       return;
     }
     // Everything else (SHOW/voting/… addressed to this connection's line) is

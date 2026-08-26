@@ -117,7 +117,28 @@ router.get("/", async function (req, res) {
             });
           }
         } else {
+          // Same folder: "update session" doubles as "rebuild this score" —
+          // the operator edited the frames on disk and is applying them. The
+          // rebuild replaces the baked svg, the frame list and the graph
+          // server-side (and clears apicache below), but every attached device
+          // is still holding the OLD score: session pages keep the frames they
+          // injected at load, and the standalone /map keeps the graph it
+          // fetched. Send them the same MSG_CHANGE_FOLDER the swap above does.
+          //
+          // Gated on the score CONTENT actually having changed: this same form
+          // also carries pure parameter edits (hold/vote duration, voting
+          // size, volume…), and those must not reload a room mid-performance.
+          const contentBefore = session.contentHash;
           await session.buildSVGContent();
+
+          if (session.contentHash !== contentBefore) {
+            sendToAllClients(session, 0, {
+              m: MESSAGES.MSG_CHANGE_FOLDER,
+              soundList: session.soundList,
+              listFiles: session.listFiles,
+              folder: session.folder,
+            });
+          }
 
           if (isVolumeChanged) {
             sendToAllClients(session, 0, {

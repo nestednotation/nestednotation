@@ -1,5 +1,6 @@
 const { MESSAGES, ABOUT_DATA_DIR } = require("./constants");
 const fs = require("fs");
+const crypto = require("crypto");
 
 const jade = require("jade");
 
@@ -399,6 +400,14 @@ class BMSession {
     // raw content, before the <a> href rewrite below strips href values).
     const sessionFrameAttrs = [];
 
+    // A fingerprint of the score the devices are handed, accumulated as the
+    // frames are appended below. The session manager rebuilds a score in place
+    // when "update session" leaves the folder alone (the operator edited the
+    // frames on disk); comparing this across the rebuild is how routes/sm.js
+    // knows whether the attached devices — session pages and the standalone
+    // /map — are now holding a stale score and have to reload.
+    const contentDigest = crypto.createHash("sha256");
+
     const svgFilePath = `${SERVER_STATE_DIR}/${this.id}.content.svg`;
     if (fs.existsSync(svgFilePath)) {
       await fs.promises.rm(svgFilePath);
@@ -448,11 +457,18 @@ class BMSession {
         newA = newA.replace(")", "\\)");
       });
 
+      contentDigest.update(filename);
+      contentDigest.update(svg ?? "");
+
       await fs.promises.appendFile(
         `${SERVER_STATE_DIR}/${this.id}.content.svg`,
         svg,
       );
     }
+
+    // Not persisted (toJSON allowlist) — buildSVGContent re-derives it on load,
+    // exactly like listFiles and graph.
+    this.contentHash = contentDigest.digest("hex");
 
     // Session Lines: the relationship graph is built for EVERY score (the
     // admin score map treats a vanilla score as a single-line session), but

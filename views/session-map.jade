@@ -23,7 +23,10 @@ html
       catch (e) { console.error('session-map constants missing — restart the server', e); }
     script(src='/javascripts/ws-client.js')
     script(src='/javascripts/session-map.js')
-  body(class="session-map-page")
+  //- data-score-folder keys the saved manual arrangement (session-map.js):
+  //- the same session can be pointed at a different score from the session
+  //- manager, and the old score's node positions must not leak into the new one.
+  body(class="session-map-page", data-score-folder=scoreTitle)
     div(id="session-map-header")
       span(id="session-map-title") score map — #{scoreTitle}
       span(id="session-map-status") loading…

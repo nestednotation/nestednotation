@@ -1266,6 +1266,15 @@ async function handleConnectionClose(session, conn) {
   if (!session || !session.hasSessionLines) {
     return;
   }
+  // The standalone /map is an observation tool, never population — closing or
+  // reloading it must leave no footprint in the room. Every count already
+  // filters it out (performerLineConnections), so without this guard a map tab
+  // watching a line that has no performers reaches the attrition timer below
+  // and starts a grace window nobody asked for: the map changing room state
+  // just by being closed.
+  if (conn.isMapView) {
+    return;
+  }
   const lineId = conn.lineId;
   if (!lineId) {
     return;
@@ -2559,7 +2568,8 @@ async function roomRewind(session, group) {
   }
 
   const parkedAt = new Map();
-  for (const { line } of landings) {
+  for (const landing of landings) {
+    const { line } = landing;
     parkedAt.set(
       line.id,
       line.isBarrierWaiting || line.isGroupWaiting
@@ -2567,6 +2577,10 @@ async function roomRewind(session, group) {
         : null,
     );
     await clearLinePhaseForRoomRewind(session, line);
+    // Remember the dive before unwinding it. Popping subStack here only fixes
+    // the SERVER's idea of where the line is; the devices are still in sub
+    // view and need MSG_SUB_EXIT below to leave it.
+    landing.wasInSub = line.subStack.length > 0;
     while (line.subStack.length > 0) {
       line.exitSub();
     }
@@ -2602,8 +2616,36 @@ async function roomRewind(session, group) {
   pushAdminHistory(session);
   updateNumberOfConnectionForSession(session);
 
+  // A line dragged out of a sub-score needs MSG_SUB_EXIT, not a bare MSG_SHOW
+  // — the same shape forceAdvanceStragglers uses. Its devices still hold the
+  // SUB's injected frame list and `frameContext`, so the main-flow index below
+  // resolves to no frame there: the display goes blank on a stale frame and the
+  // audio player throws on the unresolvable id. Sent even while paused — the
+  // stale sub context must not outlive the move, or the eventual unpause
+  // (main-flow index too) breaks the same way — with the pause placeholder
+  // restored right after.
+  for (const { line, index, wasInSub } of landings) {
+    if (!wasInSub) {
+      continue;
+    }
+    sendToLine(session, line.id, 0, {
+      m: MESSAGES.MSG_SUB_EXIT,
+      showIdx: index,
+    });
+    if (session.isPause) {
+      sendToLine(session, line.id, 0, {
+        m: MESSAGES.MSG_PAUSE,
+        isPause: true,
+        showIdx: index,
+      });
+    }
+  }
+
   if (!session.isPause) {
-    for (const { line, index } of landings) {
+    for (const { line, index, wasInSub } of landings) {
+      if (wasInSub) {
+        continue; // MSG_SUB_EXIT above already drove this line's display
+      }
       sendToLine(session, line.id, Date.now() + session.preloadDuration, {
         m: MESSAGES.MSG_SHOW,
         showIdx: index,
