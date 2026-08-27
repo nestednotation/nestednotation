@@ -147,6 +147,29 @@ function onVisibilityChange() {
   }
 }
 
+// A tab that navigates away is not necessarily gone: the browser can freeze the
+// leaving document into the back/forward cache with its WebSocket still OPEN,
+// and the server counts live connections — so it goes on counting that frozen
+// document as a device. An operator round-tripping between the session page
+// and /sm adds one phantom player per trip (the Back button is the only way
+// back, and bfcache is exactly where Back leaves the page): it inflates the
+// footer counts and, worse, a line's population — a phantom never taps, so it
+// can hold a group wait open. Closing here costs a real unload nothing, and
+// pageshow brings a restored page back.
+function onPageHide() {
+  cancelReconnectTimer();
+  teardownSocket();
+}
+
+// Only a bfcache restore needs a fresh socket. The initial load fires pageshow
+// too (persisted false) — connecting there would race the page's own
+// connectWebSocket() call.
+function onPageShow(event) {
+  if (!event.persisted) return;
+  reconnectAttempts = 0;
+  connectWebSocket();
+}
+
 function scheduleReconnect() {
   if (reconnectTimer) return;
   const delay = Math.min(WS_BASE_DELAY * 2 ** reconnectAttempts, WS_MAX_DELAY);
@@ -213,7 +236,7 @@ function getServerTime() {
 }
 
 function sendToServer(message, payload) {
-  if (ws.readyState !== ws.OPEN) {
+  if (!ws || ws.readyState !== ws.OPEN) {
     return;
   }
 

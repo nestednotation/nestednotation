@@ -54,6 +54,8 @@ function onDOMContentLoaded() {
 
   connectWebSocket();
   document.addEventListener("visibilitychange", onVisibilityChange);
+  window.addEventListener("pagehide", onPageHide);
+  window.addEventListener("pageshow", onPageShow);
 }
 
 function viewDidLoad() {
@@ -445,9 +447,38 @@ function ensureLinePanel() {
   return panel;
 }
 
+// A device that has stopped sending its 60s MSG_PING while its socket stays
+// open is the one shape of trouble the server's transport keepalive cannot
+// see. Flag it only well past that interval: a backgrounded phone throttles
+// its timers too, so a couple of quiet minutes is ordinary. This is a label
+// for the operator, never grounds for dropping anyone.
+const QUIET_THRESHOLD_MS = 180000;
+
+function quietLabel(quietSince) {
+  if (!quietSince) {
+    return null;
+  }
+  const age = getServerTime() - quietSince;
+  if (age < QUIET_THRESHOLD_MS) {
+    return null;
+  }
+  return `quiet ${Math.floor(age / 60000)}m`;
+}
+
+// The panel shows an AGE, so it has to keep ticking between server pushes —
+// a room that is stuck sends none, which is exactly when it is being read.
+let lastLinesSnapshot = null;
+let quietTickTimer = null;
+
 function renderLineDistribution(lines) {
   if (!window.isAdminView || !Array.isArray(lines)) {
     return;
+  }
+  lastLinesSnapshot = lines;
+  if (!quietTickTimer) {
+    quietTickTimer = setInterval(() => {
+      if (lastLinesSnapshot) renderLineDistribution(lastLinesSnapshot);
+    }, 15000);
   }
   const panel = ensureLinePanel();
   if (lines.length === 0) {
@@ -462,9 +493,13 @@ function renderLineDistribution(lines) {
     if (l.waiting) flags.push("waiting");
     if (l.straggler) flags.push("straggler");
     if (l.inSub) flags.push("sub");
+    const quiet = quietLabel(l.quietSince);
+    if (quiet) flags.push(quiet);
     const flagStr = flags.length ? ` (${flags.join(",")})` : "";
-    // A straggler is the reason the room is stalled, so it highlights too.
-    const stalled = l.status === "dormant" || l.waiting || l.straggler;
+    // A straggler is the reason the room is stalled, so it highlights too — and
+    // so does a quiet line, which is where a phantom device would show up.
+    const stalled =
+      l.status === "dormant" || l.waiting || l.straggler || Boolean(quiet);
     html +=
       `<span class="line-info${stalled ? " line-stalled" : ""}">` +
       // Performers only (`players`/`riders`), never the raw `devices` total: a

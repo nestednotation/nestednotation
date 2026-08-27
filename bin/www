@@ -143,12 +143,24 @@ httpServerForSocket.listen(process.env.WS_PORT);
 
 console.log(`Websocket is running on port ${process.env.WS_PORT}`);
 
+// Liveness: the websocket package's own protocol keepalive, spelled out rather
+// than inherited so a dependency bump cannot quietly change it. Ping a
+// connection after 20s of silence, drop it if no pong arrives within 10s — a
+// peer that stops answering leaves wsServer.connections (and runs the close
+// handler below) in ~30s. It cannot see a tab frozen into the back/forward
+// cache, whose NETWORK STACK answers the ping while its JS is suspended; that
+// one is closed at the source by the pagehide handler in ws-client.js.
 const wsServer = new WebSocketServer({
   httpServer: httpServerForSocket,
+  keepalive: true,
+  keepaliveInterval: 20000,
+  dropConnectionOnKeepaliveTimeout: true,
+  keepaliveGracePeriod: 10000,
 });
 
 wsServer.on("request", function (request) {
   const connection = request.accept(null, request.origin);
+  connection.lastSeen = Date.now();
 
   connection.on("message", function (message) {
     // messageHandle is async — an uncaught throw would be an unhandled
@@ -2999,11 +3011,21 @@ function updateNumberOfConnectionForSession(session) {
           l.id,
         );
         const mainHistory = mainHistoryStateForLine(l);
+        // The oldest app-level message on this line. A device whose JS is gone
+        // (a frozen tab, a wedged renderer) keeps answering the transport
+        // keepalive from its network stack, so the only tell left is that its
+        // 60s MSG_PING stopped. Reported, never acted on: a backgrounded phone
+        // throttles that ping too, and dropping a live performer would change
+        // line population and group waits.
+        const lastSeens = linePerformers
+          .map((c) => c.lastSeen)
+          .filter((t) => typeof t === "number");
         return {
           id: l.id,
           status: l.status,
           players: linePerformers.filter((c) => c.isStaff).length,
           riders: linePerformers.filter((c) => !c.isStaff).length,
+          quietSince: lastSeens.length ? Math.min(...lastSeens) : null,
           frame: frameNameForLine(session, l),
           inSub: l.subStack.length > 0,
           sub:
@@ -3035,6 +3057,9 @@ function updateNumberOfConnectionForSession(session) {
 
 async function messageHandle(conn, message) {
   const messageData = JSON.parse(message.utf8Data);
+  // Proof this device's JS is still running — the protocol keepalive above only
+  // proves its network stack is. Read back as quietSince in the lines payload.
+  conn.lastSeen = Date.now();
   const sessionId = messageData.sid;
   const clientIndex = messageData.cid;
   const password = messageData.sig;

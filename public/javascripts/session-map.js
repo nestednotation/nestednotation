@@ -585,6 +585,11 @@
     renderHistory(); // history may have arrived before the graph was ready
   }
 
+  // Matches the session panel's threshold: a line whose stalest device has not
+  // spoken in this long carries 💤. Badges here repaint on the next push, like
+  // every other live marker on the map.
+  const QUIET_THRESHOLD_MS = 180000;
+
   function updateLines(lines) {
     if (!Array.isArray(lines)) {
       return;
@@ -607,10 +612,15 @@
         // players (and riders when present) — admins count as players.
         const who = `${l.players}p${l.riders ? `+${l.riders}r` : ""}`;
         const phase = `${l.voting ? "✅" : ""}${l.holding ? "✋" : ""}`;
-        // ⏳ this line is waiting on others; ⏩ others are waiting on IT.
+        // ⏳ this line is waiting on others; ⏩ others are waiting on IT;
+        // 💤 a device on it has gone quiet (see quietSince in bin/www).
+        const quiet =
+          l.quietSince && getServerTime() - l.quietSince > QUIET_THRESHOLD_MS
+            ? "💤"
+            : "";
         const mark =
           `${l.id}·${who}${l.waiting ? "⏳" : ""}` +
-          `${l.straggler ? "⏩" : ""}${phase}`;
+          `${l.straggler ? "⏩" : ""}${quiet}${phase}`;
         node.data("badge", badge ? `${badge} ${mark}` : mark);
         node.addClass("here");
         if (l.voting) node.addClass("here-voting");
@@ -1279,6 +1289,8 @@
       setStatus("connecting…");
       connectWebSocket();
       document.addEventListener("visibilitychange", onVisibilityChange);
+      window.addEventListener("pagehide", onPageHide);
+      window.addEventListener("pageshow", onPageShow);
     } catch (e) {
       console.error("session-map init failed", e);
       setStatus("map failed to load (see console)");
