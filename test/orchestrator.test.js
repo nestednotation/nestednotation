@@ -35,6 +35,7 @@ const {
   canReachFrames,
   groupArrivalState,
   groupStragglerIds,
+  holdUntilStragglerTargets,
   subReturnIndex,
   createOrchestrator,
 } = require("../lib/session-lines/orchestrator");
@@ -1253,6 +1254,111 @@ module.exports = {
         lines,
         isParked: (l) => !!l.isBarrierWaiting,
       }),
+      [],
+    );
+  },
+
+  "holdUntilStragglerTargets: who a hold-until is waiting on, and where they'd go (2026-08-28)": () => {
+    // The barrier waits on Left.svg and Right.svg; Left is already done, so the
+    // wait is entirely on Right. L2 can still get there, L3 cannot — only L2 is
+    // what the barrier is held open FOR, and Right is where an advance sends it.
+    const state = holdUntilReachabilityState(
+      ["Left.svg", "Right.svg"],
+      ["Left.svg"],
+      [{ id: "L2" }, { id: "L3" }],
+      (line) => line.id === "L2",
+    );
+    assert.deepStrictEqual(state.missingTargets, ["Right.svg"]);
+    assert.deepStrictEqual(
+      holdUntilStragglerTargets(state, {
+        lines: [{ id: "L2" }, { id: "L3" }],
+        canReachTarget: (line) => line.id === "L2",
+      }),
+      [{ lineId: "L2", target: "Right.svg" }],
+    );
+  },
+
+  "holdUntilStragglerTargets: pairs each line with the FIRST target it can reach (2026-08-28)": () => {
+    // Author order decides, so two lines owing different halves of the same
+    // barrier are each sent where they can actually go.
+    const reach = { L2: "Right.svg", L3: "Left.svg" };
+    const canReachTarget = (line, target) => reach[line.id] === target;
+    const lines = [{ id: "L2" }, { id: "L3" }];
+    const state = holdUntilReachabilityState(
+      ["Left.svg", "Right.svg"],
+      [],
+      lines,
+      canReachTarget,
+    );
+    assert.deepStrictEqual(
+      holdUntilStragglerTargets(state, { lines, canReachTarget }),
+      [
+        { lineId: "L2", target: "Right.svg" },
+        { lineId: "L3", target: "Left.svg" },
+      ],
+    );
+  },
+
+  "holdUntilStragglerTargets: a sub-score target IS a landing when the score has a way in (2026-08-30)": () => {
+    // "Tetra/Echo.svg" names a frame inside a sub-score. The advance drops the
+    // line into that sub (bin/www subAdvanceLanding resolves the dive it would
+    // have taken), so the ref is a destination like any other — and canLandOn
+    // is asked per LINE, because the way in has to be one this line could take.
+    const lines = [{ id: "L2" }];
+    const asked = [];
+    const state = holdUntilReachabilityState(
+      ["Tetra/Echo.svg"],
+      [],
+      lines,
+      () => true,
+    );
+    assert.deepStrictEqual(
+      holdUntilStragglerTargets(state, {
+        lines,
+        canReachTarget: () => true,
+        canLandOn: (target, line) => {
+          asked.push([target, line.id]);
+          return true;
+        },
+      }),
+      [{ lineId: "L2", target: "Tetra/Echo.svg" }],
+    );
+    assert.deepStrictEqual(asked, [["Tetra/Echo.svg", "L2"]]);
+  },
+
+  "holdUntilStragglerTargets: a target with NO landing leaves the straggler listed (2026-08-28)": () => {
+    // Same shape, but the score offers no usable way in (unknown sub, unknown
+    // frame, or no dive whose return landing survives). The barrier really is
+    // waiting on L2 — it must be listed, or the panel would claim the wait is
+    // on nobody — but there is nowhere to send it, so it carries no destination
+    // and the UI offers no button.
+    const lines = [{ id: "L2" }];
+    const state = holdUntilReachabilityState(
+      ["Tetra/Echo.svg"],
+      [],
+      lines,
+      () => true,
+    );
+    assert.deepStrictEqual(
+      holdUntilStragglerTargets(state, {
+        lines,
+        canReachTarget: () => true,
+        canLandOn: (target) => !String(target).includes("/"),
+      }),
+      [{ lineId: "L2", target: null }],
+    );
+  },
+
+  "holdUntilStragglerTargets: a satisfied barrier is waiting on nobody (2026-08-28)": () => {
+    const lines = [{ id: "L2" }];
+    const state = holdUntilReachabilityState(
+      ["Left.svg"],
+      ["Left.svg"],
+      lines,
+      () => true,
+    );
+    assert.deepStrictEqual(
+      holdUntilStragglerTargets(state, { lines, canReachTarget: () => true }),
       [],
     );
   },

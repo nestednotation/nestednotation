@@ -260,6 +260,9 @@ Rules and notes:
 - **It does not deadlock.** If a listed frame becomes unreachable — every line that could
   still get there has gone empty or moved past it — the wait dissolves by itself rather
   than freezing the room forever.
+- **The frame is played first.** The wait *extends* the frame's own holding period, it never
+  cuts it short: even if everything on the list was played long ago, the line still plays
+  this frame in full before moving on.
 - **Frames may wait on each other.** A mutual rendezvous — two or three barrier frames
   each listing the others — is legal and releases them all together once each has been
   reached; a circular wait does not freeze.

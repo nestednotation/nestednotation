@@ -672,6 +672,48 @@
   // (MSG_BARRIER_RELEASED, optionally `advance`-flagged). The strip only exists
   // while something is waiting.
 
+  // "group:<name>" barrier refs are track-group arrival waits; anything else is
+  // a hold-until frame.
+  function isGroupBarrier(barrier) {
+    return String((barrier && barrier.frame) || "").startsWith("group:");
+  }
+
+  // Where a forced advance would put `lineId`, as the operator reads it: the
+  // exact frame for a hold-until (the target it still owes, server-supplied in
+  // `advanceTargets` — a "Sub/Frame.svg" ref lands inside that sub-score), the
+  // group for a track-group wait (whose least-occupied frame is only picked
+  // when the command runs). Null when the score offers nowhere to land the
+  // line at all.
+  function advanceDestination(barrier, lineId) {
+    const dest = ((barrier && barrier.advanceTargets) || {})[lineId];
+    if (dest) {
+      const line = (lastLines || []).find((l) => l.id === lineId);
+      // Positions compare in the target's own vocabulary: a line inside a sub
+      // is at "Sub/Frame.svg", on the main flow it is just the frame.
+      const at = !line
+        ? null
+        : line.sub
+          ? `${line.sub}/${line.frame}`
+          : line.frame;
+      return {
+        frame: dest,
+        label: frameLabel(dest),
+        // Already there: what the barrier is still waiting on is this line's
+        // holding period, and the advance cuts that short rather than moving
+        // anything. Said plainly, or the entry reads as a no-op.
+        atDestination: at != null && lc(at) === lc(dest),
+      };
+    }
+    if (isGroupBarrier(barrier)) {
+      return {
+        frame: null,
+        label: frameLabel(barrier.frame).replace(/^group:/, ""),
+        atDestination: false,
+      };
+    }
+    return null;
+  }
+
   function renderBarrierPanel() {
     const panel = document.getElementById("session-map-barriers");
     if (!panel) return;
@@ -690,6 +732,7 @@
     panel.appendChild(heading);
 
     let anyStragglers = false;
+    let anyAdvanceable = false;
     for (const b of barriers) {
       const parked = (b.parked || []).join(",") || "none";
       const stragglers = b.stragglers || [];
@@ -698,10 +741,9 @@
       info.className = "map-barrier-info";
       // "group:<name>" entries are track-group arrival waits; anything else is
       // a hold-until frame. Shown as authored either way.
-      info.textContent =
-        `${frameLabel(b.frame)} [parked: ${parked}]` +
-        (stragglers.length ? ` [waiting on: ${stragglers.join(",")}]` : "") +
-        " ";
+      info.appendChild(
+        document.createTextNode(`${frameLabel(b.frame)} [parked: ${parked}] `),
+      );
 
       const release = document.createElement("button");
       release.type = "button";
@@ -712,10 +754,36 @@
 
       if (stragglers.length) {
         anyStragglers = true;
+        info.appendChild(document.createTextNode(" waiting on:"));
+        // One button per straggler — "advance THIS line" (2026-08-28), the same
+        // command the node menu carries, for the operator already reading the
+        // strip. The plain id list this replaces named who was holding the room
+        // up but gave no way to act on one of them.
+        for (const id of stragglers) {
+          const dest = advanceDestination(b, id);
+          const one = document.createElement("button");
+          one.type = "button";
+          one.textContent = `⏩ ${id}`;
+          one.title = !dest
+            ? `no way to land ${id} on the target it owes — release instead`
+            : dest.atDestination
+              ? `end line ${id}'s holding period at ⟨${dest.label}⟩`
+              : `advance line ${id} to ⟨${dest.label}⟩ on its own`;
+          one.disabled = !dest;
+          one.addEventListener("click", () =>
+            confirmAdvanceLine(id, b.frame, dest),
+          );
+          info.appendChild(one);
+        }
+        const advanceable = stragglers.some((id) => advanceDestination(b, id));
+        anyAdvanceable = anyAdvanceable || advanceable;
         const advance = document.createElement("button");
         advance.type = "button";
-        advance.title = "move the waited-for lines onto this group instead";
+        advance.title = advanceable
+          ? "move every waited-for line onto this barrier instead"
+          : "nothing to advance — no line it waits on has a landing";
         advance.textContent = "force advance";
+        advance.disabled = !advanceable;
         advance.addEventListener("click", () =>
           confirmAdvanceStragglers(stragglers, b.frame),
         );
@@ -734,6 +802,7 @@
     if (anyStragglers) {
       const advanceAll = document.createElement("button");
       advanceAll.type = "button";
+      advanceAll.disabled = !anyAdvanceable;
       advanceAll.textContent = "advance all stragglers";
       advanceAll.addEventListener("click", () =>
         confirmAdvanceStragglers(
@@ -745,26 +814,52 @@
   }
 
   // `frame` names one barrier; omitted means every waiting one. `advance` picks
-  // the bring-them-in resolution over the let-it-go one.
-  function sendBarrierCommand(frame, advance) {
+  // the bring-them-in resolution over the let-it-go one; `lineIds` narrows that
+  // to named lines (the per-line command — the server still filters them
+  // against its own live straggler set, so a stale id is simply ignored).
+  function sendBarrierCommand(frame, advance, lineIds) {
     const payload = frame ? { frame } : {};
     if (advance) payload.advance = true;
+    if (lineIds && lineIds.length) payload.lineIds = lineIds;
     sendToServer(MSG_BARRIER_RELEASED, payload);
   }
 
   // Confirmed, unlike release: this MOVES performers' devices to another frame.
+  // Deliberately sends no `lineIds`: the barrier-wide command should cover
+  // whoever is a straggler when the server runs it, not whoever was one when
+  // this snapshot was pushed.
   function confirmAdvanceStragglers(lineIds, frame) {
     const ids = lineIds || [];
     const where = frame
       ? `⟨${frameLabel(frame).replace(/^group:/, "")}⟩`
-      : "their waiting groups";
+      : "their waiting barriers";
     const ok = confirm(
       `Force ${ids.length} straggler line${ids.length === 1 ? "" : "s"} ` +
         `(${ids.join(", ") || "none"}) onto ${where}? ` +
-        `Those lines jump to the group from wherever they are now.`,
+        `Those lines jump there from wherever they are now.`,
     );
     if (!ok) return;
     sendBarrierCommand(frame, true);
+  }
+
+  // "Advance this line" (2026-08-28) — one straggler, from the node menu or the
+  // strip. A track group takes the line to its least-occupied frame; a
+  // hold-until takes it to the target it still owes, so the wait ends met
+  // rather than waived. `destination` is advanceDestination()'s reading of
+  // where that is; null means there is nowhere to send it.
+  function confirmAdvanceLine(lineId, frame, destination) {
+    hideMenu();
+    if (!destination) return;
+    const ok = confirm(
+      destination.atDestination
+        ? `End line ${lineId}'s holding period at ⟨${destination.label}⟩? ` +
+            `It has arrived — the barrier is only waiting out its hold.`
+        : `Advance line ${lineId} to ⟨${destination.label}⟩? ` +
+            `It jumps there from wherever it is now; the rest of the room ` +
+            `stays put.`,
+    );
+    if (!ok) return;
+    sendBarrierCommand(frame, true, [lineId]);
   }
 
   // ── History overlay + rewind node menu ─────────────────────────────────────
@@ -973,6 +1068,47 @@
     return html;
   }
 
+  // "⏩ advance <line> to ⟨…⟩" (2026-08-28) — the per-line half of the strip's
+  // force-advance, offered on the node the straggler is standing on, which is
+  // where the operator is already looking when a track group or a hold-until
+  // has stalled the room on one line. The barrier is found by asking which
+  // waiting entry lists this line as a straggler; the destination comes from
+  // the same push, so the entry can name where the line will land before the
+  // operator commits to it.
+  function advanceButtonsHtml(nodeId) {
+    let html = "";
+    for (const l of lastLines || []) {
+      if (!l.frame) continue;
+      const id = l.sub ? `sub:${l.sub}:${l.frame}` : `main:${l.frame}`;
+      if (id !== nodeId) continue;
+      const barrier = (lastBarriers || []).find((b) =>
+        (b.stragglers || []).includes(l.id),
+      );
+      if (!barrier) continue;
+      const dest = advanceDestination(barrier, l.id);
+      if (!dest) {
+        html +=
+          `<div class="menu-note">${escapeHtml(l.id)} is holding ` +
+          `${escapeHtml(frameLabel(barrier.frame))} open, but the score offers ` +
+          `no way to land it on the target it owes — release instead</div>`;
+        continue;
+      }
+      html +=
+        `<button type="button" class="menu-advance" data-advance-line="${escapeHtml(
+          l.id,
+        )}" data-advance-frame="${escapeHtml(
+          barrier.frame,
+        )}" data-advance-label="${escapeHtml(dest.label)}" data-advance-hold="${
+          dest.atDestination ? "1" : ""
+        }">` +
+        (dest.atDestination
+          ? `⏩ end ${escapeHtml(l.id)}'s hold at ⟨${escapeHtml(dest.label)}⟩`
+          : `⏩ advance ${escapeHtml(l.id)} to ⟨${escapeHtml(dest.label)}⟩`) +
+        `</button>`;
+    }
+    return html;
+  }
+
   function splitRewindHtml(frameName) {
     let html = "";
     for (const entry of lastSplitRewinds || []) {
@@ -1007,6 +1143,9 @@
 
     let html = `<div class="menu-title">${escapeHtml(label)}</div>`;
     if (!vanillaMode) {
+      // The live stall comes first: an advance acts on the room as it stands
+      // now, the rewinds below it act on what already happened.
+      html += advanceButtonsHtml(id);
       // Session-lines rooms (2026-07-19): room checkpoint, explicit line, and
       // structural split rewinds. The implicit bound-line rewind stays retired.
       if (isMain) {
@@ -1080,6 +1219,14 @@
           btn.dataset.splitParent,
           parseInt(btn.dataset.splitCount, 10),
         ),
+      );
+    }
+    for (const btn of menu.querySelectorAll("button[data-advance-line]")) {
+      btn.addEventListener("click", () =>
+        confirmAdvanceLine(btn.dataset.advanceLine, btn.dataset.advanceFrame, {
+          label: btn.dataset.advanceLabel,
+          atDestination: btn.dataset.advanceHold === "1",
+        }),
       );
     }
     for (const btn of menu.querySelectorAll("button[data-room-group]")) {

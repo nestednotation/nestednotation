@@ -976,15 +976,44 @@ function activeLines(session) {
 // has no way to tap or vote — it is a pure observation tool, never population
 // (performerLineConnections), so a line holding only map tabs empties out and
 // goes dormant like any abandoned line.
-function activeDrivingLines(session, exceptParkedIds = new Set()) {
+function activeGuardCandidates(session, exceptParkedIds = new Set()) {
   return activeLines(session).filter(
     (l) =>
       !exceptParkedIds.has(l.id) &&
-      !l.isBarrierWaiting &&
-      !l.isGroupWaiting &&
       performerLineConnections(wsServer.connections, session.id, l.id).length >
         0,
   );
+}
+
+// Does `line` keep a still-missing hold-until `target` open?
+//
+// #11 excludes a PARKED line from "can still reach": it cannot navigate, so a
+// path only it could travel is a dead path. But a line STANDING ON the missing
+// target has already reached it — the registry holds the landing as "arrived"
+// and the frame's own holding period (or the line's departure) upgrades it to
+// "done" on a timer that no barrier gates. Counting that as unreachable
+// force-released every OTHER line waiting for the target; where the released
+// frame carried a single paired `rejoin-at`, the line was auto-advanced off it
+// in the same tick as its arrival, so a sub return landing was never rendered
+// ("ending subs skips target", 2026-08-28).
+function canKeepHoldTargetOpen(session, line, target) {
+  const ref = reachedRefForLine(session, line);
+  if (ref && ref.toLowerCase() === String(target || "").toLowerCase()) {
+    return true; // standing on it: reached, merely not "done" yet
+  }
+  if (line.isBarrierWaiting || line.isGroupWaiting) {
+    return false; // parked elsewhere — #11: it can no longer travel there
+  }
+  return lineCanReachHoldTarget(session, line, target);
+}
+
+// A line whose holding period at its current frame has not finished: either it
+// is running (`isHolding`) or the 1s standby that STARTS it is still pending
+// (`standbyTimer` — the gap between an advance and
+// startHoldingForSessionWithDelay). Both edges call back into
+// tryReleaseBarriers when they end.
+function holdPendingAtFrame(line) {
+  return !!line.isHolding || line.standbyTimer != null;
 }
 
 function resolveSubScoreName(session, score) {
@@ -1144,14 +1173,15 @@ async function tryReleaseBarriers(session) {
     const satisfied = orch.holdUntilSatisfied(entry.targets, covered);
 
     // Deadlock guard / attrition (#11): release rather than wait forever when
-    // the missing targets can no longer be reached by any active, device-bearing
-    // unparked line. Empty/dormant/retired lines and already-parked lines do not
-    // keep a hold-until barrier open.
+    // the missing targets can no longer be reached by any active,
+    // device-bearing line. Empty/dormant/retired lines do not keep a
+    // hold-until target open, and neither does a line parked elsewhere — but a
+    // line standing ON the target does (canKeepHoldTargetOpen).
     const reachability = orch.holdUntilReachabilityState(
       entry.targets,
       covered,
-      activeDrivingLines(session, entry.parked),
-      (l, target) => lineCanReachHoldTarget(session, l, target),
+      activeGuardCandidates(session, entry.parked),
+      (l, target) => canKeepHoldTargetOpen(session, l, target),
     );
     const forceRelease =
       parkedLines.length > 0 &&
@@ -1159,7 +1189,18 @@ async function tryReleaseBarriers(session) {
       reachability.unreachableTargets.length ===
         reachability.missingTargets.length;
 
-    if (satisfied || forceRelease) {
+    // A hold-until barrier IS a holding period (§7 step 5: the line "enters
+    // holding" on arrival, the release "releases the hold") — it EXTENDS the
+    // frame's own hold and must never cut it short. A parked line whose hold
+    // has not finished keeps the entry closed, the same hold-sync rule the
+    // track-group arrival barrier got on 2026-07-20 ("the group unlocks on the
+    // last occupant's hold release"). Without it a line landing on an ALREADY
+    // satisfied barrier was released in the same tick as its arrival and, with
+    // a single paired rejoin-at, auto-advanced off the frame before the device
+    // ever rendered it.
+    const holdPending = parkedLines.some(holdPendingAtFrame);
+
+    if ((satisfied || forceRelease) && !holdPending) {
       delete barrier.byFrame[frameName];
       await releaseBarrier(session, entry, parkedLines);
     }
@@ -1458,10 +1499,24 @@ function notifyAdminsBarriers(session) {
   const barriers = session._barrier
     ? Object.keys(session._barrier.byFrame).map((frame) => {
         const entry = session._barrier.byFrame[frame];
+        // Hold-until entries have stragglers of their own (2026-08-28): the
+        // lines that can still reach a target nobody has reached — exactly who
+        // this barrier is held open FOR. `advanceTargets` names the frame each
+        // would be sent to, so the map can label the command with its
+        // destination and offer nothing for a line it cannot land (a target
+        // inside a sub-score).
+        const stragglers = holdUntilStragglerTargets(session, entry);
         return {
           frame,
           targets: entry.targets,
           parked: [...entry.parked],
+          stragglers: stragglers.map((s) => s.lineId),
+          advanceTargets: stragglers.reduce((map, s) => {
+            if (s.target) {
+              map[s.lineId] = s.target;
+            }
+            return map;
+          }, {}),
         };
       })
     : [];
@@ -1475,8 +1530,9 @@ function notifyAdminsBarriers(session) {
         group == null ? [] : orch.groupFramesLower(session.graph, group),
       parked: lines.map((l) => l.id),
       // Who the group is still waiting on from OUTSIDE — the operator's
-      // "force advance stragglers" targets (hold-until entries have none:
-      // that valve is the plain release).
+      // "force advance stragglers" targets. No `advanceTargets`: a group
+      // straggler's landing is picked when the command runs (the group's
+      // least-occupied frame), so the UI names the GROUP as the destination.
       stragglers:
         group == null
           ? []
@@ -1496,6 +1552,22 @@ function parseGroupRef(frameName) {
   return typeof frameName === "string" && frameName.startsWith("group:")
     ? frameName.slice("group:".length)
     : null;
+}
+
+// The "your move, proceed when ready…" banner for a line some barrier is held
+// open for. `line.stragglerFor` carries the panel's own barrier ref —
+// "group:<name>" for a track group, the frame name for a hold-until — so the
+// two sites that send this payload (the straggler diff and a reconnect) split
+// it the same way. The client reads only `straggler`; the rest is context.
+function stragglerBanner(session, line) {
+  const group = parseGroupRef(line.stragglerFor);
+  return {
+    m: MESSAGES.MSG_BARRIER_WAITING,
+    frame: frameNameForLine(session, line),
+    group,
+    barrier: group == null ? line.stragglerFor : null,
+    straggler: true,
+  };
 }
 
 // Admin force-release (defensive valve). Releases a chosen barrier (by frame) or
@@ -1701,22 +1773,162 @@ function groupStragglerLines(session, group) {
   return lines.filter((l) => ids.has(l.id));
 }
 
-// Push/clear the per-line straggler banner, diffed against `line.isGroupStraggler`
+// The lines a HOLD-UNTIL barrier is waiting on, each paired with the frame a
+// forced advance would send it to (2026-08-28). A track group waits for lines
+// to ARRIVE on it; a hold-until waits for some line to REACH a named target, so
+// its stragglers are the lines that can still get there — the same set the
+// deadlock guard in tryReleaseBarriers consults to decide the wait is still
+// viable, read the other way round.
+//
+// The candidate rules are shared with that guard on purpose (active, populated,
+// not parked at this barrier, `canKeepHoldTargetOpen`): a line the guard counts
+// as keeping the wait alive is exactly a line the operator can resolve it with.
+// Resolve a sub-qualified hold-until target ("Tetra2/Ripple.svg") to a landing
+// the operator's advance can actually use: which sub, which index in its frame
+// list, and — when the line is not already inside — which authored dive it
+// should be treated as having taken, since that dive's `returnHref` is where
+// the line pops back to when the sub ends. Preference goes to a sub-start link
+// on a main frame the line can still reach: its own way in, so its onward path
+// after the sub is the one the score would have given it. Null when the score
+// offers no usable way in (unknown sub, unknown frame, or no dive whose return
+// landing still exists), which is what makes the UI say so instead of offering
+// an inert button.
+function subAdvanceLanding(session, line, ref) {
+  const text = String(ref || "");
+  const slash = text.indexOf("/");
+  if (slash <= 0) {
+    return null;
+  }
+  const scoreName = resolveSubScoreName(session, text.slice(0, slash));
+  const sub = scoreName && (session.subFrames || {})[scoreName];
+  if (!sub || !Array.isArray(sub.frameList)) {
+    return null;
+  }
+  const targetFrame = text.slice(slash + 1).toLowerCase();
+  const subIdx = sub.frameList.findIndex(
+    (f) => String(f).toLowerCase() === targetFrame,
+  );
+  if (subIdx < 0) {
+    return null;
+  }
+
+  // Already inside this sub, just not far enough in: move within it, keeping
+  // the dive it came in on so its return landing — and the main-flow history it
+  // saved on the way down — survive the advance.
+  const top = line.subStack[line.subStack.length - 1];
+  if (top && String(top.score).toLowerCase() === scoreName.toLowerCase()) {
+    return {
+      score: scoreName,
+      subIdx,
+      returnHref: top.returnHref,
+      alreadyInside: true,
+    };
+  }
+
+  const candidates = [];
+  for (const [mainFrame, links] of Object.entries(
+    (session.graph || {}).subLinks || {},
+  )) {
+    for (const l of links || []) {
+      if (String(l.score).toLowerCase() !== scoreName.toLowerCase()) {
+        continue;
+      }
+      if (orch.subReturnIndex(l.returnHref, session.listFilesInLowerCase) < 0) {
+        continue;
+      }
+      candidates.push({ mainFrame, returnHref: l.returnHref });
+    }
+  }
+  if (candidates.length === 0) {
+    return null;
+  }
+  const fromFrame = mainFlowFrameForLine(session, line);
+  const own = candidates.find((c) =>
+    orch.canReachFrames(
+      (session.graph || {}).frameLinks,
+      session.listFiles,
+      fromFrame,
+      [c.mainFrame],
+    ),
+  );
+  return {
+    score: scoreName,
+    subIdx,
+    returnHref: (own || candidates[0]).returnHref,
+    alreadyInside: false,
+  };
+}
+
+function holdUntilStragglerTargets(session, entry) {
+  const covered = orch.registryCoveredTargets(
+    session.reachedTargets,
+    entry.targets,
+  );
+  const candidates = activeGuardCandidates(session, entry.parked);
+  const state = orch.holdUntilReachabilityState(
+    entry.targets,
+    covered,
+    candidates,
+    (l, target) => canKeepHoldTargetOpen(session, l, target),
+  );
+  return orch.holdUntilStragglerTargets(state, {
+    lines: candidates,
+    canReachTarget: (l, target) => canKeepHoldTargetOpen(session, l, target),
+    // A landing is either a main-flow frame or, for a qualified
+    // "Score/Frame.svg" target, a frame inside a sub-score the line can be
+    // dropped into (2026-08-30 — see subAdvanceLanding). Anything else leaves
+    // the line a straggler with no destination.
+    canLandOn: (target, l) =>
+      session.listFilesInLowerCase.indexOf(String(target).toLowerCase()) >= 0 ||
+      subAdvanceLanding(session, l, target) != null,
+  });
+}
+
+// Push/clear the per-line straggler banner, diffed against `line.stragglerFor`
 // so a line is only messaged when its role actually changes. The flag is
 // TRANSIENT (absent from BMLine's persistence allowlist): it is derived from
 // live positions, and re-derived from scratch on the first post-restart edge.
+// It holds the panel's barrier ref ("group:<name>" or a hold-until frame name),
+// not a bare group name — a line can be the straggler of either kind of wait.
 //
-// Only groups that already have someone parked are considered: a group nobody
-// has reached yet is not waiting on anyone.
+// Only barriers that already have someone parked are considered: a group (or a
+// hold-until frame) nobody has reached yet is not waiting on anyone.
 function refreshStragglerNotices(session) {
   if (!session.hasSessionLines) {
     return;
   }
-  const stragglerGroups = new Map(); // lineId → group holding for it
+  const stragglerRefs = new Map(); // lineId → the barrier held open for it
   for (const [group] of groupWaitParkedByGroup(session)) {
     for (const l of groupStragglerLines(session, group)) {
-      if (!stragglerGroups.has(l.id)) {
-        stragglerGroups.set(l.id, group);
+      if (!stragglerRefs.has(l.id)) {
+        stragglerRefs.set(l.id, `group:${group}`);
+      }
+    }
+  }
+  // Hold-until barriers wait on lines too (2026-08-28) — on whoever can still
+  // reach a target nobody has reached — so their stragglers get the same "your
+  // move" prompt, and the same per-line advance valve. A group wait wins the
+  // flag when a line is the straggler of both: it is the wait the line can do
+  // least about, since it has to travel to the group either way.
+  const barrier = session._barrier;
+  for (const frame of barrier ? Object.keys(barrier.byFrame) : []) {
+    const entry = barrier.byFrame[frame];
+    if (!entry || entry.parked.size === 0) {
+      continue;
+    }
+    for (const { lineId, target } of holdUntilStragglerTargets(session, entry)) {
+      const line = session.lines.find((l) => l.id === lineId);
+      const ref = line && reachedRefForLine(session, line);
+      if (ref && ref.toLowerCase() === String(target || "").toLowerCase()) {
+        // Standing on the target already: the barrier is waiting on this
+        // line's holding period, not its travel — the same reason a BLOCKED
+        // occupant is never a track group's straggler. It stays listed for the
+        // operator (whose advance there ends that hold), but "your move" would
+        // be a lie: there is no move left for it to make.
+        continue;
+      }
+      if (!stragglerRefs.has(lineId)) {
+        stragglerRefs.set(lineId, frame);
       }
     }
   }
@@ -1725,17 +1937,12 @@ function refreshStragglerNotices(session) {
     if (!line || line.status === "retired") {
       continue;
     }
-    const group = stragglerGroups.get(line.id) || null;
-    const was = line.isGroupStraggler || null;
-    line.isGroupStraggler = group;
-    if (group && !was) {
-      sendToLine(session, line.id, 0, {
-        m: MESSAGES.MSG_BARRIER_WAITING,
-        frame: frameNameForLine(session, line),
-        group,
-        straggler: true,
-      });
-    } else if (!group && was && !line.isBarrierWaiting && !line.isGroupWaiting) {
+    const ref = stragglerRefs.get(line.id) || null;
+    const was = line.stragglerFor || null;
+    line.stragglerFor = ref;
+    if (ref && !was) {
+      sendToLine(session, line.id, 0, stragglerBanner(session, line));
+    } else if (!ref && was && !line.isBarrierWaiting && !line.isGroupWaiting) {
       // Ordering guard: the usual way to STOP being a straggler is to arrive
       // and park, and maybeParkAtGroup has already sent that line its parked
       // banner by now. Clearing here would wipe it off the screen.
@@ -1748,38 +1955,103 @@ function refreshStragglerNotices(session) {
 }
 
 // Admin "force advance stragglers" — the complement of a force-release. Rather
-// than letting a stuck group go WITHOUT the lines it is still expecting, bring
-// those lines in: each straggler teleports onto the group's least-occupied
-// frame (the same landing rule a dormant-line revival uses, decision #13
-// revision, so forced arrivals fill empty track slots instead of doubling
-// covered ones). The group then fills and releases down the ordinary path.
+// than letting a stuck barrier go WITHOUT the lines it is still expecting,
+// bring those lines in:
 //
-// `groupRef` names one group (from the panel's "group:<name>" entry); null
-// advances the stragglers of every waiting group.
-async function forceAdvanceStragglers(session, groupRef) {
+//   - a TRACK GROUP's straggler teleports onto the group's least-occupied frame
+//     (the same landing rule a dormant-line revival uses, decision #13
+//     revision, so forced arrivals fill empty track slots instead of doubling
+//     covered ones). The group then fills and releases down the ordinary path.
+//   - a HOLD-UNTIL's straggler (2026-08-28) teleports onto the target the
+//     barrier is still missing, so the wait ends the way the score meant it to
+//     — the target genuinely reached — rather than being waived. A straggler
+//     already standing on the target owes only its holding period, so there the
+//     advance ends that hold instead of moving anything.
+//
+// `frameName` is the panel's own barrier ref: "group:<name>" for a track group,
+// a frame name for a hold-until, or nothing at all → every waiting barrier.
+// `lineIds` narrows it to named lines ("advance THIS line", the map's node
+// menu); omitted, every straggler of the named barrier goes. Ids are filtered
+// against the freshly computed straggler set, so a stale one is simply ignored.
+async function forceAdvanceStragglers(session, frameName, lineIds) {
   if (!session.hasSessionLines || !session.graph) {
     return;
   }
+  const groupRef = parseGroupRef(frameName);
+  const only =
+    Array.isArray(lineIds) && lineIds.length > 0 ? new Set(lineIds) : null;
   const advanced = [];
-  for (const [group, parkedLines] of groupWaitParkedByGroup(session)) {
-    if (group == null || (groupRef != null && group !== groupRef)) {
-      continue;
-    }
-    // Anchor: where the group actually sits in the current frame list. Taken
-    // from a parked line rather than the graph so a group whose frames were
-    // renamed under saved state simply yields nothing to advance to.
-    const anchor = frameNameForLine(session, parkedLines[0]);
-    if (!anchor) {
-      continue;
-    }
-    for (const line of groupStragglerLines(session, group)) {
-      const wasInSub = line.subStack.length > 0;
-      if (await advanceLineToGroup(session, line, anchor)) {
-        advanced.push({ line, wasInSub });
+  let touched = false;
+
+  // Track-group arrival waits. Skipped when `frameName` names a hold-until
+  // barrier: an unrecognized frame used to fall through to "every group",
+  // harmless only while hold-until entries had no stragglers to offer.
+  if (frameName == null || groupRef != null) {
+    for (const [group, parkedLines] of groupWaitParkedByGroup(session)) {
+      if (group == null || (groupRef != null && group !== groupRef)) {
+        continue;
+      }
+      // Anchor: where the group actually sits in the current frame list. Taken
+      // from a parked line rather than the graph so a group whose frames were
+      // renamed under saved state simply yields nothing to advance to.
+      const anchor = frameNameForLine(session, parkedLines[0]);
+      if (!anchor) {
+        continue;
+      }
+      for (const line of groupStragglerLines(session, group)) {
+        if (only && !only.has(line.id)) {
+          continue;
+        }
+        const wasInSub = line.subStack.length > 0;
+        if (await advanceLineToGroup(session, line, anchor)) {
+          advanced.push({ line, wasInSub });
+        }
       }
     }
   }
+
+  // Hold-until barriers.
+  if (session._barrier && groupRef == null) {
+    const frames = frameName
+      ? [frameName]
+      : Object.keys(session._barrier.byFrame);
+    for (const fn of frames) {
+      const entry = session._barrier.byFrame[fn];
+      if (!entry) {
+        continue;
+      }
+      for (const { lineId, target } of holdUntilStragglerTargets(
+        session,
+        entry,
+      )) {
+        if (!session._barrier.byFrame[fn]) {
+          break; // an earlier advance in this sweep already released it
+        }
+        if (!target || (only && !only.has(lineId))) {
+          continue; // no landing (sub-qualified target), or not asked for
+        }
+        const line = session.lines.find(
+          (l) => l.id === lineId && l.status === "active",
+        );
+        if (!line) {
+          continue;
+        }
+        const wasInSub = line.subStack.length > 0;
+        const outcome = await advanceLineToHoldTarget(session, line, target);
+        if (outcome === "moved") {
+          advanced.push({ line, wasInSub });
+        } else if (outcome) {
+          touched = true;
+        }
+      }
+    }
+  }
+
   if (advanced.length === 0) {
+    if (touched) {
+      await session.saveSessionStateToFile();
+      updateNumberOfConnectionForSession(session);
+    }
     notifyAdminsBarriers(session);
     return;
   }
@@ -1795,21 +2067,42 @@ async function forceAdvanceStragglers(session, groupRef) {
   pushAdminHistory(session);
   updateNumberOfConnectionForSession(session);
 
-  // A line dragged out of a sub-score needs MSG_SUB_EXIT, not a bare MSG_SHOW.
-  // Its devices still hold the SUB's injected frame list and `frameContext`, so
-  // a main-flow index resolves to no frame there: the display goes blank and
-  // the audio player throws on the unresolvable id. Sent even while paused —
-  // the stale sub context must not outlive the move, or the eventual unpause
-  // (which drives the display with a main-flow index too) breaks the same way —
-  // with the pause placeholder restored right after.
+  // Tell each moved line's devices where they are now. Three shapes, because
+  // the client's frame list is context-dependent and an index means nothing
+  // without it:
+  //   INTO a sub  → MSG_SUB_ENTER (fetch + inject that sub's frames, swap the
+  //                 list, show the landing). Idempotent for a line already in
+  //                 the sub — the client caches the injection.
+  //   OUT of one  → MSG_SUB_EXIT, the client's only exit from sub view: a
+  //                 main-flow index against the sub's injected list resolves to
+  //                 no frame, blanking the display and throwing in the audio
+  //                 player on the unresolvable id.
+  //   main → main → the ordinary preloaded MSG_SHOW.
+  // The two sub messages are sent even while paused — a stale sub context must
+  // not outlive the move, or the eventual unpause breaks the same way — with
+  // the pause placeholder restored right after.
   for (const { line, wasInSub } of advanced) {
-    if (!wasInSub) {
-      continue;
+    const top = line.subStack[line.subStack.length - 1];
+    if (top) {
+      sendToLine(session, line.id, 0, {
+        m: MESSAGES.MSG_SUB_ENTER,
+        sub: top.score,
+        showIdx: line.currentIndex,
+      });
+    } else if (wasInSub) {
+      sendToLine(session, line.id, 0, {
+        m: MESSAGES.MSG_SUB_EXIT,
+        showIdx: line.currentIndex,
+      });
+    } else {
+      if (!session.isPause) {
+        sendToLine(session, line.id, Date.now() + session.preloadDuration, {
+          m: MESSAGES.MSG_SHOW,
+          showIdx: line.currentIndex,
+        });
+      }
+      continue; // a paused main-flow line keeps the placeholder it already has
     }
-    sendToLine(session, line.id, 0, {
-      m: MESSAGES.MSG_SUB_EXIT,
-      showIdx: line.currentIndex,
-    });
     if (session.isPause) {
       sendToLine(session, line.id, 0, {
         m: MESSAGES.MSG_PAUSE,
@@ -1818,24 +2111,11 @@ async function forceAdvanceStragglers(session, groupRef) {
       });
     }
   }
-
-  if (!session.isPause) {
-    for (const { line, wasInSub } of advanced) {
-      if (wasInSub) {
-        continue; // MSG_SUB_EXIT above already drove this line's display
-      }
-      sendToLine(session, line.id, Date.now() + session.preloadDuration, {
-        m: MESSAGES.MSG_SHOW,
-        showIdx: line.currentIndex,
-      });
-    }
-  }
 }
 
 // Teleport one straggler onto `anchorFrame`'s track group. Mirrors
 // fastForwardRevivedLine — same least-occupied landing, same leave-the-sub /
-// unpark / record-arrival sequence — but operator-driven, so it also cancels
-// any window the line had running (it is being moved out from under it).
+// unpark / record-arrival sequence — but operator-driven.
 // Returns true when the line actually moved.
 async function advanceLineToGroup(session, line, anchorFrame) {
   const target = orch.revivalLandingFrame({
@@ -1845,24 +2125,94 @@ async function advanceLineToGroup(session, line, anchorFrame) {
     line,
     occupancy: (frameName) => frameOccupancyExcluding(session, frameName, line),
   });
-  if (!target) {
+  if (!target || !(await teleportLineForAdvance(session, line, target))) {
     return false;
   }
-  const idx = session.listFilesInLowerCase.indexOf(target.toLowerCase());
+  session.latestGroupArrival = { frame: target, at: Date.now() };
+  return true;
+}
+
+// Advance one straggler of a HOLD-UNTIL barrier: send it to the target the
+// barrier is still missing (2026-08-28). Returns "moved" when the line
+// travelled (its devices need a fresh frame), "held" when it was already
+// standing on the target and only its holding period was cut short, and null
+// when there was nothing to do.
+async function advanceLineToHoldTarget(session, line, target) {
+  const idx = session.listFilesInLowerCase.indexOf(
+    String(target).toLowerCase(),
+  );
+  const landing = idx < 0 ? subAdvanceLanding(session, line, target) : null;
+  if (idx < 0 && !landing) {
+    return null; // nothing in the score to land on — never offered
+  }
+  const ref = reachedRefForLine(session, line);
+  if (ref && ref.toLowerCase() === String(target).toLowerCase()) {
+    // Already standing on it: canKeepHoldTargetOpen counts this line as still
+    // able to finish the target, so the barrier is waiting on its HOLDING
+    // period, not its travel. Moving it nowhere would be a no-op, so the
+    // advance is "end that hold now" — the same edge the holding timer would
+    // have produced on its own.
+    await endHoldForAdvance(session, line);
+    return "held";
+  }
+  if (landing) {
+    return (await advanceLineIntoSub(session, line, landing)) ? "moved" : null;
+  }
+  return (await teleportLineForAdvance(session, line, session.listFiles[idx]))
+    ? "moved"
+    : null;
+}
+
+// Drop `line` onto a frame INSIDE a sub-score (2026-08-30) — the sub half of
+// teleportLineForAdvance, and the same sequence: clear the phase it is being
+// moved out from under, take the dive, land, record the arrival. A line already
+// in that sub keeps its dive (so the sub history and return landing it built on
+// the way down survive); any OTHER sub it was in is left first, exactly as a
+// main-flow advance leaves it.
+//
+// It lands on the target frame rather than the sub's START on purpose: this is
+// a valve, and the barrier is waiting on that frame specifically — a drop at
+// START would leave the room stalled until the line happened to travel there,
+// and a branching sub might never route it through at all.
+async function advanceLineIntoSub(session, line, landing) {
+  await clearLinePhaseForRoomRewind(session, line);
+  if (!landing.alreadyInside) {
+    while (line.subStack.length > 0) {
+      line.exitSub();
+    }
+    line.enterSub(landing.score, landing.returnHref);
+  }
+  line.setCurrIdxTo(landing.subIdx); // indexes the SUB frame list now
+  line.isGroupWaiting = false;
+  orch.unparkLine(session, line);
+
+  line._lastReachedRef = null;
+  if (recordArrival(session, line)) {
+    await tryReleaseBarriers(session);
+  }
+  return true;
+}
+
+// Move `line` onto `targetFrame` (main flow) as an operator-driven advance.
+// Shared by both advances above: clear whatever phase the line was in — it is
+// being moved out from under it — leave any sub, and land with the revival
+// fast-forward's registry semantics.
+async function teleportLineForAdvance(session, line, targetFrame) {
+  const idx = session.listFilesInLowerCase.indexOf(
+    String(targetFrame).toLowerCase(),
+  );
   if (idx < 0) {
     return false;
   }
 
-  if (line.isHolding && line.holdingTimer != null) {
-    await cancelHoldingTimer(session, line, 1);
-  }
-  if (line.standbyTimer) {
-    clearTimeout(line.standbyTimer);
-    line.standbyTimer = null;
-  }
-  if (line.isVoting && line.votingTimer != null) {
-    await cancelVotingTimer(session, line);
-  }
+  // clearLinePhaseForRoomRewind, not the bare timer cancels this used to do:
+  // cancelHoldingTimer stops the TIMER but leaves `isHolding` set, and a line
+  // that lands still "holding" with no timer to end it never marks its landing
+  // frame done (recordArrival gates on !isHolding) — a hold-until waiting on
+  // that frame, or a track group syncing on its occupants' holds, would then
+  // wait for an edge that can never come. It also clears the stale per-device
+  // `currentVoteTo`, so the line's next window starts from a clean tally.
+  await clearLinePhaseForRoomRewind(session, line);
 
   while (line.subStack.length > 0) {
     line.exitSub();
@@ -1878,8 +2228,34 @@ async function advanceLineToGroup(session, line, anchorFrame) {
   if (recordArrival(session, line)) {
     await tryReleaseBarriers(session);
   }
-  session.latestGroupArrival = { frame: target, at: Date.now() };
   return true;
+}
+
+// End a straggler's holding period at the frame it already stands on, on the
+// operator's command. Mirrors the holding timer's own callback (flag, admin
+// hold checkbox, registry, both barrier re-checks) — the line does not move,
+// so its devices need nothing beyond the cancelled countdown.
+async function endHoldForAdvance(session, line) {
+  if (line.isHolding || line.holdingTimer != null) {
+    if (line.holdingTimer != null) {
+      await cancelHoldingTimer(session, line, 1);
+    } else {
+      sendToLine(session, line.id, 0, {
+        m: MESSAGES.MSG_BEGIN_HOLDING,
+        endTime: 0,
+        duration: 1,
+      });
+    }
+    line.isHolding = false;
+    line.holdingTimer = null;
+    sendToAllAdmins(session, 0, {
+      m: MESSAGES.MSG_CHECK_HOLD,
+      isHold: false,
+    });
+  }
+  recordHoldEnded(session, line);
+  await tryReleaseBarriers(session);
+  await tryReleaseGroupWaits(session);
 }
 
 // MSG_UPDATE_VOTING on a split frame, addressed per device. `winningVoteId` is
@@ -2327,6 +2703,11 @@ async function resolveGroupVoting(session, line) {
         }
         l.standbyTimer = null;
         await session.saveSessionStateToFile();
+        // The standby gap is over (holdPendingAtFrame): with no holding to
+        // run, this is the edge a barrier parked on this line waits for.
+        if (session.hasSessionLines) {
+          await tryReleaseBarriers(session);
+        }
       },
       1000,
       session,
@@ -2415,6 +2796,11 @@ async function stopVotingForSession(session, line) {
       }
       line.standbyTimer = null;
       await session.saveSessionStateToFile();
+      // See the twin in resolveGroupVoting: the end of the standby gap is a
+      // barrier re-check edge when no holding period follows it.
+      if (session.hasSessionLines) {
+        await tryReleaseBarriers(session);
+      }
     },
     1000,
     session,
@@ -2452,10 +2838,13 @@ async function startHoldingForSessionWithDelay(session, line, delay) {
       });
       line.holdingTimer = null;
       // Rendezvous (#6): the frame's own holding period just ended — its
-      // targets are now fully satisfied; re-check open barriers.
-      if (recordHoldEnded(session, line)) {
-        await tryReleaseBarriers(session);
-      }
+      // targets are now fully satisfied; re-check open barriers. UNconditional
+      // (it used to run only on the "became done" edge): a barrier held open
+      // solely because THIS line was still holding at it needs the re-check
+      // even when the ref was already done in the registry from an earlier
+      // pass, or it would wait for an edge that never comes.
+      recordHoldEnded(session, line);
+      await tryReleaseBarriers(session);
       // Track-group hold sync (2026-07-20): a group parked on this occupant's
       // hold releases only now that it ended — the hold-end edge where the
       // group's blocked set shrinks. Releases when the LAST occupant unholds.
@@ -3033,9 +3422,10 @@ function updateNumberOfConnectionForSession(session) {
               ? l.subStack[l.subStack.length - 1].score
               : null,
           waiting: !!(l.isBarrierWaiting || l.isGroupWaiting),
-          // A group is held open waiting for THIS line — the map marks it so
-          // the operator can see at a glance who is holding the room up.
-          straggler: !!l.isGroupStraggler,
+          // A barrier — a track group's arrival wait or a hold-until — is held
+          // open waiting for THIS line, so the map marks it and offers the
+          // per-line advance on the node it is standing on.
+          straggler: !!l.stragglerFor,
           voting: !!l.isVoting,
           holding: !!l.isHolding,
           // Per-line history (ACTIVE context — a line inside a sub carries its
@@ -3243,15 +3633,10 @@ async function messageHandle(conn, message) {
         m: MESSAGES.MSG_BARRIER_WAITING,
         frame: frameNameForLine(session, line),
       });
-    } else if (session.hasSessionLines && line.isGroupStraggler) {
+    } else if (session.hasSessionLines && line.stragglerFor) {
       // The other half of the banner protocol: a reconnecting device on a line
-      // a group is still waiting for gets its "your move" prompt back.
-      sendToClient(conn, 0, {
-        m: MESSAGES.MSG_BARRIER_WAITING,
-        frame: frameNameForLine(session, line),
-        group: line.isGroupStraggler,
-        straggler: true,
-      });
+      // a barrier is still waiting for gets its "your move" prompt back.
+      sendToClient(conn, 0, stragglerBanner(session, line));
     }
 
     if (line.isVoting) {
@@ -3345,7 +3730,11 @@ async function messageHandle(conn, message) {
     // Track-group hold sync (2026-07-20): toggling hold OFF ends occupants'
     // holding periods, which can release a group that was waiting on them
     // (tryReleaseGroupWaits only releases, never parks — safe when toggling ON).
+    // A hold-until barrier held open by a parked line's own unfinished hold
+    // takes the same edge — and the SM toggle is the documented remedy for a
+    // line left holding with no timer (state restored mid-hold).
     if (session.hasSessionLines) {
+      await tryReleaseBarriers(session);
       await tryReleaseGroupWaits(session);
     }
     // Admin map: every line's holding flag just flipped without a landing.
@@ -3440,11 +3829,17 @@ async function messageHandle(conn, message) {
   // path. Inert for vanilla scores (no barriers).
   //
   // `{advance: true}` is the opposite resolution (2026-08-16): don't let the
-  // group go without its stragglers — bring the stragglers to the group.
+  // barrier go without its stragglers — bring the stragglers to the barrier.
+  // `{lineIds}` narrows that to named lines (2026-08-28), which is what the
+  // map's per-line "advance this line" sends.
   if (msg === MESSAGES.MSG_BARRIER_RELEASED) {
     if (session.hasSessionLines) {
       if (messageData.advance) {
-        await forceAdvanceStragglers(session, parseGroupRef(messageData.frame));
+        await forceAdvanceStragglers(
+          session,
+          messageData.frame,
+          messageData.lineIds,
+        );
       } else {
         await forceReleaseBarrier(session, messageData.frame);
       }

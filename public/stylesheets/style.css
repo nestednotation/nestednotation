@@ -1077,6 +1077,21 @@ body.ipad {
   color: #aaa;
   cursor: default;
 }
+/* "advance this line" — the one node-menu entry that ACTS on the room instead
+   of rewinding it, so it carries the app's accent while the rewind entries stay
+   plain. Same reading as the ⏩ badge on the line's node. */
+#session-map-menu button.menu-advance {
+  color: #b35c00;
+  font-weight: bold;
+}
+/* A straggler with nowhere to be sent (its target lives inside a sub-score):
+   the button is still listed — it names who the room is waiting on — but says
+   so by being inert rather than by disappearing. */
+#session-map-barriers button:disabled,
+.admin-barrier-panel button:disabled {
+  color: #aaa;
+  cursor: default;
+}
 .line-distribution .score-map-link {
   padding: 0.1em 0.5em;
   border: 1px solid #ccc;

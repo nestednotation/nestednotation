@@ -546,6 +546,7 @@ function renderAdminBarrierPanel(barriers) {
   // quoted argument early and left that one button inert (release all still
   // worked). Any filename is safe here.
   let anyStragglers = false;
+  let anyAdvanceable = false;
   for (const b of barriers) {
     const parked = (b.parked || []).join(",") || "none";
     const stragglers = b.stragglers || [];
@@ -553,10 +554,7 @@ function renderAdminBarrierPanel(barriers) {
     const info = document.createElement("span");
     info.className = "barrier-info";
     // The two halves of the wait: who is held here, and who it is held for.
-    info.textContent =
-      `${b.frame} [parked: ${parked}]` +
-      (stragglers.length ? ` [waiting on: ${stragglers.join(",")}]` : "") +
-      " ";
+    info.appendChild(document.createTextNode(`${b.frame} [parked: ${parked}] `));
 
     const release = document.createElement("button");
     release.type = "button";
@@ -565,14 +563,38 @@ function renderAdminBarrierPanel(barriers) {
     release.addEventListener("click", () => sendForceReleaseBarrier(b.frame));
     info.appendChild(release);
 
-    // The opposite resolution — only offered where there is someone to bring
-    // in (track-group waits; a hold-until barrier's valve is the release).
+    // The opposite resolution — offered wherever there is someone to bring in.
+    // Both wait kinds have stragglers now (2026-08-28): a track group's are the
+    // lines still to arrive on it, a hold-until's are the lines that can still
+    // reach the target it is missing.
     if (stragglers.length) {
       anyStragglers = true;
+      info.appendChild(document.createTextNode(" waiting on:"));
+      // One button per straggler: "advance THIS line", the same command the
+      // map's node menu carries.
+      for (const id of stragglers) {
+        const dest = advanceDestination(b, id);
+        const one = document.createElement("button");
+        one.type = "button";
+        one.textContent = `⏩ ${id}`;
+        one.title = !dest
+          ? `no way to land ${id} on the target it owes — release instead`
+          : dest.atDestination
+            ? `end line ${id}'s holding period at ⟨${dest.label}⟩`
+            : `advance line ${id} to ⟨${dest.label}⟩ on its own`;
+        one.disabled = !dest;
+        one.addEventListener("click", () => confirmAdvanceLine(id, b.frame, dest));
+        info.appendChild(one);
+      }
+      const advanceable = stragglers.some((id) => advanceDestination(b, id));
+      anyAdvanceable = anyAdvanceable || advanceable;
       const advance = document.createElement("button");
       advance.type = "button";
-      advance.title = "move the waited-for lines onto this group instead";
+      advance.title = advanceable
+        ? "move every waited-for line onto this barrier instead"
+        : "nothing to advance — no line it waits on has a landing";
       advance.textContent = "force advance";
+      advance.disabled = !advanceable;
       advance.addEventListener("click", () =>
         confirmForceAdvanceStragglers(stragglers, b.frame),
       );
@@ -591,6 +613,7 @@ function renderAdminBarrierPanel(barriers) {
   if (anyStragglers) {
     const advanceAll = document.createElement("button");
     advanceAll.type = "button";
+    advanceAll.disabled = !anyAdvanceable;
     advanceAll.textContent = "advance all stragglers";
     advanceAll.addEventListener("click", () =>
       confirmForceAdvanceStragglers(
@@ -608,14 +631,43 @@ function sendForceReleaseBarrier(frame) {
   sendToServer(MSG_BARRIER_RELEASED, frame ? { frame } : {});
 }
 
-// The other resolution of a stuck track group: instead of letting it go without
-// its stragglers, teleport the stragglers onto it (server picks each one's
-// least-occupied group frame). Same inbound command, `advance` flagged.
-function sendForceAdvanceStragglers(frame) {
-  sendToServer(
-    MSG_BARRIER_RELEASED,
-    frame ? { frame, advance: true } : { advance: true },
-  );
+// The other resolution of a stuck barrier: instead of letting it go without its
+// stragglers, teleport the stragglers onto it — a track group's to its
+// least-occupied frame, a hold-until's to the target it is still missing (the
+// server picks each landing). Same inbound command, `advance` flagged;
+// `lineIds` narrows it to one line.
+function sendForceAdvanceStragglers(frame, lineIds) {
+  const payload = frame ? { frame, advance: true } : { advance: true };
+  if (lineIds && lineIds.length) {
+    payload.lineIds = lineIds;
+  }
+  sendToServer(MSG_BARRIER_RELEASED, payload);
+}
+
+// Where a forced advance would put `lineId`, as the operator reads it: the
+// exact frame for a hold-until (server-supplied in `advanceTargets`), the group
+// for a track-group wait (whose least-occupied frame is only picked when the
+// command runs). Null when there is nowhere to send the line — a hold-until
+// whose only reachable target sits inside a sub-score.
+function advanceDestination(barrier, lineId) {
+  const dest = ((barrier && barrier.advanceTargets) || {})[lineId];
+  if (dest) {
+    const line = (lastLinesSnapshot || []).find((l) => l.id === lineId);
+    // Positions compare in the target's own vocabulary: a line inside a sub is
+    // at "Sub/Frame.svg", on the main flow it is just the frame.
+    const at = !line ? null : line.sub ? `${line.sub}/${line.frame}` : line.frame;
+    return {
+      label: dest,
+      // Already there: the barrier is waiting out this line's holding period,
+      // which the same command cuts short rather than moving anything.
+      atDestination:
+        at != null && String(at).toLowerCase() === dest.toLowerCase(),
+    };
+  }
+  const frame = String((barrier && barrier.frame) || "");
+  return frame.startsWith("group:")
+    ? { label: frame.replace(/^group:/, ""), atDestination: false }
+    : null;
 }
 
 // Confirmed, unlike release: this MOVES performers' devices to another frame.
@@ -624,13 +676,33 @@ function confirmForceAdvanceStragglers(lineIds, frame) {
   const ok = confirm(
     `Force ${ids.length} straggler line${ids.length === 1 ? "" : "s"} ` +
       `(${ids.join(", ") || "none"}) onto ` +
-      `${frame ? frame.replace(/^group:/, "track group ⟨") + "⟩" : "their waiting groups"}? ` +
-      `Those lines jump to the group from wherever they are now.`,
+      `${frame ? frame.replace(/^group:/, "track group ⟨") + "⟩" : "their waiting barriers"}? ` +
+      `Those lines jump there from wherever they are now.`,
   );
   if (!ok) {
     return;
   }
   sendForceAdvanceStragglers(frame);
+}
+
+// "Advance this line" (2026-08-28) — one straggler rather than all of them, so
+// the operator can unstick the single line a barrier is hanging on.
+function confirmAdvanceLine(lineId, frame, destination) {
+  if (!destination) {
+    return;
+  }
+  const ok = confirm(
+    destination.atDestination
+      ? `End line ${lineId}'s holding period at ⟨${destination.label}⟩? ` +
+          `It has arrived — the barrier is only waiting out its hold.`
+      : `Advance line ${lineId} to ⟨${destination.label}⟩? ` +
+          `It jumps there from wherever it is now; the rest of the room ` +
+          `stays put.`,
+  );
+  if (!ok) {
+    return;
+  }
+  sendForceAdvanceStragglers(frame, [lineId]);
 }
 
 function setCheckHold(value) {
