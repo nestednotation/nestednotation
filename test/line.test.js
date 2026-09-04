@@ -100,7 +100,9 @@ module.exports = {
     assert.strictEqual(v2.holdDuration, 5);
     assert.strictEqual(v2.votingDuration, 10);
     assert.deepStrictEqual(v2.deviceRegistry, {});
-    assert.strictEqual(v2.nextLineId, 1);
+    // No line-number counter any more: allocLineId hands out the lowest free
+    // "L<n>", so there is no high-water mark to persist.
+    assert.strictEqual(v2.nextLineId, undefined);
     assert.deepStrictEqual(v2.splitEvents, []);
     assert.strictEqual(v2.nextSplitEventId, 1);
 

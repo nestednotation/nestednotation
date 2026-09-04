@@ -115,8 +115,12 @@ module.exports = {
     assert.strictEqual(session.deviceRegistry["dB"], children[1].id);
     assert.ok([children[0].id, children[1].id].includes(session.deviceRegistry["dC"]));
 
-    // Parent hard-retired (structural), children active and in lines[].
-    assert.strictEqual(parent.status, "retired");
+    // Branch 0 IS the parent line, carrying on under its own number; the
+    // extra branch takes the lowest free one. Both active and in lines[].
+    assert.strictEqual(children[0], parent);
+    assert.strictEqual(children[0].id, "L0");
+    assert.strictEqual(children[1].id, "L1");
+    assert.strictEqual(parent.status, "active");
     assert.ok(session.lines.includes(children[0]));
     assert.ok(session.lines.includes(children[1]));
     assert.strictEqual(children[0].status, "active");
@@ -376,6 +380,7 @@ module.exports = {
     assert.strictEqual(children[1].currentIndex, kIdx);
     assert.deepStrictEqual(counts, [1, 1]);
     assert.notStrictEqual(conns[0].lineId, conns[1].lineId);
-    assert.strictEqual(parent.status, "retired");
+    assert.strictEqual(children[0], parent);
+    assert.strictEqual(parent.status, "active");
   },
 };

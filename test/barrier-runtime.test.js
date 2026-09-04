@@ -312,4 +312,57 @@ module.exports = {
     );
     assert.deepStrictEqual(state.incomingIds, []);
   },
+
+  "operator eject: an abandoned dive completes nothing": async () => {
+    // Ejecting a line out of a sub-score is a forward MOVE, not a completion:
+    // teleportLineForAdvance clears `_lastReachedRef` before recording the
+    // landing, so the sub frame the line was standing on is never marked done.
+    // A hold-until waiting on a target inside that sub therefore keeps waiting,
+    // and the force-release stays the valve for that one.
+    const session = await buildSessionLinesFixture({
+      id: "__sub_eject_barrier__",
+    });
+    const idx = (n) => session.listFilesInLowerCase.indexOf(n.toLowerCase());
+    const orch = createOrchestrator({
+      MESSAGES,
+      now: () => 0,
+      createLine: (s, id) => new BMLine(s, id),
+      send: () => {},
+    });
+    const targets = session.graph.holdUntilTargets["Barrier.svg"];
+    assert.ok(targets.includes("Tetra/Echo.svg"));
+    session.reachedTargets = {};
+
+    // L1 parks at the barrier; L2 dives into Tetra and stops short of the
+    // sub-end — the stuck line the operator is looking at.
+    const l1 = new BMLine(session, "L1");
+    l1.setCurrIdxTo(idx("Left.svg"));
+    orch.markReached(session.reachedTargets, "Left.svg", true);
+    l1.setCurrIdxTo(idx("Barrier.svg"));
+    orch.markReached(session.reachedTargets, "Barrier.svg");
+
+    const l2 = new BMLine(session, "L2");
+    l2.setCurrIdxTo(idx("Right.svg"));
+    orch.markReached(session.reachedTargets, "Right.svg", true);
+    l2.enterSub("Tetra", "Barrier.svg");
+    l2.setCurrIdxTo(session.subFrames.Tetra.frameList.indexOf("START.svg"));
+    orch.markReached(session.reachedTargets, "tetra/start.svg");
+    session.lines.push(l1, l2);
+
+    // The eject: pop the stack, land on the dive's return frame, record ONLY
+    // the landing — no completion of the sub frame it walked away from.
+    l2.exitSub();
+    l2.setCurrIdxTo(
+      orch.subReturnIndex("Barrier.svg", session.listFilesInLowerCase),
+    );
+    orch.markReached(session.reachedTargets, "Barrier.svg");
+
+    const covered = orch.registryCoveredTargets(session.reachedTargets, targets);
+    assert.strictEqual(
+      orch.holdUntilSatisfied(targets, covered),
+      false,
+      "the sub target the ejected line abandoned must not count as met",
+    );
+    assert.ok(!session.reachedTargets["tetra/echo.svg"]);
+  },
 };

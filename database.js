@@ -214,7 +214,6 @@ class BMSession {
   // (bin/www) reads/writes them through the line object (`line.currentIndex`
   // etc.), and BMSession's own playhead helpers below delegate to `lines[0]`.
   lines = [new BMLine(this)];
-  nextLineId = 1;
   // Structural split history used by the score map's "undo split" operation.
   // Events are append-only (active → undone) so ids remain race-safe across
   // restarts and repeated visits to the same split frame.
@@ -756,7 +755,6 @@ class BMSession {
       selectedScoreIndex: this.selectedScoreIndex,
       selectedCooldownTimeIndex: this.selectedCooldownTimeIndex,
       selectedHoldTimeIndex: this.selectedHoldTimeIndex,
-      nextLineId: this.nextLineId,
       splitEvents: this.splitEvents,
       nextSplitEventId: this.nextSplitEventId,
       deviceRegistry: this.deviceRegistry,

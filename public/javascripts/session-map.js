@@ -862,6 +862,48 @@
     sendBarrierCommand(frame, true, [lineId]);
   }
 
+  // "Eject this line from its sub-score" (2026-09-01) — a forward move like the
+  // advances, but tied to no barrier: it pops one line out of a dive onto that
+  // dive's own return landing. Confirmed, because it moves performers' devices.
+  // `sub` rides along as the server's race guard, so a stale click on a line
+  // that has already popped out on its own is refused rather than acted on.
+  function confirmEjectLine(lineId, sub, label) {
+    hideMenu();
+    if (!lineId || !sub) return;
+    const ok = confirm(
+      `Eject line ${lineId} from sub-score ${sub} to ⟨${label}⟩? ` +
+        `It leaves the sub now and rejoins the main flow there; the rest of ` +
+        `the room stays put.`,
+    );
+    if (!ok) return;
+    sendToServer(MSG_BARRIER_RELEASED, { eject: true, lineId, sub });
+  }
+
+  // "Roll this line back out of its dive" (2026-09-02) — the eject's opposite.
+  // A rewind, so it rides MSG_SELECT_HISTORY with the other three. `idx` picks
+  // an entry of the line's MAIN trail; null means the frame it dived from, which
+  // the server resolves from the line's own saved trail. `sub` and `frame` are
+  // the server's two race guards.
+  function confirmRewindOutOfSub(lineId, sub, frame, idx) {
+    hideMenu();
+    if (!lineId || !sub) return;
+    const ok = confirm(
+      idx == null
+        ? `Rewind line ${lineId} out of sub-score ${sub}, back to ⟨${frameLabel(
+            frame,
+          )}⟩ — the frame it dived from? The dive is undone and the line can ` +
+            `take it again; only this line moves.`
+        : `Rewind line ${lineId} out of sub-score ${sub}, back to ⟨${frameLabel(
+            frame,
+          )}⟩ (step ${idx + 1})? It leaves the sub and everything after that ` +
+            `step is dropped from its trail; only this line moves.`,
+    );
+    if (!ok) return;
+    const payload = { lineId, exitSub: true, sub, frame };
+    if (idx != null) payload.selectedIdx = idx;
+    sendToServer(MSG_SELECT_HISTORY, payload);
+  }
+
   // ── History overlay + rewind node menu ─────────────────────────────────────
 
   function latestGroupTrailOccurrence(trail, groupFrames) {
@@ -1019,7 +1061,7 @@
     hideMenu();
     const ok = confirm(
       `Undo the split at "${frameLabel(frame)}"? ` +
-        `${descendantCount} descendant line${descendantCount === 1 ? "" : "s"} ` +
+        `${descendantCount} line${descendantCount === 1 ? "" : "s"} ` +
         `will collapse back into ${parentLineId}. ` +
         `All progress after this split will be discarded.`,
     );
@@ -1109,6 +1151,103 @@
     return html;
   }
 
+  // The two sub-score valves, on the SUB frame a line is standing on — where an
+  // operator watching a line stuck mid-dive is already looking. Neither needs a
+  // barrier: the whole point is the line nothing is waiting on, whose only
+  // previous way out was a room rewind that discards everyone's progress.
+  //
+  //   ⏫ eject  (2026-09-01) — forward, to where this dive RETURNS (`subReturn`).
+  //   ⏪ rewind (2026-09-02) — back to where it dived FROM (`subOrigin`), the
+  //              dive undone, the line free to take it again.
+  //
+  // Both destinations come from the same push, so each entry names its landing
+  // before the operator commits to it.
+  function subValveButtonsHtml(nodeId) {
+    if (!/^sub:/.test(nodeId)) return "";
+    let html = "";
+    for (const l of lastLines || []) {
+      if (!l.sub || !l.frame) continue;
+      if (`sub:${l.sub}:${l.frame}` !== nodeId) continue;
+      // Each valve stands on its own destination: a dive whose RETURN frame
+      // is gone can still be rolled back to the frame it came from, which is
+      // exactly when that is the only move left.
+      if (l.subReturn) {
+        const dest = frameLabel(l.subReturn);
+        html +=
+          `<button type="button" class="menu-advance" data-eject-line="${escapeHtml(
+            l.id,
+          )}" data-eject-sub="${escapeHtml(l.sub)}" data-eject-label="${escapeHtml(
+            dest,
+          )}">⏫ eject ${escapeHtml(l.id)} to ⟨${escapeHtml(dest)}⟩</button>`;
+      } else {
+        html +=
+          `<div class="menu-note">${escapeHtml(l.id)} cannot be ejected — the ` +
+          `score no longer has the frame this dive returns to</div>`;
+      }
+      html += rollbackButtonHtml(l);
+    }
+    return html;
+  }
+
+  // "⏪ rewind <line> to ⟨…⟩" — the shortcut for the common case, on the sub
+  // frame the line stands on: back to the fork it dived from, which is this
+  // command's default (no trail index sent — the server reads the line's own).
+  // Every OTHER frame of its main trail is offered on that frame's own node by
+  // subTrailRewindButtonsHtml, in the rewind grammar the map already uses.
+  function rollbackButtonHtml(l) {
+    if (!l.subOrigin) {
+      return (
+        `<div class="menu-note">${escapeHtml(l.id)} cannot be rolled back — the ` +
+        `score no longer has the frame it dived from</div>`
+      );
+    }
+    // data-unsub-frame carries the trail entry VERBATIM — it is the server's
+    // race guard, matched against the line's own history. frameLabel() is for
+    // the eye only: sending the stripped label refused every click in silence.
+    return (
+      `<button type="button" data-unsub-line="${escapeHtml(
+        l.id,
+      )}" data-unsub-sub="${escapeHtml(l.sub)}" data-unsub-frame="${escapeHtml(
+        l.subOrigin,
+      )}">` +
+      `⏪ rewind ${escapeHtml(l.id)} to ⟨${escapeHtml(
+        frameLabel(l.subOrigin),
+      )}⟩</button>`
+    );
+  }
+
+  // The same command from the destination end, and generalized (2026-09-02): on
+  // a MAIN frame, one entry per occurrence of it in the MAIN trail of every line
+  // currently mid-dive. An operator thinking "send it back to B" looks at B, not
+  // at the sub box the line is lost inside — and any frame the line has already
+  // played is a legitimate answer, not only the fork it dived from.
+  //
+  // Unlike a main-flow line's entries, the trail-END occurrence is offered here:
+  // the line is not standing on it, it is down in a sub, and that entry IS the
+  // fork — which makes the dive-origin rollback this command's default case.
+  function subTrailRewindButtonsHtml(frameName) {
+    let html = "";
+    for (const l of lastLines || []) {
+      if (!l.sub) continue;
+      const trail = Array.isArray(l.mainTrail) ? l.mainTrail : [];
+      const hits = [];
+      trail.forEach((name, i) => {
+        if (lc(name) === lc(frameName)) hits.push(i);
+      });
+      for (const i of hits) {
+        const suffix = hits.length > 1 ? ` (visit ${hits.indexOf(i) + 1})` : "";
+        html += `<button type="button" data-unsub-line="${escapeHtml(
+          l.id,
+        )}" data-unsub-sub="${escapeHtml(l.sub)}" data-unsub-idx="${i}" data-unsub-frame="${escapeHtml(
+          trail[i],
+        )}">⏪ rewind ${escapeHtml(l.id)} here${suffix} (out of ${escapeHtml(
+          l.sub,
+        )})</button>`;
+      }
+    }
+    return html;
+  }
+
   function splitRewindHtml(frameName) {
     let html = "";
     for (const entry of lastSplitRewinds || []) {
@@ -1144,8 +1283,15 @@
     let html = `<div class="menu-title">${escapeHtml(label)}</div>`;
     if (!vanillaMode) {
       // The live stall comes first: an advance acts on the room as it stands
-      // now, the rewinds below it act on what already happened.
-      html += advanceButtonsHtml(id);
+      // now, the rewinds below it act on what already happened. Kept in a
+      // variable because the rewind sections' "nothing here" notes must not
+      // contradict entries these already put on the menu.
+      const liveHtml =
+        advanceButtonsHtml(id) +
+        // Same "live stall first" reasoning, for the stall a barrier cannot
+        // see: a line sitting inside a sub-score with no way back out.
+        subValveButtonsHtml(id);
+      html += liveHtml;
       // Session-lines rooms (2026-07-19): room checkpoint, explicit line, and
       // structural split rewinds. The implicit bound-line rewind stays retired.
       if (isMain) {
@@ -1162,32 +1308,62 @@
             roomCheckpoint.group,
           )}">⏪⏪ rewind ROOM to ⟨${escapeHtml(roomCheckpoint.group)}⟩</button>`;
         }
-        // Main-flow lines only: an in-sub line's main trail can't rewind
-        // without pulling it out of its sub (out of scope — the room rewind
-        // force-exits subs when that's needed).
+        // Main-flow lines here; an in-sub line's main trail is offered by
+        // subTrailRewindButtonsHtml below, whose entries pull it out of the sub
+        // on the way — which is the whole point of them.
         const lineButtons = lineRewindButtonsHtml(
           (lastLines || []).filter((l) => !l.sub),
           frameName,
         );
         html += lineButtons;
-        if (!splitHtml && !roomCheckpoint && !lineButtons) {
+        const rollbacks = subTrailRewindButtonsHtml(frameName);
+        html += rollbacks;
+        if (
+          !splitHtml &&
+          !roomCheckpoint &&
+          !lineButtons &&
+          !rollbacks &&
+          !liveHtml
+        ) {
+          // Same rule as the sub branch below: this note speaks for the rewind
+          // sections only, and only when nothing else made the menu. A line
+          // STANDING here has a trail through the frame — its trail-end entry
+          // is just not a rewind target — so say that rather than denying the
+          // line the operator can see on the node.
+          const standingHere = (lastLines || []).some(
+            (l) => !l.sub && lc(l.frame || "") === lc(frameName),
+          );
           html += `<div class="menu-note">${
             group
               ? "not a room checkpoint yet — some line hasn't passed this group"
-              : "no line trail through here — no rewind"
+              : standingHere
+                ? "only a line's current position here — no rewind"
+                : "no line trail through here — no rewind"
           }</div>`;
         }
       } else if (subMatch) {
         // Sub frame: rewindable for lines CURRENTLY inside this sub whose
         // dive trail passed here (each dive's trail is dropped on exit, so
         // only the current dive is rewindable).
-        const lineButtons = lineRewindButtonsHtml(
-          (lastLines || []).filter((l) => l.sub && lc(l.sub) === lc(subMatch[1])),
-          subMatch[2],
+        const inThisSub = (lastLines || []).filter(
+          (l) => l.sub && lc(l.sub) === lc(subMatch[1]),
         );
-        html +=
-          lineButtons ||
-          `<div class="menu-note">no line mid-dive here — no rewind</div>`;
+        const lineButtons = lineRewindButtonsHtml(inThisSub, subMatch[2]);
+        html += lineButtons;
+        // The note is the REWIND section's, so it may only speak for that
+        // section — and only when the menu is otherwise empty. On the frame a
+        // diver is standing on it used to print "no line mid-dive here" under
+        // that very line's advance/eject/rollback entries: the trail-END
+        // occurrence is the line's current position and is deliberately not
+        // offered (history is an undo trail, not teleport, §8), so this
+        // section is legitimately empty while the ones above it are full.
+        if (!lineButtons && !liveHtml) {
+          html += `<div class="menu-note">${
+            inThisSub.length
+              ? "no earlier step of this dive here — no rewind"
+              : "no line mid-dive here — no rewind"
+          }</div>`;
+        }
       }
     } else if (!isMain) {
       html += `<div class="menu-note">sub-score frame — no rewind</div>`;
@@ -1227,6 +1403,27 @@
           label: btn.dataset.advanceLabel,
           atDestination: btn.dataset.advanceHold === "1",
         }),
+      );
+    }
+    for (const btn of menu.querySelectorAll("button[data-eject-line]")) {
+      btn.addEventListener("click", () =>
+        confirmEjectLine(
+          btn.dataset.ejectLine,
+          btn.dataset.ejectSub,
+          btn.dataset.ejectLabel,
+        ),
+      );
+    }
+    for (const btn of menu.querySelectorAll("button[data-unsub-line]")) {
+      btn.addEventListener("click", () =>
+        confirmRewindOutOfSub(
+          btn.dataset.unsubLine,
+          btn.dataset.unsubSub,
+          btn.dataset.unsubFrame,
+          btn.dataset.unsubIdx == null
+            ? null
+            : parseInt(btn.dataset.unsubIdx, 10),
+        ),
       );
     }
     for (const btn of menu.querySelectorAll("button[data-room-group]")) {

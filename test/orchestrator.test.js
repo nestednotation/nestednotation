@@ -635,7 +635,7 @@ module.exports = {
   },
 
   // ── applySplit (fake transport) ─────────────────────────────────────────
-  "applySplit spawns children, balances, retires parent, emits": () => {
+  "applySplit continues the parent down branch 0, balances, emits": () => {
     const session = fakeSession();
     const parent = fakeLine(session, "L0");
     parent.setCurrIdxTo(0); // START.svg (the split frame)
@@ -659,7 +659,12 @@ module.exports = {
     });
 
     assert.strictEqual(children.length, 2);
-    assert.strictEqual(parent.status, "retired");
+    // Branch 0 IS the parent line carrying on: it keeps L0 (same object), and
+    // only the extra branch spends a number.
+    assert.strictEqual(children[0], parent);
+    assert.strictEqual(children[0].id, "L0");
+    assert.strictEqual(children[1].id, "L1");
+    assert.strictEqual(parent.status, "active");
     // straggler balances the smaller child (both had 1 → ties → child0).
     assert.deepStrictEqual(counts, [2, 1]);
     assert.strictEqual(children[0].currentIndex, 1);
@@ -690,6 +695,86 @@ module.exports = {
         "applySplit must not emit SHOW (runtime decides display)",
       );
     }
+  },
+
+  "line numbers recycle: split → merge → split spends the same ids": () => {
+    const session = fakeSession();
+    const root = fakeLine(session, "L0");
+    root.setCurrIdxTo(0);
+    session.lines.push(root);
+    const o = createOrchestrator(fakeTransport());
+
+    const first = o.applySplit({
+      session,
+      parentLine: root,
+      childFrameIndices: [1, 2],
+      members: [],
+    });
+    assert.deepStrictEqual(
+      first.children.map((line) => line.id),
+      ["L0", "L1"],
+    );
+
+    // They rejoin: the absorbed line is unaddressable, so its number goes back
+    // in the pool with it.
+    const { survivor } = o.applyRecombine({
+      session,
+      lineIds: ["L0", "L1"],
+      connections: [],
+    });
+    assert.strictEqual(survivor.id, "L0");
+    assert.deepStrictEqual(
+      session.lines.map((line) => line.id),
+      ["L0"],
+    );
+
+    // …so the same fork reads the same way the second time round, instead of
+    // climbing to L2/L3.
+    survivor.setCurrIdxTo(0);
+    const second = o.applySplit({
+      session,
+      parentLine: survivor,
+      childFrameIndices: [1, 2],
+      members: [],
+    });
+    assert.deepStrictEqual(
+      second.children.map((line) => line.id),
+      ["L0", "L1"],
+    );
+  },
+
+  "a blocked split event holds no number hostage": () => {
+    const session = fakeSession();
+    const root = fakeLine(session, "L0");
+    root.setCurrIdxTo(0);
+    session.lines.push(root);
+    const o = createOrchestrator(fakeTransport());
+
+    // L0 → {L0, L1}; then L1 → {L1, L2}.
+    o.applySplit({
+      session,
+      parentLine: root,
+      childFrameIndices: [1, 2],
+      members: [],
+    });
+    const l1 = session.lines.find((line) => line.id === "L1");
+    l1.setCurrIdxTo(3);
+    o.applySplit({
+      session,
+      parentLine: l1,
+      childFrameIndices: [3, 4],
+      members: [],
+    });
+
+    // L1 merges back into L0, which is outside S2's subtree: S2 can never be
+    // undone again, so the retired L1 it names as parent is not worth keeping.
+    o.applyRecombine({ session, lineIds: ["L0", "L1"], connections: [] });
+    assert.strictEqual(session.splitEvents[1].blockedByMerge, true);
+    assert.deepStrictEqual(
+      session.lines.map((line) => line.id).sort(),
+      ["L0", "L2"],
+    );
+    assert.strictEqual(o.allocLineId(session), "L1");
   },
 
   // ── applyRecombine (fake transport) ─────────────────────────────────────
@@ -778,7 +863,17 @@ module.exports = {
     assert.strictEqual(parent.status, "active");
     assert.strictEqual(parent.currentIndex, 0);
     assert.deepStrictEqual(parent.history, ["START.svg"]);
-    assert.ok(result.descendants.every((line) => line.status === "retired"));
+    // Every descendant BUT the continuing parent collapsed into it…
+    assert.ok(
+      result.descendants
+        .filter((line) => line.id !== parent.id)
+        .every((line) => line.status === "retired"),
+    );
+    // …and their numbers went back in the pool with them.
+    assert.deepStrictEqual(
+      session.lines.map((line) => line.id),
+      ["L0"],
+    );
     assert.ok(connections.every((conn) => conn.lineId === "L0"));
     assert.deepStrictEqual(session.deviceRegistry, {
       dA: "L0",
@@ -882,7 +977,7 @@ module.exports = {
   },
 
   // ── applySplit: offline deviceRegistry sweep (decision #13) ──────────────
-  "applySplit sweeps offline registry entries off the retired parent": () => {
+  "applySplit sweeps offline registry entries off the parent's own id": () => {
     const session = fakeSession();
     const parent = fakeLine(session, "L0");
     session.lines.push(parent);
@@ -901,8 +996,9 @@ module.exports = {
       members,
     });
 
-    assert.strictEqual(parent.status, "retired");
-    // The offline device must NOT stay registered to the retired parent…
+    assert.strictEqual(parent.status, "active");
+    // The offline device is balanced like any straggler rather than kept on
+    // the continuing branch…
     assert.notStrictEqual(session.deviceRegistry.dOff, "L0");
     // …and lands on the smallest child (both choosers went to child 0).
     assert.strictEqual(session.deviceRegistry.dOff, children[1].id);

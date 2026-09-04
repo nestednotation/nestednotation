@@ -94,6 +94,7 @@ function connectWebSocket() {
 }
 
 function teardownSocket() {
+  stopHandshake();
   if (!ws) return;
   ws.onopen = ws.onmessage = ws.onclose = ws.onerror = null;
   ws.close();
@@ -112,7 +113,56 @@ function onWsOpen() {
   reconnectAttempts = 0;
   hideReconnectBanner();
   resetPingCalibration();
+  startHandshake();
+}
+
+// ── Opening handshake ────────────────────────────────────────────────
+// The ping calibration is what makes a page live: its last reply runs
+// viewDidLoad(), which starts the 60 s pingTimer and asks for the display.
+// Nothing else drives it, so an unanswered OPENING ping is terminal — the
+// socket stays OPEN while the page is deaf and its taps go nowhere, and it
+// never retries, because the retry timer is one of the things the calibration
+// was supposed to start. Worse, the server tags a connection (`sessionId`,
+// `lineId`, `isStaff`) INSIDE its MSG_PING branch, so an unanswered handshake
+// also means the device is counted nowhere: its line reads empty, and the
+// group/hold-until waits that should be waiting for that performer dissolve.
+//
+// The known way to lose it is a restart: `bin/www` starts listening while
+// `loadStoredSessionStates()` is still running, and `messageHandle` drops a
+// message whose session it cannot find yet — so devices reconnecting on their
+// 1–5 s backoff land in that window. It is a race, and boot duration is the
+// dial: the more saved sessions a server has, the wider the window (measured:
+// 1 state file ⇒ every device reconnected, 42 ⇒ none did).
+//
+// So re-send while the handshake makes NO progress. Any reply is progress —
+// each one decrements pingCountToReady — so a healthy calibration, which
+// completes in milliseconds, never sends a second ping.
+const HANDSHAKE_RETRY_MS = 2000;
+let handshakeTimer = null;
+let handshakeMark = -1;
+
+function startHandshake() {
+  stopHandshake();
+  handshakeMark = pingCountToReady;
   sendToServer(MSG_PING, { clientTime: Date.now() });
+  handshakeTimer = setInterval(() => {
+    if (isReady || !ws || ws.readyState !== WebSocket.OPEN) {
+      stopHandshake();
+      return;
+    }
+    if (pingCountToReady !== handshakeMark) {
+      // The server is answering; the calibration drives itself from here.
+      handshakeMark = pingCountToReady;
+      return;
+    }
+    sendToServer(MSG_PING, { clientTime: Date.now() });
+  }, HANDSHAKE_RETRY_MS);
+}
+
+function stopHandshake() {
+  if (!handshakeTimer) return;
+  clearInterval(handshakeTimer);
+  handshakeTimer = null;
 }
 
 function onWsMessage(event) {
