@@ -25,6 +25,8 @@ const {
   groupLinkWinner,
   splitRewindOptions,
   rewindSplitStructure,
+  mergeRewindOptions,
+  rewindMergeStructure,
 } = require("../lib/session-lines/orchestrator");
 const { MESSAGES } = require("../constants");
 
@@ -382,5 +384,100 @@ module.exports = {
     assert.notStrictEqual(conns[0].lineId, conns[1].lineId);
     assert.strictEqual(children[0], parent);
     assert.strictEqual(parent.status, "active");
+  },
+
+  // Structural merge undo (2026-09-05) on real BMLine objects: A splits into
+  // B/C, the two lines walk to D/E, they rejoin at H — and the undo puts each
+  // of them back on the frame it left, with the device it carried.
+  "merge undo: the rejoin at H is put back, devices and all": async () => {
+    const session = await buildScore("-test- Session lines 2", {
+      id: "__merge_undo_test__",
+    });
+    const idx = (name) =>
+      session.listFilesInLowerCase.indexOf(name.toLowerCase());
+    const parent = session.lines[0];
+    parent.setCurrIdxTo(idx("A.svg"));
+    const conns = [
+      { sessionId: session.id, lineId: parent.id, deviceId: "d1" },
+      { sessionId: session.id, lineId: parent.id, deviceId: "d2" },
+    ];
+    session.deviceRegistry = { d1: parent.id, d2: parent.id };
+    const orch = createOrchestrator({
+      MESSAGES,
+      now: () => 10,
+      createLine: (s, id) => new BMLine(s, id),
+      send: () => {},
+    });
+    const { children } = orch.applySplit({
+      session,
+      parentLine: parent,
+      childFrameIndices: [idx("B.svg"), idx("C.svg")],
+      members: [
+        { conn: conns[0], key: "d1", choice: 0 },
+        { conn: conns[1], key: "d2", choice: 1 },
+      ],
+    });
+    children[0].setCurrIdxTo(idx("D.svg"));
+    children[1].setCurrIdxTo(idx("E.svg"));
+
+    const { survivor, absorbed } = orch.applyRecombine({
+      session,
+      lineIds: children.map((line) => line.id),
+      connections: conns,
+      frame: "H.svg",
+    });
+    survivor.setCurrIdxTo(idx("H.svg"));
+    assert.strictEqual(survivor, children[0]);
+    assert.deepStrictEqual(
+      absorbed.map((line) => line.id),
+      [children[1].id],
+    );
+    assert.ok(conns.every((conn) => conn.lineId === survivor.id));
+
+    // The record survives a save: it is what the map offers after a restart.
+    const saved = JSON.parse(JSON.stringify(session.toJSON()));
+    assert.strictEqual(saved.mergeEvents.length, 1);
+    assert.strictEqual(saved.mergeEvents[0].frame, "H.svg");
+    assert.strictEqual(saved.mergeEvents[0].status, "active");
+
+    const option = mergeRewindOptions({
+      mergeEvents: session.mergeEvents,
+      splitEvents: session.splitEvents,
+      lines: session.lines,
+    }).find((entry) => entry.frame === "H.svg");
+    assert.strictEqual(option.available, true);
+    assert.deepStrictEqual(
+      option.restoredLineIds.slice().sort(),
+      children.map((line) => line.id).sort(),
+    );
+
+    // The orchestrator's own entry point: a merge undo BUILDS the line it
+    // restores (the rejoin dissolved the object), so it needs the line class.
+    const result = orch.rewindMergeStructure({
+      session,
+      eventId: option.eventId,
+      expectedFrame: "H.svg",
+      connections: conns,
+      now: () => 30,
+    });
+    assert.strictEqual(result.available, true);
+    const rebuilt = session.lines.find(
+      (line) => line && line.uid === children[1].uid,
+    );
+    assert.strictEqual(children[0].currentIndex, idx("D.svg"));
+    assert.strictEqual(rebuilt.id, children[1].id); // its own number was free
+    assert.strictEqual(rebuilt.currentIndex, idx("E.svg"));
+    assert.strictEqual(rebuilt.status, "active");
+    assert.deepStrictEqual(rebuilt.history, ["C.svg", "E.svg"]);
+    assert.strictEqual(conns[0].lineId, children[0].id);
+    assert.strictEqual(conns[1].lineId, rebuilt.id);
+    assert.deepStrictEqual(session.deviceRegistry, {
+      d1: children[0].id,
+      d2: rebuilt.id,
+    });
+    assert.deepStrictEqual(
+      session.lines.map((line) => line.id).sort(),
+      children.map((line) => line.id).sort(),
+    );
   },
 };

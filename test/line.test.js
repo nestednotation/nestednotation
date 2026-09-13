@@ -131,6 +131,112 @@ module.exports = {
     };
     const again = migrateState(v2);
     assert.strictEqual(again, v2, "already-v2 state should pass through unchanged");
+    // …but a line without one is given a durable identity on the way through:
+    // the structural undos chain on uids, and a room restored without them
+    // cannot be walked back at all.
+    assert.ok(v2.lines[0].uid, "a pre-uid line is stamped on load");
+  },
+
+  // A state file written before uids carries none on its split events either,
+  // and its lines are handed fresh ones at load — so a merge recorded AFTER
+  // the restart keys on real uids while the older split still keys on its
+  // number, the two never intersect, and the split's rewind chain comes back
+  // EMPTY. The undo would then collapse the subtree while leaving a merge
+  // standing on top of it. Stamp what the room corroborates; expire the rest.
+  "migrateState gives legacy structural events an identity, or expires them":
+    () => {
+      const state = {
+        version: 2,
+        id: "s1",
+        lines: [
+          { id: "L0", history: [], splitAncestors: ["S1"] },
+          { id: "L1", history: [], splitAncestors: ["S1"] },
+          { id: "L2", history: [], splitAncestors: ["S2"] },
+        ],
+        splitEvents: [
+          // Both children are present and their own ancestry names S1, so the
+          // numbers are corroborated and can be stamped.
+          {
+            id: "S1",
+            status: "active",
+            frame: "A.svg",
+            parentLineId: "L0",
+            childLineIds: ["L0", "L1"],
+          },
+          // S2's second child is gone (a merge swallowed it), so nothing
+          // corroborates the numbers — guessing would risk dragging an
+          // unrelated branch into a cascade.
+          {
+            id: "S2",
+            status: "active",
+            frame: "B.svg",
+            parentLineId: "L2",
+            childLineIds: ["L2", "L3"],
+          },
+        ],
+        // A merge's absorbed participants have no line objects left to
+        // corroborate against, so an un-identified one is simply expired.
+        mergeEvents: [
+          {
+            id: "M1",
+            status: "active",
+            frame: "C.svg",
+            survivorLineId: "L0",
+            participants: [{ lineId: "L0" }, { lineId: "L1" }],
+          },
+        ],
+      };
+      migrateState(state);
+
+      assert.deepStrictEqual(state.splitEvents[0].childLineUids, [
+        state.lines[0].uid,
+        state.lines[1].uid,
+      ]);
+      assert.strictEqual(state.splitEvents[0].status, "active");
+      // Expired reads, everywhere it matters, as "not offerable, and blocks any
+      // walk that would cross it" — which is the safe answer for an event whose
+      // population can no longer be named.
+      assert.strictEqual(state.splitEvents[1].status, "expired");
+      assert.strictEqual(state.mergeEvents[0].status, "expired");
+    },
+
+  "migrateState leaves structural events that already carry uids alone": () => {
+    const state = {
+      version: 2,
+      id: "s1",
+      lines: [{ id: "L0", uid: "uKEEP", history: [], splitAncestors: ["S1"] }],
+      splitEvents: [
+        {
+          id: "S1",
+          status: "active",
+          frame: "A.svg",
+          parentLineId: "L0",
+          parentLineUid: "uPARENT",
+          childLineIds: ["L0", "L1"],
+          childLineUids: ["uKEEP", "uGONE"],
+        },
+      ],
+      mergeEvents: [
+        {
+          id: "M1",
+          status: "active",
+          frame: "C.svg",
+          survivorLineId: "L0",
+          participants: [
+            { lineId: "L0", lineUid: "uKEEP" },
+            { lineId: "L1", lineUid: "uGONE" },
+          ],
+        },
+      ],
+    };
+    migrateState(state);
+    assert.strictEqual(state.lines[0].uid, "uKEEP");
+    assert.deepStrictEqual(state.splitEvents[0].childLineUids, [
+      "uKEEP",
+      "uGONE",
+    ]);
+    assert.strictEqual(state.splitEvents[0].status, "active");
+    assert.strictEqual(state.mergeEvents[0].status, "active");
   },
 
   "BMSession has no per-line shim; playhead helpers + toJSON still work": () => {

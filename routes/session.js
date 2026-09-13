@@ -121,6 +121,15 @@ router.get("/:sessionId/map", function (req, res) {
       // MSG_BARRIER_RELEASED.
       MSG_BARRIER_WAITING: MESSAGES.MSG_BARRIER_WAITING,
       MSG_BARRIER_RELEASED: MESSAGES.MSG_BARRIER_RELEASED,
+      // Every rewind this map offers can still be refused — a stale menu, a
+      // topology that moved under it — and until this message existed the
+      // operator answered a confirm() and got silence, indistinguishable from
+      // a bug.
+      MSG_REWIND_REFUSED: MESSAGES.MSG_REWIND_REFUSED,
+      // …and its opposite: a rewind that DID happen. The map answers it with
+      // the sentence its own confirm promised, so the operator sees the
+      // topology change land instead of inferring it from a redrawn canvas.
+      MSG_REWIND_DONE: MESSAGES.MSG_REWIND_DONE,
       // The score itself can change under the map: the session manager swaps
       // this session's folder (or stops the session), or the operator hits
       // "global refresh". Both reload the session page — the map has to

@@ -31,12 +31,27 @@ html
       span(id="session-map-title") score map — #{scoreTitle}
       span(id="session-map-status") loading…
       button(id="session-map-relayout", type="button", title="discard manual arrangement and re-run automatic layout") re-layout
+      //- The canvas carries a dozen encodings (route colours, trail shades,
+      //- ghosts, badges) and had nowhere to explain them. Filled and toggled by
+      //- session-map.js, which owns the styles they describe.
+      button(id="session-map-legend-toggle", type="button", title="what the colours and badges mean") ? legend
+      //- The receipts this map has shown, kept for the session. A rewind is the
+      //- one gesture an operator may have to account for afterwards, and a
+      //- toast that has timed out was the only record there was.
+      button(id="session-map-log-toggle", type="button", title="the rewinds this map has made", disabled) rewind log
       a(id="session-map-back", href="#") back to session
     div(id="ws-reconnect-indicator")
+    div(id="session-map-legend", style="display:none")
     //- Waiting hold-until barriers / track-group arrival waits, with the
     //- operator's valves (release, release all, force advance stragglers).
     //- Hidden by session-map.js whenever nothing is waiting.
     div(id="session-map-barriers", style="display:none")
+    //- What a rewind just did, shown back for a few seconds. A refusal
+    //- interrupts with an alert (the operator is waiting on an answer); a
+    //- success only has to be seen, and the status line beside the title is
+    //- rewritten by every lines push a rewind sends.
+    div(id="session-map-toast", style="display:none")
+    div(id="session-map-log", style="display:none")
     div(id="session-map-canvas")
     div(id="session-map-zoom")
       button(id="session-map-zoom-out", type="button", title="zoom out") −

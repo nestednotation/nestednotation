@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg width="100%" height="100%" viewBox="0 0 1701 2480" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" holding="20" voting="45">
+  <rect x="0" y="0" width="1701" height="2480" style="fill:#6d3060"/>
+  <text x="850" y="330" font-size="150" text-anchor="middle" fill="#fff" font-family="sans-serif">MERGE1</text>
+  <text x="850" y="470" font-size="46" text-anchor="middle" fill="#ffffffcc" font-family="monospace">co-presence merge — lines walk onto this frame</text>
+  <text x="850" y="660" font-size="46" text-anchor="middle" fill="#ffffff99" font-family="sans-serif">Each arrival after the first merges here: three lines</text>
+  <text x="850" y="738" font-size="46" text-anchor="middle" fill="#ffffff99" font-family="sans-serif">arriving together make ONE merge of three, arriving</text>
+  <text x="850" y="816" font-size="46" text-anchor="middle" fill="#ffffff99" font-family="sans-serif">apart make two — undone newest first. Either way</text>
+  <text x="850" y="894" font-size="46" text-anchor="middle" fill="#ffffff99" font-family="sans-serif">every line lands back on its own A2/B2/C2.</text>
+  <text x="850" y="972" font-size="46" text-anchor="middle" fill="#ffffff99" font-family="sans-serif">Long hold + long window: time to work the map menu.</text>
+  <a xlink:href="FORK2.svg">
+    <rect x="150" y="2020" width="1401" height="280" rx="36" style="fill:#e8e8f4;stroke:#223;stroke-width:6"/>
+    <text x="850" y="2140" font-size="62" text-anchor="middle" fill="#112" font-family="sans-serif">On to the barrier stage</text>
+    <text x="850" y="2235" font-size="40" text-anchor="middle" fill="#556" font-family="sans-serif">FORK2.svg</text>
+  </a>
+</svg>

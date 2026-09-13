@@ -219,6 +219,25 @@ class BMSession {
   // restarts and repeated visits to the same split frame.
   splitEvents = [];
   nextSplitEventId = 1;
+  // One operator GESTURE can fork several lines at once (a track group's
+  // release divides every populated line standing on a split frame), and the
+  // map offers that release as ONE undo — so the forks of one gesture carry a
+  // shared `gestureId` from this counter (`orch.splitGestureEvents`).
+  nextSplitGestureId = 1;
+  // Structural merge (rejoin) history used by the score map's "undo merge"
+  // operation. Append-only like splitEvents (active → undone/expired) and kept
+  // for the whole session (2026-09-06): a merge point stays somewhere the room
+  // can go back to, with anything built on top of it undone first
+  // (`structuralRewindChain`). Only a room checkpoint rewind expires one, and
+  // even then the routes it recorded are kept — the map still draws where each
+  // line walked. Absorbed lines' NUMBERS are not held: the undo re-creates the
+  // lines from these snapshots.
+  mergeEvents = [];
+  nextMergeEventId = 1;
+  // One ordering across both event kinds, so a cascade can walk splits and
+  // merges in the order they actually happened (their ids come from separate
+  // counters).
+  nextStructuralSeq = 1;
   deviceRegistry = {};
   // Rendezvous barriers (#6): session-global registry of frame refs reached by
   // any line — { "<lower ref>": "arrived" | "done" }. Sub frames use the
@@ -757,6 +776,10 @@ class BMSession {
       selectedHoldTimeIndex: this.selectedHoldTimeIndex,
       splitEvents: this.splitEvents,
       nextSplitEventId: this.nextSplitEventId,
+      nextSplitGestureId: this.nextSplitGestureId,
+      mergeEvents: this.mergeEvents,
+      nextMergeEventId: this.nextMergeEventId,
+      nextStructuralSeq: this.nextStructuralSeq,
       deviceRegistry: this.deviceRegistry,
       reachedTargets: this.reachedTargets,
       reachedGeneration: this.reachedGeneration,

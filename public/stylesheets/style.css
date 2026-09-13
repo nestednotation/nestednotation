@@ -566,8 +566,7 @@ body.ipad {
   width: 0;
 }
 
-#loading-sound-indicator,
-#barrier-waiting-indicator {
+#loading-sound-indicator {
   font-size: 18px;
   color: #9a9a9a;
   background: rgba(255, 255, 255, 0.9);
@@ -582,13 +581,26 @@ body.ipad {
   display: none;
 }
 
+#barrier-waiting-indicator {
+  font-size: 18px;
+  color: #9a9a9a;
+  background: rgba(255, 255, 255, 0.9);
+  border-radius: 8px;
+  padding: 4px 8px 8px 8px;
+  width: fit-content;
+  margin: 2px auto auto auto;
+  display: block;
+  height: 32px;
+  opacity: 0;
+}
+
 /* Session Lines — the barrier banner is a NAVIGATION message, so it is shown in
-   GUIDE MODE ONLY (owner, 2026-08-16): in play mode it sat over the frame the
+   GUIDE MODE ONLY (owner): in play mode it sat over the frame the
    performer was sounding and said nothing they could act on there. Driven from
    the stylesheet, off the role session.js stamps on the element, so toggling
    play/guide needs no JS and can never go stale. */
 .guide-mode #barrier-waiting-indicator[data-role] {
-  display: block;
+  opacity: 1;
 }
 
 /* The "your move" seat of a track-group wait is a prompt, not a status: it asks
@@ -913,19 +925,17 @@ body.ipad {
   }
 }
 
-/* Session Lines (Chunk M) — admin SM controls across lines. All of this UI is
+/* Session Lines (Chunk M) — the admin line-distribution panel. It is
    created dynamically by session.js (never in session.jade), so it only ever
    appears for an admin on a session-lines score; vanilla built HTML is
    unaffected. */
-.line-distribution,
-.admin-barrier-panel {
+.line-distribution {
   flex-wrap: wrap;
   gap: 0.4em;
   font-size: 0.8em;
   align-items: center;
 }
-.line-distribution .line-info,
-.admin-barrier-panel .barrier-info {
+.line-distribution .line-info {
   padding: 0.1em 0.5em;
   border: 1px solid #ccc;
   border-radius: 0.4em;
@@ -935,9 +945,6 @@ body.ipad {
   border-color: #ffa400;
   background: #fff6e6;
   font-weight: bold;
-}
-.admin-barrier-panel {
-  border-top: 1px solid #ffa400;
 }
 .divhistory.history-unavailable,
 #divhistory.history-unavailable {
@@ -965,12 +972,79 @@ body.ipad {
   color: #777;
 }
 #session-map-relayout,
+#session-map-legend-toggle,
+#session-map-log-toggle,
 #session-map-zoom button {
   border: 1px solid #ccc;
   background: #f4f4f4;
   border-radius: 0.3em;
   padding: 0.1em 0.6em;
   cursor: pointer;
+}
+#session-map-legend-toggle[aria-expanded="true"],
+#session-map-log-toggle[aria-expanded="true"] {
+  background: #e3ecf7;
+  border-color: #7aa2cf;
+}
+#session-map-log-toggle[disabled] {
+  opacity: 0.45;
+  cursor: default;
+}
+/* What the canvas is saying. Pinned over the map rather than in the flow, so
+   opening it never reflows the graph out from under a pointer; below the node
+   menu (z-index 1001) for the same reason the zoom control is. */
+#session-map-legend {
+  position: fixed;
+  left: 1em;
+  bottom: 1em;
+  z-index: 1000;
+  max-width: 22em;
+  max-height: 70vh;
+  overflow-y: auto;
+  padding: 0.5em 0.7em;
+  font-size: 0.8em;
+  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid #ccc;
+  border-radius: 0.4em;
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.15);
+}
+#session-map-legend .legend-heading {
+  font-weight: bold;
+  margin: 0.6em 0 0.25em;
+  color: #555;
+}
+#session-map-legend .legend-heading:first-child {
+  margin-top: 0;
+}
+#session-map-legend .legend-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5em;
+  padding: 0.1em 0;
+}
+/* 2px, because on several of these rows the BORDER is the whole distinction
+   (a line's phase is drawn as a border colour on the same yellow node), and a
+   hairline swatch made them all read alike. */
+#session-map-legend .legend-swatch {
+  flex: none;
+  width: 1.6em;
+  height: 1em;
+  border-radius: 0.25em;
+  border: 2px solid #bbb;
+  background: #fff;
+}
+/* An edge sample: a coloured rule rather than a filled box. */
+#session-map-legend .legend-swatch.legend-edge {
+  height: 0;
+  border: none;
+  border-top-width: 3px;
+  border-top-style: solid;
+}
+#session-map-legend .legend-swatch.legend-glyph {
+  border: none;
+  width: auto;
+  min-width: 1.6em;
+  text-align: center;
 }
 /* Floating zoom control pinned over the canvas. Below the context menu
    (z-index 1001) so an open menu still covers it. */
@@ -998,9 +1072,11 @@ body.ipad {
 #session-map-back {
   margin-left: auto;
 }
-/* Barrier valve strip — same information and commands as the session page's
-   admin-barrier-panel, shown between the header and the canvas so a stall is
-   resolvable without leaving the map. Only in the flow while something waits
+/* Barrier valve strip — the one place the waiting barriers and their valves
+   live, shown between the header and the canvas so a stall is resolvable
+   without leaving the map. The session page carried an identical panel until it
+   was removed rather than kept in sync, since the operator only ever needs one
+   of them. Only in the flow while something waits
    (session-map.js toggles display), so the canvas keeps the full height
    otherwise. */
 #session-map-barriers {
@@ -1030,6 +1106,152 @@ body.ipad {
   padding: 0.1em 0.6em;
   margin-left: 0.3em;
   cursor: pointer;
+}
+/* Rewind receipt — what the last structural undo actually did. Pinned over the
+   canvas (top right, clear of the legend at bottom left) so showing it never
+   reflows the graph, and below the node menu like everything else here.
+
+   `top` is set from JS (`anchorBelowHeader`), not here: the barrier strip is in
+   normal flow under the header and comes and goes with the room, and any fixed
+   value that clears it when it is showing hangs in mid-air when it is not. The
+   value below is the pre-measurement fallback for the first paint. */
+#session-map-toast {
+  position: fixed;
+  top: 3.2em;
+  right: 1em;
+  z-index: 1000;
+  max-width: 26em;
+  padding: 0.5em 2em 0.5em 0.8em;
+  font-size: 0.8em;
+  line-height: 1.35;
+  color: #1b5e20;
+  background: rgba(237, 247, 237, 0.97);
+  border: 1px solid #66a06a;
+  border-radius: 0.4em;
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.15);
+}
+#session-map-toast .toast-close {
+  position: absolute;
+  top: 0.15em;
+  right: 0.3em;
+  border: none;
+  background: none;
+  color: #1b5e20;
+  font-size: 1.2em;
+  line-height: 1;
+  padding: 0.1em 0.25em;
+  cursor: pointer;
+  opacity: 0.6;
+}
+#session-map-toast .toast-close:hover {
+  opacity: 1;
+}
+/* The receipts, kept. Same column as the toast that archived them. */
+#session-map-log {
+  position: fixed;
+  top: 3.2em;
+  right: 1em;
+  z-index: 1000;
+  max-width: 26em;
+  max-height: 60vh;
+  overflow-y: auto;
+  padding: 0.5em 0.7em;
+  font-size: 0.8em;
+  line-height: 1.35;
+  background: rgba(255, 255, 255, 0.97);
+  border: 1px solid #ccc;
+  border-radius: 0.4em;
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.15);
+}
+#session-map-log .log-row {
+  display: flex;
+  gap: 0.5em;
+  padding: 0.2em 0;
+  border-top: 1px solid #eee;
+}
+#session-map-log .log-time {
+  flex: none;
+  color: #888;
+  font-variant-numeric: tabular-nums;
+}
+#session-map-log .log-empty {
+  color: #888;
+}
+/* A question about the room, asked in the page instead of by `confirm()`.
+   Above the node menu (1001) because it is raised BY one, and the canvas
+   behind it keeps drawing — which is the whole point of not being native. */
+#session-map-dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1002;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1em;
+  background: rgba(0, 0, 0, 0.35);
+}
+#session-map-dialog {
+  max-width: 34em;
+  max-height: 85vh;
+  overflow-y: auto;
+  padding: 1em 1.2em;
+  font-size: 0.85em;
+  line-height: 1.45;
+  background: #fff;
+  border-radius: 0.5em;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.3);
+}
+#session-map-dialog .dialog-title {
+  font-size: 1.1em;
+  font-weight: bold;
+  margin-bottom: 0.6em;
+}
+#session-map-dialog .dialog-body p {
+  margin: 0 0 0.6em;
+}
+#session-map-dialog .dialog-body ul {
+  margin: 0 0 0.6em;
+  padding-left: 1.4em;
+}
+/* The clause the operator most needs to have read — a barrier that will not be
+   re-armed, progress about to be discarded. */
+#session-map-dialog .dialog-warn {
+  padding: 0.4em 0.6em;
+  color: #8a4b00;
+  background: #fff6e6;
+  border-left: 3px solid #ffa400;
+  border-radius: 0.2em;
+}
+#session-map-dialog .dialog-note {
+  margin: 0.6em 0 0;
+  padding: 0.4em 0.6em;
+  color: #8a1c1c;
+  background: #fdeaea;
+  border-left: 3px solid #c0392b;
+  border-radius: 0.2em;
+}
+#session-map-dialog .dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5em;
+  margin-top: 1em;
+}
+#session-map-dialog .dialog-actions button {
+  padding: 0.35em 1em;
+  font-size: 1em;
+  border: 1px solid #bbb;
+  border-radius: 0.3em;
+  background: #f4f4f4;
+  cursor: pointer;
+}
+#session-map-dialog .dialog-actions .dialog-danger {
+  color: #fff;
+  background: #c0392b;
+  border-color: #98301f;
+}
+#session-map-dialog .dialog-actions button[disabled] {
+  opacity: 0.5;
+  cursor: default;
 }
 #session-map-canvas {
   flex: 1;
@@ -1087,8 +1309,7 @@ body.ipad {
 /* A straggler with nowhere to be sent (its target lives inside a sub-score):
    the button is still listed — it names who the room is waiting on — but says
    so by being inert rather than by disappearing. */
-#session-map-barriers button:disabled,
-.admin-barrier-panel button:disabled {
+#session-map-barriers button:disabled {
   color: #aaa;
   cursor: default;
 }

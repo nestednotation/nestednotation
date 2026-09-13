@@ -27,9 +27,21 @@ const {
   revivalLandingFrame,
   commonCheckpoints,
   roomRewindPlan,
+  ancestorGroupOccurrence,
   splitRewindPlan,
   splitRewindOptions,
   rewindSplitStructure,
+  mergeRewindPlan,
+  structuralRewindChain,
+  mergeRewindOptions,
+  mergeConvergenceEvents,
+  splitGestureEvents,
+  chainMergesCanUndo,
+  mergesBehindLine,
+  mergesBehindRoomRewind,
+  preMergeLanding,
+  spreadMergeLatecomers,
+  rewindMergeStructure,
   resolveGroupStay,
   groupLinkWinner,
   canReachFrames,
@@ -42,10 +54,14 @@ const {
 
 const { MESSAGES } = require("../constants");
 
+let fakeUid = 0;
+
 // A minimal stand-in for BMLine for transport-driven tests.
 function fakeLine(session, id) {
   return {
     id,
+    // Durable route identity: numbers recycle, this does not.
+    uid: `u${(fakeUid += 1)}`,
     status: "active",
     currentIndex: 0,
     history: [],
@@ -71,6 +87,20 @@ function fakeSession() {
     listFiles: ["START.svg", "Left.svg", "Right.svg", "Barrier.svg", "DONE.svg"],
     lines: [],
   };
+}
+
+// Mark every recorded rejoin unundoable, the way loading a state file whose
+// participants carry no `uid` does (`migrateStructuralIdentities`) — the only
+// route to `expired` there is. A room checkpoint rewind used to be the other
+// one; since 2026-09-11 it undoes the rejoins it rewinds past instead, so it
+// ends nothing (`mergesBehindRoomRewind`).
+function expireMerges(session) {
+  for (const event of session.mergeEvents || []) {
+    if (event.status === "active") {
+      event.status = "expired";
+      event.expiredAt = 1000;
+    }
+  }
 }
 
 // Records every send so tests can assert on the emitted protocol.
@@ -451,6 +481,180 @@ module.exports = {
     ]);
   },
 
+  // A split truncates the trails it forks from (§6), so a line born after the
+  // checkpoint has no occurrence of it — and the fill was placing those lines by
+  // the order they happened to sit in `session.lines`. The owner rewound a room
+  // to `GH` and got both populated lines on `G` (4 players) with the empty one
+  // alone on `H`, the frame one of those routes had actually come through. The
+  // split records say where each route crossed the group; only a line with no
+  // record either way is a guess now.
+  // The menu and the landing now ask ONE question. A populated line whose trail
+  // a fork truncated used to block every group the room crossed before that
+  // fork — so checkpoints disappeared from the map exactly as the room split
+  // and merged, which is when an operator reaches for one.
+  "commonCheckpoints reads a forked line's route through its parent": () => {
+    const groups = { GH: ["G.svg", "H.svg"], BC: ["B.svg", "C.svg"] };
+    const splitEvents = [
+      { id: "S1", parentHistory: ["START.svg", "A.svg"], parentHistoryIndex: 1 },
+      {
+        id: "S3",
+        parentHistory: ["C.svg", "E.svg", "H.svg"],
+        parentHistoryIndex: 2,
+      },
+    ];
+    const lines = [
+      { id: "L0", trail: ["B.svg", "D.svg", "F.svg", "G.svg"], splitAncestors: ["S1"] },
+      { id: "L1", trail: ["J.svg", "M.svg"], splitAncestors: ["S1", "S3"] },
+    ];
+    // L1's own trail starts at the branch frame it took, so on trails alone the
+    // room has no checkpoints at all — not even the group it is standing in.
+    assert.deepStrictEqual(commonCheckpoints({ lines, groups }), []);
+    assert.deepStrictEqual(
+      commonCheckpoints({ lines, groups, splitEvents }),
+      [
+        { group: "GH", byLine: { L0: "G.svg", L1: "H.svg" } },
+        { group: "BC", byLine: { L0: "B.svg", L1: "C.svg" } },
+      ],
+    );
+  },
+
+  // …and what the menu offers, the walk has to be willing to take apart: an
+  // ancestry landing is BEFORE the line's own trail, so every rejoin in it
+  // happened after the checkpoint.
+  "mergesBehindRoomRewind undoes the rejoins behind an ancestry landing": () => {
+    const lines = [{ id: "L1", uid: "u1" }];
+    const mergeEvents = [
+      {
+        id: "M1",
+        status: "active",
+        frame: "Z.svg",
+        survivorLineId: "L1",
+        participants: [
+          {
+            lineId: "L1",
+            lineUid: "u1",
+            history: ["J.svg", "M.svg", "Z.svg"],
+            historyIndex: 2,
+          },
+        ],
+      },
+    ];
+    const behind = (source) =>
+      mergesBehindRoomRewind({
+        mergeEvents,
+        lines,
+        plan: {
+          lines: [{ lineId: "L1", frame: "H.svg", source, historyIndex: -1 }],
+        },
+      }).map((event) => event.id);
+    assert.deepStrictEqual(behind("ancestor"), ["M1"]);
+    // A fill is a guess about a line the checkpoint never consulted; it takes
+    // nothing off the room.
+    assert.deepStrictEqual(behind("fill"), []);
+  },
+
+  "roomRewindPlan places a forked line by the route its split recorded": () => {
+    const groups = { GH: ["G.svg", "H.svg"] };
+    // One fork at A (L0 keeps the number and walks B…G), one at H, whose two
+    // children start their own trails at the branch frames J and K.
+    const splitEvents = [
+      {
+        id: "S1",
+        parentHistory: ["START.svg", "A.svg"],
+        parentHistoryIndex: 1,
+      },
+      {
+        id: "S3",
+        parentHistory: ["C.svg", "E.svg", "H.svg"],
+        parentHistoryIndex: 2,
+      },
+    ];
+    const lines = [
+      { id: "L0", trail: ["B.svg", "D.svg", "F.svg", "G.svg"], splitAncestors: ["S1"] },
+      { id: "L2", trail: ["K.svg"], splitAncestors: ["S1", "S3"] },
+      { id: "L1", trail: ["J.svg", "M.svg"], splitAncestors: ["S1", "S3"] },
+    ];
+    const plan = roomRewindPlan({
+      group: "GH",
+      groups,
+      // The room was one merged line when the menu offered this checkpoint;
+      // the others come back from the undos the rewind runs on the way.
+      checkpointLines: [lines[0]],
+      lines,
+      splitEvents,
+    });
+    assert.deepStrictEqual(plan.lines, [
+      { lineId: "L0", frame: "G.svg", source: "history", historyIndex: 3 },
+      { lineId: "L2", frame: "H.svg", source: "ancestor", historyIndex: -1 },
+      { lineId: "L1", frame: "H.svg", source: "ancestor", historyIndex: -1 },
+    ]);
+
+    // Without the records it is the old guess: whoever the array reaches first
+    // takes the free frame, so the room's population lands wherever it lands.
+    const guessed = roomRewindPlan({
+      group: "GH",
+      groups,
+      checkpointLines: [lines[0]],
+      lines,
+    });
+    assert.deepStrictEqual(
+      guessed.lines.map((entry) => [entry.lineId, entry.frame, entry.source]),
+      [
+        ["L0", "G.svg", "history"],
+        ["L2", "H.svg", "fill"],
+        ["L1", "G.svg", "fill"],
+      ],
+    );
+  },
+
+  // The newest fork wins: it is the most recent point of the route, and each
+  // older ancestor is a step further back along the same one.
+  "ancestorGroupOccurrence walks the forks newest-first": () => {
+    const splitEvents = [
+      { id: "S1", parentHistory: ["START.svg", "G.svg"], parentHistoryIndex: 1 },
+      { id: "S2", parentHistory: ["E.svg", "H.svg"], parentHistoryIndex: 1 },
+    ];
+    const frames = ["G.svg", "H.svg"];
+    assert.deepStrictEqual(
+      ancestorGroupOccurrence({
+        line: { splitAncestors: ["S1", "S2"] },
+        splitEvents,
+        frames,
+      }),
+      { frame: "H.svg", eventId: "S2", index: -1 },
+    );
+    // …and how far back it had to walk, so an ancestry hit orders against an
+    // own-trail index the way the route does: one step before the newest fork
+    // is -1, and the same frame two forks back is older still.
+    assert.deepStrictEqual(
+      ancestorGroupOccurrence({
+        line: { splitAncestors: ["S1", "S2"] },
+        splitEvents: [
+          { id: "S1", parentHistory: ["START.svg", "G.svg"], parentHistoryIndex: 1 },
+          { id: "S2", parentHistory: ["E.svg", "J.svg"], parentHistoryIndex: 1 },
+        ],
+        frames,
+      }),
+      { frame: "G.svg", eventId: "S1", index: -3 },
+    );
+    // Past the parent's own pointer is not route it walked.
+    assert.strictEqual(
+      ancestorGroupOccurrence({
+        line: { splitAncestors: ["S2"] },
+        splitEvents: [
+          { id: "S2", parentHistory: ["E.svg", "H.svg"], parentHistoryIndex: 0 },
+        ],
+        frames,
+      }),
+      null,
+    );
+    // A line with no forks behind it has nothing to read.
+    assert.strictEqual(
+      ancestorGroupOccurrence({ line: {}, splitEvents, frames }),
+      null,
+    );
+  },
+
   // ── revival fast-forward (decision #13 revision, 2026-07-18) ────────────
   "revivalLandingFrame: no recorded grouped landing → revive in place": () => {
     const graph = { byFrame: {}, groups: {} };
@@ -634,7 +838,276 @@ module.exports = {
     assert.strictEqual(subReturnIndex(null, list), -1);
   },
 
+  // ── one release, one undo (splitGestureEvents) ──────────────────────────
+  "splitGestureEvents folds the forks of one release, newest first": () => {
+    const splitEvents = [
+      { id: "S1", status: "active", gestureId: null, frame: "A.svg" },
+      { id: "S2", status: "active", gestureId: "G1", frame: "B.svg" },
+      { id: "S3", status: "active", gestureId: "G1", frame: "C.svg" },
+      { id: "S4", status: "active", gestureId: "G2", frame: "D.svg" },
+    ];
+    // Reached from EITHER member — an operator clicks the node in front of
+    // them, and both nodes keep their button.
+    for (const eventId of ["S2", "S3"]) {
+      assert.deepStrictEqual(
+        splitGestureEvents({ splitEvents, eventId }).map((e) => e.id),
+        ["S3", "S2"],
+        `${eventId} must undo the whole release, newest first`,
+      );
+    }
+    // A lone choice window closing is one fork and one gesture already.
+    assert.deepStrictEqual(
+      splitGestureEvents({ splitEvents, eventId: "S1" }).map((e) => e.id),
+      ["S1"],
+    );
+    assert.deepStrictEqual(
+      splitGestureEvents({ splitEvents, eventId: "S4" }).map((e) => e.id),
+      ["S4"],
+    );
+    // An event already off the record offers nothing.
+    splitEvents[2].status = "undone";
+    assert.deepStrictEqual(
+      splitGestureEvents({ splitEvents, eventId: "S2" }).map((e) => e.id),
+      ["S2"],
+    );
+  },
+
+  "splitRewindOptions: each fork of a release names the others": () => {
+    const session = fakeSession();
+    const parent = fakeLine(session, "L0");
+    parent.setCurrIdxTo(0);
+    const other = fakeLine(session, "L2");
+    other.setCurrIdxTo(0);
+    session.lines.push(parent, other);
+    const o = createOrchestrator(fakeTransport());
+
+    const gestureId = o.allocSplitGestureId(session);
+    o.applySplit({
+      session,
+      parentLine: parent,
+      childFrameIndices: [1, 2],
+      members: [{ conn: { lineId: "L0" }, key: "dA", choice: 0 }],
+      gestureId,
+    });
+    o.applySplit({
+      session,
+      parentLine: other,
+      childFrameIndices: [1, 2],
+      members: [{ conn: { lineId: "L2" }, key: "dB", choice: 0 }],
+      gestureId,
+    });
+
+    assert.deepStrictEqual(
+      session.splitEvents.map((e) => e.gestureId),
+      [gestureId, gestureId],
+      "one release stamps every fork it makes",
+    );
+
+    const entries = splitRewindOptions({
+      splitEvents: session.splitEvents,
+      mergeEvents: [],
+      lines: session.lines,
+    });
+    assert.strictEqual(entries.length, 2);
+    for (const entry of entries) {
+      assert.strictEqual(entry.available, true);
+      // Both nodes keep a button — an operator looks at the node the fork
+      // happened on — and each one undoes the whole release.
+      assert.deepStrictEqual(
+        (entry.gesture || []).map((f) => f.eventId),
+        session.splitEvents
+          .filter((e) => e.id !== entry.eventId)
+          .map((e) => e.id),
+        "each entry must name the other forks of its release",
+      );
+      assert.strictEqual(
+        entry.descendantLineIds.length,
+        4,
+        "the click collapses every line the release made",
+      );
+    }
+  },
+
+  "splitRewindOptions: a release is all of it or none of it": () => {
+    const session = fakeSession();
+    const parent = fakeLine(session, "L0");
+    parent.setCurrIdxTo(0);
+    const other = fakeLine(session, "L2");
+    other.setCurrIdxTo(0);
+    session.lines.push(parent, other);
+    const o = createOrchestrator(fakeTransport());
+    const gestureId = o.allocSplitGestureId(session);
+    o.applySplit({
+      session,
+      parentLine: parent,
+      childFrameIndices: [1, 2],
+      members: [{ conn: { lineId: "L0" }, key: "dA", choice: 0 }],
+      gestureId,
+    });
+    o.applySplit({
+      session,
+      parentLine: other,
+      childFrameIndices: [1, 2],
+      members: [{ conn: { lineId: "L2" }, key: "dB", choice: 0 }],
+      gestureId,
+    });
+
+    // One member is beyond reach. Half a release undone is a room no single
+    // gesture ever produced, so NEITHER node may offer the button.
+    session.splitEvents[1].blockedByMerge = true;
+    const mergeEvents = [
+      {
+        id: "M1",
+        status: "expired",
+        frame: "Barrier.svg",
+        blockedSplitEventIds: [session.splitEvents[1].id],
+        participants: [{ lineId: "L2" }, { lineId: "L3" }],
+      },
+    ];
+    const entries = splitRewindOptions({
+      splitEvents: session.splitEvents,
+      mergeEvents,
+      lines: session.lines,
+    });
+    assert.deepStrictEqual(
+      entries.map((e) => e.available),
+      [false, false],
+      "one unreachable fork takes the whole release off the menu",
+    );
+    // The node the operator is looking at reports its OWN answer where it has
+    // one; the healthy fork borrows its sibling's.
+    assert.strictEqual(entries[1].reason, "mixed-merge");
+    assert.strictEqual(entries[0].reason, "mixed-merge");
+  },
+
+  "splitRewindOptions: an EXPIRED fork is a note, not an empty menu": () => {
+    // The counterpart of the merge menu's expired entry. Nothing expires a
+    // fork at runtime; `migrateStructuralIdentities` does, on load, when a
+    // saved room's records cannot be tied back to its lines — and that node
+    // used to render nothing at all.
+    const entries = splitRewindOptions({
+      splitEvents: [
+        {
+          id: "S1",
+          status: "expired",
+          frame: "START.svg",
+          parentLineId: "L0",
+          childLineIds: ["L0", "L1"],
+        },
+      ],
+      mergeEvents: [],
+      lines: [],
+    });
+    assert.deepStrictEqual(entries, [
+      {
+        eventId: "S1",
+        parentLineId: "L0",
+        frame: "START.svg",
+        available: false,
+        reason: "expired",
+      },
+    ]);
+  },
+
+  "chainMergesCanUndo refuses a step with nothing to separate": () => {
+    const good = {
+      kind: "merge",
+      event: { id: "M1", participants: [{ lineId: "L0" }, { lineId: "L1" }] },
+    };
+    const bad = { kind: "merge", event: { id: "M2", participants: [{ lineId: "L0" }] } };
+    const split = { kind: "split", event: { id: "S1" } };
+    assert.strictEqual(chainMergesCanUndo({ chain: [good, split] }), true);
+    assert.strictEqual(chainMergesCanUndo({ chain: [] }), true);
+    assert.strictEqual(
+      chainMergesCanUndo({ chain: [good, bad] }),
+      false,
+      "a walk cannot repair a record with fewer than two participants",
+    );
+  },
+
   // ── applySplit (fake transport) ─────────────────────────────────────────
+  "applySplit: a branch nobody took is born DORMANT": () => {
+    const session = fakeSession();
+    const parent = fakeLine(session, "L0");
+    parent.setCurrIdxTo(0);
+    session.lines.push(parent);
+    const o = createOrchestrator(fakeTransport());
+
+    // TWO devices over THREE branches — the third gets nobody.
+    const members = [
+      { conn: { lineId: "L0" }, key: "dA", choice: 0 },
+      { conn: { lineId: "L0" }, key: "dB", choice: 1 },
+    ];
+    const { children, counts } = o.applySplit({
+      session,
+      parentLine: parent,
+      childFrameIndices: [1, 2, 3],
+      members,
+    });
+
+    assert.deepStrictEqual(counts, [1, 1, 0]);
+    assert.strictEqual(children[0].status, "active");
+    assert.strictEqual(children[1].status, "active");
+    // Born `active`, this line was immortal: dormancy is driven by a device
+    // LEAVING (#11) and it never had one, so nothing demoted it — and
+    // `activeLines` kept handing it to the grouped-window split, which divided
+    // nobody into two more of the same on every release.
+    assert.strictEqual(
+      children[2].status,
+      "dormant",
+      "a branch with no population must not come back active",
+    );
+  },
+
+  "applySplit: an OFFLINE registered device still populates its branch": () => {
+    const session = fakeSession();
+    const parent = fakeLine(session, "L0");
+    parent.setCurrIdxTo(0);
+    session.lines.push(parent);
+    // Registered to the parent, not connected right now — decision #13 sweeps
+    // it onto the smallest branch, so that branch is NOT empty.
+    session.deviceRegistry["away"] = "L0";
+    const o = createOrchestrator(fakeTransport());
+
+    const { children } = o.applySplit({
+      session,
+      parentLine: parent,
+      childFrameIndices: [1, 2],
+      members: [{ conn: { lineId: "L0" }, key: "dA", choice: 0 }],
+    });
+
+    assert.strictEqual(session.deviceRegistry["away"], children[1].id);
+    assert.strictEqual(
+      children[1].status,
+      "active",
+      "a branch holding an absent performer is populated, not dormant",
+    );
+  },
+
+  "applySplit: an unpopulated split makes no active lines at all": () => {
+    // The runtime refuses to divide a line with nobody on it
+    // (`lineHasPopulation`), but if one ever reaches here the children must
+    // not read as a live room: this is the doubling that took one room to 16
+    // lines with two performers in it.
+    const session = fakeSession();
+    const parent = fakeLine(session, "L0");
+    parent.setCurrIdxTo(0);
+    session.lines.push(parent);
+    const o = createOrchestrator(fakeTransport());
+
+    const { children } = o.applySplit({
+      session,
+      parentLine: parent,
+      childFrameIndices: [1, 2],
+      members: [],
+    });
+
+    assert.deepStrictEqual(
+      children.map((c) => c.status),
+      ["dormant", "dormant"],
+    );
+  },
+
   "applySplit continues the parent down branch 0, balances, emits": () => {
     const session = fakeSession();
     const parent = fakeLine(session, "L0");
@@ -715,8 +1188,9 @@ module.exports = {
       ["L0", "L1"],
     );
 
-    // They rejoin: the absorbed line is unaddressable, so its number goes back
-    // in the pool with it.
+    // They rejoin. The absorbed line is unaddressable, so it goes entirely —
+    // its number is back in the pool at once (2026-09-06). The merge undo does
+    // not need the object: it re-creates the line from the snapshot.
     const { survivor } = o.applyRecombine({
       session,
       lineIds: ["L0", "L1"],
@@ -740,6 +1214,15 @@ module.exports = {
     assert.deepStrictEqual(
       second.children.map((line) => line.id),
       ["L0", "L1"],
+    );
+    // …and the rejoin is STILL undoable behind that fork: nothing expired, the
+    // split is simply what comes off first when the operator reaches back.
+    assert.strictEqual(session.mergeEvents[0].status, "active");
+    assert.deepStrictEqual(
+      structuralRewindChain({ session, kind: "merge", eventId: "M1" }).chain.map(
+        (entry) => entry.event.id,
+      ),
+      ["S2"],
     );
   },
 
@@ -770,11 +1253,1422 @@ module.exports = {
     // undone again, so the retired L1 it names as parent is not worth keeping.
     o.applyRecombine({ session, lineIds: ["L0", "L1"], connections: [] });
     assert.strictEqual(session.splitEvents[1].blockedByMerge, true);
+    // The absorbed L1 is gone with the rejoin, and the blocked S2 keeps
+    // nothing back on its own, so the number is free for the next fork.
     assert.deepStrictEqual(
       session.lines.map((line) => line.id).sort(),
       ["L0", "L2"],
     );
     assert.strictEqual(o.allocLineId(session), "L1");
+  },
+
+  // ── structural merge undo ────────────────────────────────────────────────
+
+  "merge undo restores each absorbed line, its frame and its devices": () => {
+    const session = fakeSession();
+    const l0 = fakeLine(session, "L0");
+    const l1 = fakeLine(session, "L1");
+    l0.setCurrIdxTo(1); // Left.svg — where L0 stood before the rejoin
+    l1.setCurrIdxTo(2); // Right.svg
+    session.lines.push(l0, l1);
+    session.deviceRegistry = { dA: "L0", dB: "L1", dOff: "L1" };
+    const connections = [
+      { sessionId: "s1", lineId: "L0", deviceId: "dA" },
+      { sessionId: "s1", lineId: "L1", deviceId: "dB" },
+    ];
+    const o = createOrchestrator(fakeTransport());
+
+    o.applyRecombine({
+      session,
+      lineIds: ["L0", "L1"],
+      connections,
+      frame: "Barrier.svg",
+    });
+    // The merged line moves on, and a device that never saw the split joins it.
+    l0.setCurrIdxTo(3);
+    const latecomer = { sessionId: "s1", lineId: "L0", deviceId: "dNew" };
+    connections.push(latecomer);
+    session.deviceRegistry.dNew = "L0";
+
+    const result = rewindMergeStructure({
+      session,
+      eventId: "M1",
+      expectedFrame: "Barrier.svg",
+      connections,
+      createLine: fakeLine,
+      now: () => 999,
+    });
+    assert.strictEqual(result.available, true);
+
+    // Both lines are back where the merge found them — L1 REBUILT from the
+    // snapshot, since the rejoin dissolved the object it used to be.
+    const back = (id) => session.lines.find((line) => line.id === id);
+    assert.strictEqual(l0.currentIndex, 1);
+    assert.deepStrictEqual(l0.history, ["Left.svg"]);
+    assert.strictEqual(back("L1").currentIndex, 2);
+    assert.strictEqual(back("L1").status, "active");
+    // Same route as before, whatever number it came back on.
+    assert.strictEqual(back("L1").uid, l1.uid);
+    assert.deepStrictEqual(
+      session.lines.map((line) => line.id),
+      ["L0", "L1"],
+    );
+    // …each device on the line it was on then, and the latecomer — which has no
+    // pre-merge line — left with the survivor.
+    assert.deepStrictEqual(
+      connections.map((conn) => conn.lineId),
+      ["L0", "L1", "L0"],
+    );
+    assert.deepStrictEqual(session.deviceRegistry, {
+      dA: "L0",
+      dB: "L1",
+      dOff: "L1",
+      dNew: "L0",
+    });
+    assert.strictEqual(session.mergeEvents[0].status, "undone");
+    assert.strictEqual(session.mergeEvents[0].undoneAt, 999);
+  },
+
+  "a co-presence merge sends each line back to the node it came from": () => {
+    const session = fakeSession();
+    const l0 = fakeLine(session, "L0");
+    const l1 = fakeLine(session, "L1");
+    // Both lines WALK ONTO the rejoin frame and merge there, so the merge
+    // catches each of them standing on it — the barrier path instead catches
+    // them parked on their own frames (the test above).
+    l0.setCurrIdxTo(1); // Left.svg
+    l0.setCurrIdxTo(3); // Barrier.svg
+    l1.setCurrIdxTo(2); // Right.svg
+    l1.setCurrIdxTo(3); // Barrier.svg
+    session.lines.push(l0, l1);
+    const o = createOrchestrator(fakeTransport());
+    o.applyRecombine({
+      session,
+      lineIds: ["L0", "L1"],
+      connections: [],
+      frame: "Barrier.svg",
+    });
+
+    const result = rewindMergeStructure({
+      session,
+      eventId: "M1",
+      connections: [],
+      createLine: fakeLine,
+    });
+    assert.strictEqual(result.available, true);
+    // Back to V and W, not to the Z they merged on.
+    const restored = session.lines.find((line) => line.id === "L1");
+    assert.strictEqual(l0.currentIndex, 1);
+    assert.deepStrictEqual(l0.history, ["Left.svg"]);
+    assert.strictEqual(l0.historyIndex, 0);
+    assert.strictEqual(restored.currentIndex, 2);
+    assert.deepStrictEqual(restored.history, ["Right.svg"]);
+  },
+
+  "a line that has only ever stood on the rejoin frame stays there": () => {
+    // Nothing to step back to (a line seeded on the frame by a split, say):
+    // the undo separates the lines and leaves them where the merge found them.
+    assert.strictEqual(
+      preMergeLanding({
+        snapshot: { history: ["Barrier.svg"], historyIndex: 0 },
+        mergeFrame: "Barrier.svg",
+        frameIndexOf: () => 3,
+      }),
+      null,
+    );
+    // A line parked elsewhere is already home.
+    assert.strictEqual(
+      preMergeLanding({
+        snapshot: { history: ["Left.svg"], historyIndex: 0 },
+        mergeFrame: "Barrier.svg",
+        frameIndexOf: () => 1,
+      }),
+      null,
+    );
+    // A frame the score no longer has is not a landing.
+    assert.strictEqual(
+      preMergeLanding({
+        snapshot: {
+          history: ["Gone.svg", "Barrier.svg"],
+          historyIndex: 1,
+        },
+        mergeFrame: "Barrier.svg",
+        frameIndexOf: () => -1,
+      }),
+      null,
+    );
+  },
+
+  "a restored line nobody came back to is dormant, not retired": () => {
+    const session = fakeSession();
+    const l0 = fakeLine(session, "L0");
+    const l1 = fakeLine(session, "L1");
+    l0.setCurrIdxTo(1);
+    l1.setCurrIdxTo(2);
+    session.lines.push(l0, l1);
+    const o = createOrchestrator(fakeTransport());
+    o.applyRecombine({
+      session,
+      lineIds: ["L0", "L1"],
+      connections: [],
+      frame: "Barrier.svg",
+    });
+
+    const result = rewindMergeStructure({
+      session,
+      eventId: "M1",
+      connections: [],
+      createLine: fakeLine,
+    });
+    assert.strictEqual(result.available, true);
+    assert.strictEqual(l0.status, "dormant");
+    assert.strictEqual(
+      session.lines.find((line) => line.id === "L1").status,
+      "dormant",
+    );
+  },
+
+  "a merge undo is refused once the merged line has moved on": () => {
+    const session = fakeSession();
+    const l0 = fakeLine(session, "L0");
+    const l1 = fakeLine(session, "L1");
+    l0.setCurrIdxTo(1);
+    l1.setCurrIdxTo(2);
+    session.lines.push(l0, l1);
+    const o = createOrchestrator(fakeTransport());
+    o.applyRecombine({
+      session,
+      lineIds: ["L0", "L1"],
+      connections: [],
+      frame: "Barrier.svg",
+    });
+
+    // A stale menu naming another frame is refused outright…
+    assert.deepStrictEqual(
+      mergeRewindPlan({
+        mergeEvents: session.mergeEvents,
+        lines: session.lines,
+        eventId: "M1",
+        expectedFrame: "DONE.svg",
+      }).reason,
+      "stale-frame",
+    );
+
+    // …splitting the merged line no longer ends anything (2026-09-06): the
+    // single STEP is refused while the fork stands on it, and the fork is what
+    // the cascade takes off first.
+    const split = o.applySplit({
+      session,
+      parentLine: l0,
+      childFrameIndices: [1, 2],
+      members: [],
+    });
+    assert.deepStrictEqual(
+      split.children.map((line) => line.id),
+      ["L0", "L1"],
+    );
+    assert.strictEqual(session.mergeEvents[0].status, "active");
+    const stepPlan = mergeRewindPlan({
+      mergeEvents: session.mergeEvents,
+      splitEvents: session.splitEvents,
+      lines: session.lines,
+      eventId: "M1",
+    });
+    assert.strictEqual(stepPlan.available, false);
+    assert.strictEqual(stepPlan.reason, "superseded");
+    assert.strictEqual(stepPlan.supersederKind, "split");
+    // The map offers it all the same, naming what comes off on the way.
+    const options = mergeRewindOptions({
+      mergeEvents: session.mergeEvents,
+      splitEvents: session.splitEvents,
+      lines: session.lines,
+    });
+    assert.strictEqual(options[0].available, true);
+    assert.deepStrictEqual(options[0].cascade, [
+      {
+        kind: "split",
+        eventId: "S1",
+        frame: "Left.svg",
+        lineIds: ["L0", "L1"],
+      },
+    ]);
+
+    // A state file the loader cannot corroborate is the one thing that still
+    // ends it. The RECORD survives regardless (nothing is compacted away), even
+    // though the map stops drawing a passage it can no longer undo.
+    expireMerges(session);
+    const expired = mergeRewindPlan({
+      mergeEvents: session.mergeEvents,
+      splitEvents: session.splitEvents,
+      lines: session.lines,
+      eventId: "M1",
+    });
+    assert.strictEqual(expired.available, false);
+    assert.strictEqual(expired.reason, "expired");
+    assert.deepStrictEqual(session.mergeEvents[0].participants[1].history, [
+      "Right.svg",
+    ]);
+    const afterRoomRewind = mergeRewindOptions({
+      mergeEvents: session.mergeEvents,
+      splitEvents: session.splitEvents,
+      lines: session.lines,
+    });
+    assert.strictEqual(afterRoomRewind[0].available, false);
+    assert.strictEqual(afterRoomRewind[0].reason, "expired");
+    // An expired entry is a NOTE on a node — a frame and a reason — and
+    // carries nothing else: the map reads only those two, and every consumer
+    // of the heavier fields (the cascade, the line list, the trail index)
+    // filters expired events out on both sides. These are the entries that
+    // accumulate for the life of a session, so they ship as little as they
+    // are read.
+    assert.deepStrictEqual(Object.keys(afterRoomRewind[0]).sort(), [
+      "available",
+      "eventId",
+      "frame",
+      "reason",
+      "survivorLineId",
+    ]);
+    // …while the record it expired is untouched, so nothing about the passage
+    // is lost (the snapshot assertion above).
+    assert.strictEqual(session.mergeEvents[0].participants.length, 2);
+  },
+
+  "chained merges undo newest-first, one step at a time": () => {
+    const session = fakeSession();
+    const l0 = fakeLine(session, "L0");
+    const l1 = fakeLine(session, "L1");
+    const l2 = fakeLine(session, "L2");
+    l0.setCurrIdxTo(1);
+    l1.setCurrIdxTo(2);
+    l2.setCurrIdxTo(3);
+    session.lines.push(l0, l1, l2);
+    const o = createOrchestrator(fakeTransport());
+
+    // Three lines converge on one frame: the runtime merges them in PAIRS, so
+    // one convergence is two events.
+    o.applyRecombine({
+      session,
+      lineIds: ["L0", "L1"],
+      connections: [],
+      frame: "DONE.svg",
+    });
+    o.applyRecombine({
+      session,
+      lineIds: ["L0", "L2"],
+      connections: [],
+      frame: "DONE.svg",
+    });
+
+    // The older one waits its turn rather than fighting the newer snapshot…
+    assert.strictEqual(
+      mergeRewindPlan({
+        mergeEvents: session.mergeEvents,
+        splitEvents: session.splitEvents,
+        lines: session.lines,
+        eventId: "M1",
+      }).reason,
+      "superseded",
+    );
+    assert.strictEqual(
+      rewindMergeStructure({
+        session,
+        eventId: "M2",
+        connections: [],
+        createLine: fakeLine,
+      }).available,
+      true,
+    );
+    assert.strictEqual(
+      session.lines.find((line) => line.id === "L2").currentIndex,
+      3,
+    );
+
+    // …and becomes available the moment the newer one is undone, so the whole
+    // convergence can be walked back.
+    const older = rewindMergeStructure({
+      session,
+      eventId: "M1",
+      connections: [],
+      createLine: fakeLine,
+    });
+    assert.strictEqual(older.available, true);
+    assert.strictEqual(
+      session.lines.find((line) => line.id === "L1").currentIndex,
+      2,
+    );
+    assert.strictEqual(l0.currentIndex, 1);
+    // Rebuilt in the order they were walked back — newest undo first.
+    assert.deepStrictEqual(
+      session.lines.map((line) => line.id).sort(),
+      ["L0", "L1", "L2"],
+    );
+  },
+
+  "the merges a per-line rewind reaches back through, newest first": () => {
+    const session = fakeSession();
+    const l0 = fakeLine(session, "L0");
+    const l1 = fakeLine(session, "L1");
+    const l2 = fakeLine(session, "L2");
+    l0.setCurrIdxTo(1); // Left.svg      — trail index 0
+    l1.setCurrIdxTo(2);
+    l2.setCurrIdxTo(2);
+    session.lines.push(l0, l1, l2);
+    const o = createOrchestrator(fakeTransport());
+    o.applyRecombine({
+      session,
+      lineIds: ["L0", "L1"],
+      connections: [],
+      frame: "Barrier.svg",
+    });
+    l0.setCurrIdxTo(3); // Barrier.svg   — trail index 1
+    o.applyRecombine({
+      session,
+      lineIds: ["L0", "L2"],
+      connections: [],
+      frame: "DONE.svg",
+    });
+
+    const ids = (atIndex) =>
+      mergesBehindLine({
+        mergeEvents: session.mergeEvents,
+        lineId: "L0",
+        atIndex,
+      }).map((event) => event.id);
+
+    // Rewinding to the line's first frame reaches back through both — newest
+    // first, the only order the undo allows.
+    assert.deepStrictEqual(ids(0), ["M2", "M1"]);
+    // …to the frame it merged with L2 on, through that one only…
+    assert.deepStrictEqual(ids(1), ["M2"]);
+    // …and a rewind that lands after every merge disturbs none of them.
+    assert.deepStrictEqual(ids(2), []);
+    // An expired merge is never undone on the way: nothing describes the
+    // population it would put back.
+    expireMerges(session);
+    assert.deepStrictEqual(ids(0), []);
+  },
+
+  // The boundary, on the side the rejoin does NOT reach back past.
+  //
+  // Two lines that meet on a frame merge where they stand: `runRejoin` finds
+  // the survivor already there and moves nothing, so that trail entry is the
+  // MERGED line's own position — every participant walked to it. Rewinding the
+  // line back onto it therefore asks nothing of the rejoin, and the node ended
+  // up offering both "⏪⏪ undo the merge at ⟨B-prime⟩" and "⏪⏪ rewind L0 here
+  // — out of the merge at ⟨B-prime⟩", with no way to buy the second without
+  // the first (owner, 2026-09-13).
+  "a rewind to the frame a rejoin happened ON leaves the rejoin standing": () => {
+    const session = fakeSession();
+    const l0 = fakeLine(session, "L0");
+    const l1 = fakeLine(session, "L1");
+    l0.setCurrIdxTo(1); // Left.svg     — trail index 0
+    l0.setCurrIdxTo(3); // Barrier.svg  — trail index 1, where the two meet
+    l1.setCurrIdxTo(2);
+    l1.setCurrIdxTo(3);
+    session.lines.push(l0, l1);
+    const o = createOrchestrator(fakeTransport());
+    o.applyRecombine({
+      session,
+      lineIds: ["L0", "L1"],
+      connections: [],
+      frame: "Barrier.svg",
+    });
+    l0.setCurrIdxTo(4); // DONE.svg     — trail index 2, the merged line walks on
+
+    const ids = (atIndex) =>
+      mergesBehindLine({
+        mergeEvents: session.mergeEvents,
+        lineId: "L0",
+        lineUid: l0.uid,
+        atIndex,
+      }).map((event) => event.id);
+
+    // Back onto the rejoin frame: the merged line stood there, so it goes
+    // there whole and the rejoin is untouched.
+    assert.deepStrictEqual(ids(1), []);
+    // One frame further back is a moment the two were still separate.
+    assert.deepStrictEqual(ids(0), ["M1"]);
+
+    // …and the map is told the same, in the one number it compares against.
+    const [entry] = mergeRewindOptions({
+      mergeEvents: session.mergeEvents,
+      splitEvents: session.splitEvents,
+      lines: session.lines,
+    });
+    assert.strictEqual(entry.survivorRewindFloor, 1);
+  },
+
+  // The other shape, unchanged: a hold-until barrier release snapshots the
+  // survivor still PARKED on its own frame and advances it to the rejoin frame
+  // afterwards, so that entry is strictly pre-merge. Standing the merged line
+  // back on it would put the swallowed line's devices on a frame their route
+  // never touched — which is the whole of §8.2.
+  "a rewind to where a barrier release found the survivor still undoes it":
+    () => {
+      const session = fakeSession();
+      const l0 = fakeLine(session, "L0");
+      const l1 = fakeLine(session, "L1");
+      l0.setCurrIdxTo(1); // Left.svg    — parked here, trail index 0
+      l1.setCurrIdxTo(2);
+      session.lines.push(l0, l1);
+      const o = createOrchestrator(fakeTransport());
+      o.applyRecombine({
+        session,
+        lineIds: ["L0", "L1"],
+        connections: [],
+        frame: "Barrier.svg",
+      });
+      l0.setCurrIdxTo(3); // the release then advances it — trail index 1
+
+      const ids = (atIndex) =>
+        mergesBehindLine({
+          mergeEvents: session.mergeEvents,
+          lineId: "L0",
+          lineUid: l0.uid,
+          atIndex,
+        }).map((event) => event.id);
+
+      assert.deepStrictEqual(ids(0), ["M1"]);
+      assert.deepStrictEqual(ids(1), []);
+
+      const [entry] = mergeRewindOptions({
+        mergeEvents: session.mergeEvents,
+        splitEvents: session.splitEvents,
+        lines: session.lines,
+      });
+      // One PAST the recorded index, unlike the co-presence shape above.
+      assert.strictEqual(entry.survivorRewindFloor, 1);
+    },
+
+  // The same question asked of the whole room. Rewinding every line to a
+  // checkpoint BEHIND a rejoin used to leave the rejoin standing, so the room
+  // arrived at a barrier it had once crossed with three lines and only two
+  // were there (owner, 2026-09-11) — the room-scale version of the walk
+  // `lineRewind` has refused to make since 2026-09-05.
+  "a room rewind names the rejoins made since its checkpoint, newest first":
+    () => {
+      const session = fakeSession();
+      const l0 = fakeLine(session, "L0");
+      const l1 = fakeLine(session, "L1");
+      const l2 = fakeLine(session, "L2");
+      l0.setCurrIdxTo(1); // Left.svg    — the survivor's trail index 0
+      l1.setCurrIdxTo(2); // Right.svg
+      l2.setCurrIdxTo(2);
+      session.lines.push(l0, l1, l2);
+      const o = createOrchestrator(fakeTransport());
+      // Two rejoins on the way out of the group: L1 at Barrier, L2 at DONE.
+      o.applyRecombine({
+        session,
+        lineIds: ["L0", "L1"],
+        connections: [],
+        frame: "Barrier.svg",
+      });
+      l0.setCurrIdxTo(3); // Barrier.svg — trail index 1
+      o.applyRecombine({
+        session,
+        lineIds: ["L0", "L2"],
+        connections: [],
+        frame: "DONE.svg",
+      });
+      l0.setCurrIdxTo(4); // DONE.svg    — trail index 2
+
+      const groups = { LR: ["Left.svg", "Right.svg"], TAIL: ["DONE.svg"] };
+      const lines = session.lines.filter((line) => line.status !== "retired");
+      const behind = (group) =>
+        mergesBehindRoomRewind({
+          mergeEvents: session.mergeEvents,
+          lines,
+          plan: roomRewindPlan({
+            group,
+            groups,
+            lines: lines.map((line) => ({
+              id: line.id,
+              trail: line.history.slice(0, line.historyIndex + 1),
+            })),
+          }),
+        }).map((event) => event.id);
+
+      // Back to the group the room crossed while all three were separate: both
+      // rejoins come off, newest first — the only order the undo allows.
+      assert.deepStrictEqual(behind("LR"), ["M2", "M1"]);
+      // …and a checkpoint the room only reached after them disturbs neither.
+      assert.deepStrictEqual(behind("TAIL"), []);
+    },
+
+  // A fill landing is a guess, and a rejoin is too expensive to take off on
+  // one: the line never visited the group at all, so its own trail cannot say
+  // which side of the checkpoint its merges fall on.
+  "a line the room rewind places by fill keeps its own rejoins": () => {
+    const session = fakeSession();
+    const l0 = fakeLine(session, "L0");
+    const l1 = fakeLine(session, "L1");
+    const l2 = fakeLine(session, "L2");
+    l0.setCurrIdxTo(1); // Left.svg    — the only line that passes the group
+    l1.setCurrIdxTo(3); // Barrier.svg
+    l2.setCurrIdxTo(3);
+    session.lines.push(l0, l1, l2);
+    const o = createOrchestrator(fakeTransport());
+    o.applyRecombine({
+      session,
+      lineIds: ["L1", "L2"],
+      connections: [],
+      frame: "DONE.svg",
+    });
+    l1.setCurrIdxTo(4);
+
+    const groups = { LR: ["Left.svg", "Right.svg"] };
+    const lines = session.lines.filter((line) => line.status !== "retired");
+    const plan = roomRewindPlan({
+      group: "LR",
+      groups,
+      // Only L0 is populated, so only L0's trail decides the checkpoint —
+      // which is exactly how the room rewind asks the question.
+      checkpointLines: [{ id: "L0", trail: ["Left.svg"] }],
+      lines: lines.map((line) => ({
+        id: line.id,
+        trail: line.history.slice(0, line.historyIndex + 1),
+      })),
+    });
+    assert.strictEqual(
+      plan.lines.find((entry) => entry.lineId === "L1").source,
+      "fill",
+    );
+    assert.deepStrictEqual(
+      mergesBehindRoomRewind({
+        mergeEvents: session.mergeEvents,
+        lines,
+        plan,
+      }),
+      [],
+    );
+    // Left alone rather than ended: the map still offers its undo afterwards.
+    assert.strictEqual(session.mergeEvents[0].status, "active");
+  },
+
+  // The number is not the identity, in EITHER direction. A merge undo
+  // re-creates an absorbed line on the lowest free number when a fork has
+  // taken its own (`freeLineId`), so a line can walk on under a number no
+  // event of its own has ever named.
+  "the merges behind a line follow its route, not its number": () => {
+    const session = fakeSession();
+    const l0 = fakeLine(session, "L0");
+    const l1 = fakeLine(session, "L1");
+    l0.setCurrIdxTo(1); // Left.svg     — the survivor's trail index 0
+    l1.setCurrIdxTo(2);
+    session.lines.push(l0, l1);
+    const o = createOrchestrator(fakeTransport());
+    o.applyRecombine({
+      session,
+      lineIds: ["L0", "L1"],
+      connections: [],
+      frame: "Barrier.svg",
+    });
+    const route = l0.uid;
+
+    // The room moves on: this route is swallowed and later restored, coming
+    // back on another number because a fork is holding "L0" now.
+    l0.id = "L2";
+    const impostor = fakeLine(session, "L0");
+    impostor.setCurrIdxTo(1);
+    session.lines.push(impostor);
+
+    const ids = (line) =>
+      mergesBehindLine({
+        mergeEvents: session.mergeEvents,
+        lineId: line.id,
+        lineUid: line.uid,
+        atIndex: 0,
+      }).map((event) => event.id);
+
+    // Rewinding the ROUTE still reaches back through its own merge — keying on
+    // the number missed it, and the rewind then walked the line back past a
+    // rejoin it never undid, standing L1's devices on a frame L1 never took.
+    assert.deepStrictEqual(ids(l0), ["M1"]);
+    // …and the fork that merely inherited the number is untouched by it.
+    assert.deepStrictEqual(ids(impostor), []);
+  },
+
+  // A spectator follows the route it was watching, but it is not population —
+  // so it cannot hold a restored line ACTIVE on its own (decision #12).
+  // Counting one did: the line read active with zero players, so #11 never
+  // released the waits on it and #13 never fast-forwarded it, and the next
+  // real joiner landed on a frozen position instead of the front of the room.
+  "a rider does not keep a restored line out of dormancy": () => {
+    const session = fakeSession();
+    const l0 = fakeLine(session, "L0");
+    const l1 = fakeLine(session, "L1");
+    l0.setCurrIdxTo(1);
+    l1.setCurrIdxTo(2);
+    session.lines.push(l0, l1);
+    session.deviceRegistry = { dA: "L0", r1: "L1" };
+    const connections = [
+      { sessionId: "s1", lineId: "L0", deviceId: "dA", isStaff: true },
+      // The only device on L1 is a spectator.
+      { sessionId: "s1", lineId: "L1", deviceId: "r1", isStaff: false },
+    ];
+    const o = createOrchestrator(fakeTransport());
+    o.applyRecombine({
+      session,
+      lineIds: ["L0", "L1"],
+      connections,
+      frame: "Barrier.svg",
+    });
+
+    const result = rewindMergeStructure({
+      session,
+      eventId: "M1",
+      connections,
+      now: () => 7,
+    });
+    assert.strictEqual(result.available, true);
+    const restored = (id) => session.lines.find((line) => line.id === id);
+    assert.strictEqual(restored("L0").status, "active");
+    // The rider went back to the route it was following…
+    assert.strictEqual(
+      connections.find((conn) => conn.deviceId === "r1").lineId,
+      "L1",
+    );
+    // …and the line it is watching is still dormant, because nobody plays it.
+    assert.strictEqual(restored("L1").status, "dormant");
+  },
+
+  // Same rule, the split side: the object that carries the parent on is found
+  // by route too, or a cascading undo commits its chain and then refuses the
+  // step it was for — leaving the room half-walked back.
+  "a split undo finds its parent by route when the number moved on": () => {
+    const session = fakeSession();
+    const root = fakeLine(session, "L0");
+    root.setCurrIdxTo(0);
+    session.lines.push(root);
+    const o = createOrchestrator(fakeTransport());
+    const { children } = o.applySplit({
+      session,
+      parentLine: root,
+      childFrameIndices: [1, 2],
+      members: [],
+    });
+    const carriesOn = children[0]; // kept the parent's number, per §6
+
+    // The continuing branch is swallowed by a later rejoin and restored on a
+    // different number; an unrelated fork now holds "L0".
+    carriesOn.id = "L3";
+    const impostor = fakeLine(session, "L0");
+    session.lines.push(impostor);
+
+    const plan = splitRewindPlan({
+      splitEvents: session.splitEvents,
+      lines: session.lines,
+      eventId: session.splitEvents[0].id,
+    });
+    assert.strictEqual(plan.available, true);
+    // The route, not the number — and emphatically not the impostor, whose
+    // restore would have overwritten a line the operator is watching.
+    assert.strictEqual(plan.parent, carriesOn);
+    assert.notStrictEqual(plan.parent, impostor);
+  },
+
+  // …but the operator undoes the CONVERGENCE, not the pairing (owner,
+  // 2026-09-05): three lines meeting on one frame is one thing they watched
+  // happen, so one click puts all three back.
+  "a convergence groups its pair-merges, newest first": () => {
+    const session = fakeSession();
+    const l0 = fakeLine(session, "L0");
+    const l1 = fakeLine(session, "L1");
+    const l2 = fakeLine(session, "L2");
+    l0.setCurrIdxTo(1); // Left.svg
+    l1.setCurrIdxTo(2); // Right.svg
+    l2.setCurrIdxTo(2);
+    session.lines.push(l0, l1, l2);
+    const o = createOrchestrator(fakeTransport());
+
+    // Co-presence: the lines walk ONTO DONE.svg, two together and one late.
+    l0.setCurrIdxTo(4);
+    l1.setCurrIdxTo(4);
+    o.applyRecombine({
+      session,
+      lineIds: ["L0", "L1"],
+      connections: [],
+      frame: "DONE.svg",
+    });
+    l2.setCurrIdxTo(4);
+    o.applyRecombine({
+      session,
+      lineIds: ["L0", "L2"],
+      connections: [],
+      frame: "DONE.svg",
+    });
+
+    const ids = (eventId) =>
+      mergeConvergenceEvents({
+        mergeEvents: session.mergeEvents,
+        eventId,
+      }).map((event) => event.id);
+    // Either event names the whole passage, in the order it undoes.
+    assert.deepStrictEqual(ids("M2"), ["M2", "M1"]);
+    assert.deepStrictEqual(ids("M1"), ["M2", "M1"]);
+
+    // The map shows ONE entry for it: the newest, naming every line that comes
+    // back out — the older is folded into it rather than offered again.
+    const options = mergeRewindOptions({
+      mergeEvents: session.mergeEvents,
+      splitEvents: session.splitEvents,
+      lines: session.lines,
+    });
+    const newest = options.find((entry) => entry.eventId === "M2");
+    assert.strictEqual(newest.available, true);
+    assert.strictEqual(newest.partOfConvergence, undefined);
+    assert.deepStrictEqual(newest.restoredLineIds, ["L0", "L1", "L2"]);
+    assert.deepStrictEqual(newest.cascade, []);
+    const older = options.find((entry) => entry.eventId === "M1");
+    // Reachable in its own right now — but folded into the entry above, so the
+    // menu still shows the passage once, and its own `cascade` is empty
+    // because the events it would walk off ARE the rest of the passage.
+    assert.strictEqual(older.available, true);
+    assert.strictEqual(older.partOfConvergence, true);
+    assert.deepStrictEqual(older.cascade, []);
+
+    // A LATER pass over the same frame is its own convergence: the survivor
+    // left and came back, so the trail between the two says so.
+    l0.setCurrIdxTo(1);
+    l0.setCurrIdxTo(4);
+    const l3 = fakeLine(session, "L3");
+    l3.setCurrIdxTo(4);
+    session.lines.push(l3);
+    o.applyRecombine({
+      session,
+      lineIds: ["L0", "L3"],
+      connections: [],
+      frame: "DONE.svg",
+    });
+    assert.deepStrictEqual(ids("M3"), ["M3"]);
+    assert.deepStrictEqual(ids("M2"), ["M2", "M1"]);
+  },
+
+  // Numbers recycle, so "same survivor" has to mean the same ROUTE. Two
+  // passages over one frame whose survivors happen to share a number — and
+  // whose trails `stayedAtRejoin` cannot tell apart, both being the rejoin
+  // frame and nothing else — used to read as ONE convergence. The walk then
+  // committed the newer event and refused the older with
+  // `survivor-unavailable`, leaving the room half-separated.
+  "a convergence is grouped by the survivor's uid, not its number": () => {
+    const session = fakeSession();
+    const l0 = fakeLine(session, "L0");
+    const l1 = fakeLine(session, "L1");
+    l0.setCurrIdxTo(4); // DONE.svg — trail is the rejoin frame and nothing else
+    l1.setCurrIdxTo(4);
+    session.lines.push(l0, l1);
+    const o = createOrchestrator(fakeTransport());
+    o.applyRecombine({
+      session,
+      lineIds: ["L0", "L1"],
+      connections: [],
+      frame: "DONE.svg",
+    });
+
+    // The number comes back into circulation on a different route (a fork
+    // mints a fresh uid for the line that carries on), and that one merges on
+    // the same frame with the same one-entry trail.
+    session.lines = session.lines.filter((line) => line.id !== "L0");
+    const reborn = fakeLine(session, "L0");
+    const l2 = fakeLine(session, "L2");
+    reborn.setCurrIdxTo(4);
+    l2.setCurrIdxTo(4);
+    session.lines.push(reborn, l2);
+    o.applyRecombine({
+      session,
+      lineIds: ["L0", "L2"],
+      connections: [],
+      frame: "DONE.svg",
+    });
+
+    const ids = (eventId) =>
+      mergeConvergenceEvents({
+        mergeEvents: session.mergeEvents,
+        eventId,
+      }).map((event) => event.id);
+    assert.notStrictEqual(
+      session.mergeEvents[0].participants[0].lineUid,
+      session.mergeEvents[1].participants[0].lineUid,
+    );
+    assert.deepStrictEqual(ids("M2"), ["M2"]);
+    assert.deepStrictEqual(ids("M1"), ["M1"]);
+  },
+
+  // Two rejoins on DIFFERENT frames are two convergences, and the older one is
+  // `superseded` — which is what the map's ghost routes are gated on, so this
+  // pins the two answers apart (2026-09-12). The ghosts read the OPTION, which
+  // says "one click still brings these lines back, walking the newer rejoin off
+  // on the way"; reading the PLAN instead drew no route at all for the line the
+  // older rejoin swallowed, while the newer rejoin's routes were greyed as
+  // usual — an operator who had watched three lines converge saw two.
+  "an older rejoin is superseded but still offered": () => {
+    const session = fakeSession();
+    const l0 = fakeLine(session, "L0");
+    const l1 = fakeLine(session, "L1");
+    const l2 = fakeLine(session, "L2");
+    l0.setCurrIdxTo(1); // Left.svg
+    l1.setCurrIdxTo(2); // Right.svg
+    l2.setCurrIdxTo(2);
+    session.lines.push(l0, l1, l2);
+    const o = createOrchestrator(fakeTransport());
+
+    // L1 rejoins L0 at Barrier.svg…
+    l0.setCurrIdxTo(3);
+    l1.setCurrIdxTo(3);
+    o.applyRecombine({
+      session,
+      lineIds: ["L0", "L1"],
+      connections: [],
+      frame: "Barrier.svg",
+    });
+    // …and L2 catches them up a frame later, which is its own convergence.
+    l0.setCurrIdxTo(4);
+    l2.setCurrIdxTo(4);
+    o.applyRecombine({
+      session,
+      lineIds: ["L0", "L2"],
+      connections: [],
+      frame: "DONE.svg",
+    });
+    assert.deepStrictEqual(
+      mergeConvergenceEvents({
+        mergeEvents: session.mergeEvents,
+        eventId: "M1",
+      }).map((event) => event.id),
+      ["M1"],
+    );
+
+    // On its own the older rejoin cannot come off: the newer one stands on it.
+    const plan = mergeRewindPlan({
+      mergeEvents: session.mergeEvents,
+      splitEvents: session.splitEvents,
+      lines: session.lines,
+      eventId: "M1",
+    });
+    assert.strictEqual(plan.available, false);
+    assert.strictEqual(plan.reason, "superseded");
+
+    // The map still offers it, because the undo takes the newer rejoin off
+    // first — and names the line it gives back, whose route the ghosts draw.
+    const options = mergeRewindOptions({
+      mergeEvents: session.mergeEvents,
+      splitEvents: session.splitEvents,
+      lines: session.lines,
+    });
+    const older = options.find((entry) => entry.eventId === "M1");
+    assert.strictEqual(older.available, true);
+    assert.strictEqual(older.partOfConvergence, undefined);
+    assert.deepStrictEqual(older.restoredLineIds, ["L0", "L1"]);
+    assert.deepStrictEqual(
+      older.cascade.map((step) => step.eventId),
+      ["M2"],
+    );
+    const newer = options.find((entry) => entry.eventId === "M2");
+    assert.strictEqual(newer.available, true);
+    assert.deepStrictEqual(newer.restoredLineIds, ["L0", "L2"]);
+  },
+
+  "a barrier release and a late arrival on the same frame are one convergence":
+    () => {
+      const session = fakeSession();
+      const l0 = fakeLine(session, "L0");
+      const l1 = fakeLine(session, "L1");
+      const l2 = fakeLine(session, "L2");
+      // The two barrier lines are still PARKED on their own frames when they
+      // merge, and the survivor steps onto the rejoin frame afterwards; the
+      // straggler then walks onto it and merges there. The survivor's trail
+      // therefore grows by exactly the rejoin frame between the two events,
+      // which is what says the meeting never broke up.
+      l0.setCurrIdxTo(1);
+      l0.setCurrIdxTo(3); // Barrier.svg
+      l1.setCurrIdxTo(2);
+      l1.setCurrIdxTo(3);
+      l2.setCurrIdxTo(2);
+      session.lines.push(l0, l1, l2);
+      const o = createOrchestrator(fakeTransport());
+
+      o.applyRecombine({
+        session,
+        lineIds: ["L0", "L1"],
+        connections: [],
+        frame: "DONE.svg",
+      });
+      l0.setCurrIdxTo(4);
+      l2.setCurrIdxTo(4);
+      o.applyRecombine({
+        session,
+        lineIds: ["L0", "L2"],
+        connections: [],
+        frame: "DONE.svg",
+      });
+
+      assert.deepStrictEqual(
+        mergeConvergenceEvents({
+          mergeEvents: session.mergeEvents,
+          eventId: "M2",
+        }).map((event) => event.id),
+        ["M2", "M1"],
+      );
+      // And undoing it whole, newest-first, puts every line back on the node it
+      // came into the meeting from.
+      assert.strictEqual(
+        rewindMergeStructure({
+          session,
+          eventId: "M2",
+          connections: [],
+          createLine: fakeLine,
+        }).available,
+        true,
+      );
+      assert.strictEqual(
+        rewindMergeStructure({
+          session,
+          eventId: "M1",
+          connections: [],
+          createLine: fakeLine,
+        }).available,
+        true,
+      );
+      const at = (id) => session.lines.find((line) => line.id === id).currentIndex;
+      assert.strictEqual(l0.currentIndex, 3); // Barrier.svg
+      assert.strictEqual(at("L1"), 3);
+      assert.strictEqual(at("L2"), 2); // Right.svg — it stepped back
+    },
+
+  // ── the cascade: an old merge point is still a place to go back to ───────
+  "a merge stays undoable behind a later fork and a later rejoin (2026-09-06)":
+    () => {
+      const session = fakeSession();
+      const l0 = fakeLine(session, "L0");
+      const l1 = fakeLine(session, "L1");
+      l0.setCurrIdxTo(1); // Left.svg
+      l1.setCurrIdxTo(2); // Right.svg
+      session.lines.push(l0, l1);
+      const o = createOrchestrator(fakeTransport());
+
+      // The shape the owner hit on "-test- Merge rewind": MERGE1, then a fork,
+      // then MERGE2. The fork used to END MERGE1's undo, so an hour into an
+      // evening the only reachable merge point was the newest one.
+      o.applyRecombine({
+        session,
+        lineIds: ["L0", "L1"],
+        connections: [],
+        frame: "Barrier.svg",
+      });
+      l0.setCurrIdxTo(3);
+      const forked = o.applySplit({
+        session,
+        parentLine: l0,
+        childFrameIndices: [1, 2],
+        members: [],
+      });
+      assert.deepStrictEqual(
+        forked.children.map((line) => line.id),
+        ["L0", "L1"],
+      );
+      forked.children[0].setCurrIdxTo(4);
+      forked.children[1].setCurrIdxTo(4);
+      o.applyRecombine({
+        session,
+        lineIds: ["L0", "L1"],
+        connections: [],
+        frame: "DONE.svg",
+      });
+
+      // Reaching back for MERGE1 names both later events, newest first.
+      const chain = structuralRewindChain({
+        session,
+        kind: "merge",
+        eventId: "M1",
+      });
+      assert.strictEqual(chain.available, true);
+      assert.deepStrictEqual(
+        chain.chain.map((entry) => `${entry.kind}:${entry.event.id}`),
+        ["merge:M2", "split:S1"],
+      );
+
+      // Walking them off in that order leaves MERGE1 an ordinary single step…
+      assert.strictEqual(
+        rewindMergeStructure({
+          session,
+          eventId: "M2",
+          connections: [],
+          createLine: fakeLine,
+        }).available,
+        true,
+      );
+      assert.strictEqual(
+        rewindSplitStructure({ session, eventId: "S1", connections: [] })
+          .available,
+        true,
+      );
+      const undone = rewindMergeStructure({
+        session,
+        eventId: "M1",
+        connections: [],
+        createLine: fakeLine,
+      });
+      assert.strictEqual(undone.available, true);
+
+      // …and the room stands where it did before the first rejoin: each line
+      // on the node it came into it from, carrying its own route.
+      const back = (id) => session.lines.find((line) => line.id === id);
+      assert.strictEqual(back("L0").currentIndex, 1);
+      assert.deepStrictEqual(back("L0").history, ["Left.svg"]);
+      assert.strictEqual(back("L1").currentIndex, 2);
+      assert.deepStrictEqual(back("L1").history, ["Right.svg"]);
+      // The same ROUTE came back, not just the same number.
+      assert.strictEqual(back("L1").uid, l1.uid);
+      assert.strictEqual(back("L0").uid, l0.uid);
+    },
+
+  "a recycled number does not drag an unrelated branch into the cascade": () => {
+    const session = fakeSession();
+    const root = fakeLine(session, "L0");
+    root.setCurrIdxTo(0);
+    session.lines.push(root);
+    const o = createOrchestrator(fakeTransport());
+
+    // L0 → {L0, L1}; L1 → {L1, L2}; L1 and L2 then rejoin, freeing L2.
+    o.applySplit({
+      session,
+      parentLine: root,
+      childFrameIndices: [1, 2],
+      members: [],
+    });
+    const l1 = session.lines.find((line) => line.id === "L1");
+    l1.setCurrIdxTo(3);
+    o.applySplit({
+      session,
+      parentLine: l1,
+      childFrameIndices: [3, 4],
+      members: [],
+    });
+    o.applyRecombine({
+      session,
+      lineIds: ["L1", "L2"],
+      connections: [],
+      frame: "Barrier.svg",
+    });
+    assert.strictEqual(o.allocLineId(session), "L2");
+
+    // …and an UNRELATED fork of L0 is handed that number.
+    const l0 = session.lines.find((line) => line.id === "L0");
+    l0.setCurrIdxTo(1);
+    o.applySplit({
+      session,
+      parentLine: l0,
+      childFrameIndices: [1, 2],
+      members: [],
+    });
+    assert.deepStrictEqual(session.splitEvents[2].childLineIds, ["L0", "L2"]);
+
+    // The merge undo is untouched by it: the L2 walking the canvas now is a
+    // different route from the L2 it swallowed, so the cascade leaves that
+    // branch alone instead of collapsing a fork the operator is watching.
+    const chain = structuralRewindChain({
+      session,
+      kind: "merge",
+      eventId: "M1",
+    });
+    assert.strictEqual(chain.available, true);
+    assert.deepStrictEqual(chain.chain, []);
+  },
+
+  "the devices that joined after a merge are spread across the lines coming back":
+    () => {
+      const session = fakeSession();
+      const l0 = fakeLine(session, "L0");
+      const l1 = fakeLine(session, "L1");
+      l0.setCurrIdxTo(1);
+      l1.setCurrIdxTo(2);
+      session.lines.push(l0, l1);
+      session.deviceRegistry = { dA: "L0", dB: "L1" };
+      const connections = [
+        { sessionId: "s1", lineId: "L0", deviceId: "dA", isStaff: true },
+        { sessionId: "s1", lineId: "L1", deviceId: "dB", isStaff: true },
+      ];
+      const o = createOrchestrator(fakeTransport());
+      o.applyRecombine({
+        session,
+        lineIds: ["L0", "L1"],
+        connections,
+        frame: "Barrier.svg",
+      });
+
+      // Four performers, a spectator and an offline device join the merged
+      // line — none of them has a pre-merge line of its own.
+      for (const id of ["d1", "d2", "d3", "d4"]) {
+        connections.push({
+          sessionId: "s1",
+          lineId: "L0",
+          deviceId: id,
+          isStaff: true,
+        });
+        session.deviceRegistry[id] = "L0";
+      }
+      connections.push({
+        sessionId: "s1",
+        lineId: "L0",
+        deviceId: "r1",
+        isStaff: false,
+      });
+      session.deviceRegistry.r1 = "L0";
+      session.deviceRegistry.dOff = "L0";
+
+      assert.strictEqual(
+        rewindMergeStructure({
+          session,
+          eventId: "M1",
+          connections,
+          createLine: fakeLine,
+        }).available,
+        true,
+      );
+
+      // Balanced, not dumped on the survivor (owner, 2026-09-06).
+      const on = (id) =>
+        connections.filter((conn) => conn.lineId === id && conn.isStaff).length;
+      assert.strictEqual(on("L0"), 3); // dA + two of the four
+      assert.strictEqual(on("L1"), 3); // dB + two of the four
+      // Each moved device's registry entry follows its connection.
+      for (const conn of connections) {
+        if (conn.isStaff) {
+          assert.strictEqual(session.deviceRegistry[conn.deviceId], conn.lineId);
+        }
+      }
+      // A spectator is never population (decision #12), so it stays put…
+      assert.strictEqual(
+        connections.find((conn) => conn.deviceId === "r1").lineId,
+        "L0",
+      );
+      // …and an offline latecomer is swept like an absent performer at a split.
+      assert.ok(["L0", "L1"].includes(session.deviceRegistry.dOff));
+    },
+
+  // A convergence undoes in PAIRS, so balancing inside each event in turn spent
+  // the latecomers before the last line was back: three over three lines came
+  // out 2/1/3 (browser-verified, 2026-09-09) while the confirm promised them
+  // "spread evenly" — the first step could only see two of the three
+  // destinations. The runtime re-runs the spread over the whole passage.
+  "a convergence's latecomers are balanced over the whole passage": () => {
+    const session = fakeSession();
+    const l0 = fakeLine(session, "L0");
+    const l1 = fakeLine(session, "L1");
+    const l2 = fakeLine(session, "L2");
+    session.lines.push(l0, l1, l2);
+    // Where a pair-by-pair walk leaves the room: the three snapshot devices are
+    // home, but the latecomers went 1 / 0 / 2 because L1 was not back yet when
+    // the first step spent two of them.
+    session.deviceRegistry = {
+      dA: "L0",
+      dB: "L1",
+      dC: "L2",
+      x1: "L0",
+      x2: "L2",
+      x3: "L2",
+    };
+    const connections = Object.entries(session.deviceRegistry).map(
+      ([deviceId, lineId]) => ({
+        sessionId: "s1",
+        lineId,
+        deviceId,
+        isStaff: true,
+      }),
+    );
+
+    const { moved } = spreadMergeLatecomers({
+      session,
+      lines: [l0, l1, l2],
+      knownDeviceIds: new Set(["dA", "dB", "dC"]),
+      connections,
+    });
+
+    const on = (id) => connections.filter((conn) => conn.lineId === id).length;
+    assert.strictEqual(on("L0"), 2);
+    assert.strictEqual(on("L1"), 2);
+    assert.strictEqual(on("L2"), 2);
+    // The devices a snapshot named are never moved — they are home already.
+    for (const deviceId of ["dA", "dB", "dC"]) {
+      assert.ok(!moved.some((entry) => entry.conn.deviceId === deviceId));
+    }
+    // Registry follows the connection, offline sweep included.
+    for (const conn of connections) {
+      assert.strictEqual(session.deviceRegistry[conn.deviceId], conn.lineId);
+    }
+    // Everyone landed on something, so nothing is dormant.
+    for (const line of [l0, l1, l2]) {
+      assert.strictEqual(line.status, "active");
+    }
+  },
+
+  // The spread re-assigns every latecomer from scratch, so its answer is one
+  // CANONICAL arrangement rather than "whatever is already even" — which is
+  // what makes running it again over a whole convergence safe. Asked twice, the
+  // second pass must move nobody: for a merge that was a single event, where
+  // `rewindMergeStructure` has already produced that arrangement, the runtime's
+  // repeat is exactly this second pass.
+  "the latecomer spread settles: a second pass moves nobody": () => {
+    const session = fakeSession();
+    const l0 = fakeLine(session, "L0");
+    const l1 = fakeLine(session, "L1");
+    session.lines.push(l0, l1);
+    session.deviceRegistry = { dA: "L0", dB: "L1", x1: "L0", x2: "L0" };
+    const connections = Object.entries(session.deviceRegistry).map(
+      ([deviceId, lineId]) => ({
+        sessionId: "s1",
+        lineId,
+        deviceId,
+        isStaff: true,
+      }),
+    );
+    const args = {
+      session,
+      lines: [l0, l1],
+      knownDeviceIds: new Set(["dA", "dB"]),
+      connections,
+    };
+
+    const first = spreadMergeLatecomers(args);
+    assert.ok(first.moved.length > 0); // x2 had to come off L0
+    const settled = connections.map((conn) => conn.lineId);
+
+    const second = spreadMergeLatecomers(args);
+    assert.deepStrictEqual(second.moved, []);
+    assert.deepStrictEqual(
+      connections.map((conn) => conn.lineId),
+      settled,
+    );
+  },
+
+  // A spectator is never population (decision #12): it is not spread, and it
+  // cannot hold a line active on its own.
+  "the latecomer spread leaves riders where they are, and never counts them":
+    () => {
+      const session = fakeSession();
+      const l0 = fakeLine(session, "L0");
+      const l1 = fakeLine(session, "L1");
+      session.lines.push(l0, l1);
+      session.deviceRegistry = { dA: "L0", r1: "L0", r2: "L0" };
+      const connections = [
+        { sessionId: "s1", lineId: "L0", deviceId: "dA", isStaff: true },
+        { sessionId: "s1", lineId: "L0", deviceId: "r1", isStaff: false },
+        { sessionId: "s1", lineId: "L0", deviceId: "r2", isStaff: false },
+      ];
+
+      spreadMergeLatecomers({
+        session,
+        lines: [l0, l1],
+        knownDeviceIds: new Set(["dA", "r1", "r2"]),
+        connections,
+      });
+
+      for (const conn of connections) {
+        assert.strictEqual(conn.lineId, "L0");
+      }
+      assert.strictEqual(l0.status, "active");
+      // Nobody came back to L1 — riders could not have made it active anyway.
+      assert.strictEqual(l1.status, "dormant");
+    },
+
+  "undoing a merge re-opens the split undo it blocked": () => {
+    const session = fakeSession();
+    const root = fakeLine(session, "L0");
+    root.setCurrIdxTo(0);
+    session.lines.push(root);
+    const o = createOrchestrator(fakeTransport());
+    const top = o.applySplit({
+      session,
+      parentLine: root,
+      childFrameIndices: [1, 2],
+      members: [],
+    });
+    const nestedParent = top.children[0];
+    nestedParent.setCurrIdxTo(3);
+    o.applySplit({
+      session,
+      parentLine: nestedParent,
+      childFrameIndices: [3, 4],
+      members: [],
+    });
+
+    // L1 (outside S2) merges with L0 (inside it): S2 is blocked while the two
+    // populations are one line.
+    o.applyRecombine({
+      session,
+      lineIds: ["L0", "L1"],
+      connections: [],
+      frame: "Barrier.svg",
+    });
+    assert.strictEqual(session.splitEvents[1].blockedByMerge, true);
+
+    assert.strictEqual(
+      rewindMergeStructure({
+        session,
+        eventId: "M1",
+        connections: [],
+        createLine: fakeLine,
+      }).available,
+      true,
+    );
+    // They are separable again, so the split undo comes back with them.
+    assert.strictEqual(session.splitEvents[1].blockedByMerge, false);
+    assert.strictEqual(
+      splitRewindPlan({
+        splitEvents: session.splitEvents,
+        lines: session.lines,
+        eventId: "S2",
+      }).available,
+      true,
+    );
+  },
+
+  // The map spent 2026-09-07 learning that a button which always refuses is
+  // worse than a note saying why there is none, and the split side had one
+  // left: `splitRewindPlan` answers about this ONE step and never sees the
+  // chain, so a split whose own collapse is fine but which has an expired
+  // event standing on it was published `available` and bought
+  // `blocked-by-expired` on the click. After a room checkpoint rewind that was
+  // the only affordance left on the fork, so the operator's last apparent
+  // route back was a dead one.
+  "a split with an expired merge standing on it is not offered": () => {
+    const session = fakeSession();
+    const root = fakeLine(session, "L0");
+    root.setCurrIdxTo(0);
+    session.lines.push(root);
+    const o = createOrchestrator(fakeTransport());
+    o.applySplit({
+      session,
+      parentLine: root,
+      childFrameIndices: [1, 2],
+      members: [],
+    });
+    // The children come back together, so the split's own collapse is fine…
+    o.applyRecombine({
+      session,
+      lineIds: ["L0", "L1"],
+      connections: [],
+      frame: "Barrier.svg",
+    });
+    const beforeExpiry = splitRewindOptions({
+      splitEvents: session.splitEvents,
+      mergeEvents: session.mergeEvents,
+      lines: session.lines,
+    }).find((entry) => entry.eventId === "S1");
+    assert.strictEqual(beforeExpiry.available, true);
+
+    // …until the merge in between is expired, which no walk can take off. The
+    // step is still plan-available on its own, so the chain is the only thing
+    // that knows, and the reason has to come from it.
+    expireMerges(session);
+    const afterExpiry = splitRewindOptions({
+      splitEvents: session.splitEvents,
+      mergeEvents: session.mergeEvents,
+      lines: session.lines,
+    }).find((entry) => entry.eventId === "S1");
+    assert.strictEqual(afterExpiry.available, false);
+    assert.strictEqual(afterExpiry.reason, "blocked-by-expired");
+    assert.deepStrictEqual(afterExpiry.cascade, []);
   },
 
   // ── applyRecombine (fake transport) ─────────────────────────────────────
@@ -938,14 +2832,125 @@ module.exports = {
         event: session.splitEvents[1],
       },
     );
+    // The single-step plan still refuses it — but the MENU offers it again,
+    // because the split undo cascades: the crossing merge comes off first and
+    // takes the block with it (§8.3, 2026-09-06). The projection has to be
+    // handed the merge events to see that.
     const options = splitRewindOptions({
       splitEvents: session.splitEvents,
+      mergeEvents: session.mergeEvents,
+      lines: session.lines,
+    });
+    const blocked = options.find((entry) => entry.eventId === "S2");
+    assert.strictEqual(blocked.available, true);
+    assert.strictEqual(blocked.reason, null);
+    assert.deepStrictEqual(
+      blocked.cascade.map((step) => [step.kind, step.eventId]),
+      [["merge", "M1"]],
+    );
+    // …and it describes the topology the collapse will actually act on: the
+    // children the cascade puts back, not the one merged line standing there
+    // now.
+    assert.deepStrictEqual(
+      blocked.descendantLineIds,
+      session.splitEvents[1].childLineIds,
+    );
+
+    // Expire the merge and the block is final: its undo can never run, so the
+    // mixing it did cannot be taken back.
+    expireMerges(session);
+    const afterExpiry = splitRewindOptions({
+      splitEvents: session.splitEvents,
+      mergeEvents: session.mergeEvents,
       lines: session.lines,
     });
     assert.strictEqual(
-      options.find((entry) => entry.eventId === "S2").reason,
+      afterExpiry.find((entry) => entry.eventId === "S2").available,
+      false,
+    );
+    assert.strictEqual(
+      afterExpiry.find((entry) => entry.eventId === "S2").reason,
       "mixed-merge",
     );
+  },
+
+  "a merge option names the survivor's uid, not just its number": () => {
+    const session = fakeSession();
+    const l0 = fakeLine(session, "L0");
+    const l1 = fakeLine(session, "L1");
+    l0.setCurrIdxTo(4);
+    l1.setCurrIdxTo(4);
+    session.lines.push(l0, l1);
+    const o = createOrchestrator(fakeTransport());
+    o.applyRecombine({
+      session,
+      lineIds: ["L0", "L1"],
+      connections: [],
+      frame: "DONE.svg",
+    });
+
+    const entry = mergeRewindOptions({
+      mergeEvents: session.mergeEvents,
+      splitEvents: session.splitEvents,
+      lines: session.lines,
+    })[0];
+    assert.strictEqual(entry.survivorLineId, "L0");
+    // The map compares this against the live line's own uid before warning
+    // that a per-line rewind reaches back through this rejoin — a later fork
+    // re-mints L0's identity, and the number alone cannot tell them apart.
+    assert.strictEqual(entry.survivorLineUid, l0.uid);
+    assert.ok(entry.survivorLineUid);
+  },
+
+  // A cascade repairs `superseded` (it takes the newer events off) and the
+  // `survivor-unavailable` that comes back with them — but not an event with
+  // nothing to separate, which is a property of the RECORD. Offering that on
+  // the strength of a cascade would commit the whole walk and then refuse the
+  // step it was for, leaving the room half-walked.
+  "a merge with nothing to separate is never offered, cascade or not": () => {
+    const mergeEvents = [
+      {
+        id: "M1",
+        seq: 1,
+        status: "active",
+        frame: "DONE.svg",
+        survivorLineId: "L0",
+        // One participant: whatever else happened, this cannot come apart.
+        participants: [
+          {
+            lineId: "L0",
+            lineUid: "uA",
+            history: ["A.svg", "DONE.svg"],
+            historyIndex: 1,
+            deviceIds: [],
+          },
+        ],
+      },
+      {
+        id: "M2",
+        seq: 2,
+        status: "active",
+        frame: "LATER.svg",
+        survivorLineId: "L0",
+        participants: [
+          { lineId: "L0", lineUid: "uA", history: [], historyIndex: 0 },
+          { lineId: "L1", lineUid: "uB", history: [], historyIndex: 0 },
+        ],
+      },
+    ];
+    const lines = [{ id: "L0", uid: "uA", status: "active" }];
+    const options = mergeRewindOptions({
+      mergeEvents,
+      splitEvents: [],
+      lines,
+    });
+    const first = options.find((o) => o.eventId === "M1");
+    // M2 stands on it, so the plan alone says "superseded" and a cascade
+    // exists — the separability test is what keeps the button off the menu.
+    assert.strictEqual(first.available, false);
+    assert.strictEqual(first.reason, "nothing-to-separate");
+    // The event that CAN come apart is unaffected.
+    assert.strictEqual(options.find((o) => o.eventId === "M2").available, true);
   },
 
   // ── full hybrid barrier→rejoin (split→3→barrier→rejoin) ─────────────────

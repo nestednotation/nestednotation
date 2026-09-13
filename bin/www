@@ -24,6 +24,7 @@ const {
   isSpectatorConn,
   smallestLineId,
   spectatorLandingLineId,
+  lineIdNum,
 } = require("../lib/session-lines/routing");
 // Session Lines: orchestration (split / barrier / rejoin / track-group). All of
 // this is inert unless session.hasSessionLines.
@@ -48,7 +49,6 @@ if (env == "development") {
     path: ".env.production",
   });
 }
-
 /**
  * Get port from environment and store in Express.
  */
@@ -255,7 +255,11 @@ function sendToLineAdmins(session, lineId, time, payload) {
     ...payload,
   };
   wsServer.connections.forEach(function each(conn) {
-    if (conn.sessionId === session.id && conn.lineId === lineId && conn.isAdmin) {
+    if (
+      conn.sessionId === session.id &&
+      conn.lineId === lineId &&
+      conn.isAdmin
+    ) {
       conn.sendUTF(JSON.stringify(obj));
     }
   });
@@ -366,9 +370,16 @@ function ensureLineAssignment(session, conn, deviceId) {
   // the line froze inside that same group).
   if (line.status === "dormant") {
     line.status = "active";
-    fastForwardRevivedLine(session, line).catch((e) =>
-      console.error("revival fast-forward error", e),
-    );
+    // Persisted here rather than left to the fast-forward: a revival that
+    // lands the line back where it froze (a score with no track groups, or no
+    // grouped arrival yet) moves nothing and therefore saved nothing, so the
+    // state file went on calling an occupied line dormant until the next
+    // unrelated write. It self-heals across a restart — the reconnecting
+    // device revives it again — but an operator reading saved state should not
+    // have to know that.
+    fastForwardRevivedLine(session, line)
+      .then(() => session.saveSessionStateToFile())
+      .catch((e) => console.error("revival fast-forward error", e));
   }
   // First device on a line (a revival, or the adoption of an empty split
   // child): if its frame's track group is still waiting on arrivals, the line
@@ -570,7 +581,9 @@ function recordArrival(session, line) {
   line._lastReachedRef = ref;
   // No holding running for this landing (holdDuration 0, a split-seeded
   // child, a sub entry…) ⇒ the frame's holding period is already over.
-  return orch.markReached(session.reachedTargets, ref, !line.isHolding) || becameDone;
+  return (
+    orch.markReached(session.reachedTargets, ref, !line.isHolding) || becameDone
+  );
 }
 
 // The line's holding period at its current frame ended (holding timer fired).
@@ -639,7 +652,9 @@ function isSubEndFrame(session, line) {
   const top = line.subStack[line.subStack.length - 1];
   const subInfo = session.subFrames && session.subFrames[top.score];
   const subGraph = subInfo && subInfo.graph;
-  return !!(subGraph && (subGraph.subEnd || {})[frameNameForLine(session, line)]);
+  return !!(
+    subGraph && (subGraph.subEnd || {})[frameNameForLine(session, line)]
+  );
 }
 
 // True when a line (on the main flow) sits on a session-split frame.
@@ -711,11 +726,29 @@ function splitDestinationPreview(session, line) {
   return splitDestinationsByConn(plan, assignment);
 }
 
+/**
+ * Is there anybody on this line to divide?
+ *
+ * POPULATION, not connections: a map tab is an observation tool and a rider is
+ * a spectator (decision #12), so neither makes a line something a split can
+ * act on.
+ */
+function lineHasPopulation(session, line) {
+  return (
+    populationLineConnections(wsServer.connections, session.id, line.id)
+      .length > 0
+  );
+}
+
 // Resolve a split: the choice window has closed on a split frame. The line
 // carries on down the first branch (keeping its number) and one new line is
 // spawned per further branch; distribute choosers + balance stragglers,
 // reassign connections, then let each child react to its landing frame.
-async function resolveSplit(session, line) {
+// `gestureId` groups the forks of ONE operator gesture: a track group's
+// release divides every populated line standing on a split frame, and the
+// operator watched one thing happen (`orch.splitGestureEvents`). Null — the
+// lone choice window closing below — is one fork and one gesture already.
+async function resolveSplit(session, line, gestureId = null) {
   const plan = splitPlanForLine(session, line);
   if (!plan) {
     return; // not a real split (validator should have caught this)
@@ -729,6 +762,7 @@ async function resolveSplit(session, line) {
     parentLine: line,
     childFrameIndices: plan.childFrameIndices,
     members: plan.members,
+    gestureId,
   });
 
   // Settle every device's destination marker on the child it ACTUALLY got,
@@ -1088,21 +1122,16 @@ function subTargetReachableFromStart(session, score, targetFrame) {
   }
   const startIdx = subStartIndex(sub.frameList);
   const startFrame = sub.frameList[startIdx];
-  return orch.canReachFrames(
-    sub.graph.frameLinks,
-    sub.frameList,
-    startFrame,
-    [targetFrame],
-  );
+  return orch.canReachFrames(sub.graph.frameLinks, sub.frameList, startFrame, [
+    targetFrame,
+  ]);
 }
 
 function mainCanReachAnySubStart(session, fromFrame, score) {
   const scoreLower = String(score || "").toLowerCase();
   const starts = Object.entries((session.graph || {}).subLinks || {})
     .filter(([, links]) =>
-      (links || []).some(
-        (l) => String(l.score).toLowerCase() === scoreLower,
-      ),
+      (links || []).some((l) => String(l.score).toLowerCase() === scoreLower),
     )
     .map(([frameName]) => frameName);
   return (
@@ -1186,9 +1215,7 @@ async function enterBarrier(session, line, frameName, targets) {
     session.reachedTargets,
     entry.targets,
   );
-  line.pendingHoldUntil = entry.targets.filter(
-    (t) => !covered.has(t),
-  );
+  line.pendingHoldUntil = entry.targets.filter((t) => !covered.has(t));
 
   sendToLine(session, line.id, 0, {
     m: MESSAGES.MSG_BARRIER_WAITING,
@@ -1277,7 +1304,8 @@ async function releaseBarrier(session, entry, parkedLines) {
   // rejoin-at="H,I") cannot be auto-advanced — the released line stays put and
   // votes its route; the merge then happens on arrival at the chosen target
   // (bare rejoin in afterLineArrived). No target behaves the same.
-  const rejoinList = entry.rejoinAll || (entry.rejoinAt ? [entry.rejoinAt] : []);
+  const rejoinList =
+    entry.rejoinAll || (entry.rejoinAt ? [entry.rejoinAt] : []);
   if (rejoinList.length === 1 && parkedLines.length > 0) {
     await runRejoin(session, parkedLines, rejoinList[0]);
   } else {
@@ -1302,6 +1330,7 @@ async function runRejoin(session, lines, rejoinFrameName) {
     session,
     lineIds,
     connections: wsServer.connections,
+    frame: rejoinFrameName,
   });
   if (!survivor) {
     return;
@@ -1444,9 +1473,7 @@ function rehomeRidersOffLine(session, line) {
     wsServer.connections,
     session.id,
   );
-  const target = targetId
-    ? session.lines.find((l) => l.id === targetId)
-    : null;
+  const target = targetId ? session.lines.find((l) => l.id === targetId) : null;
   if (!target || target.id === line.id) {
     return; // nothing active left in the room — leave the rider where it is
   }
@@ -1498,8 +1525,8 @@ async function finalizeAttrition(session, line) {
     return;
   }
   if (
-    populationLineConnections(wsServer.connections, session.id, line.id).length >
-    0
+    populationLineConnections(wsServer.connections, session.id, line.id)
+      .length > 0
   ) {
     return;
   }
@@ -1572,6 +1599,10 @@ function rewindLineSnapshot(line) {
   return {
     id: line.id,
     trail: mainTrailForLine(line),
+    // The forks this line is downstream of, so a room rewind can place it by
+    // the route it actually took when its own trail was truncated past the
+    // checkpoint (`orch.ancestorGroupOccurrence`, 2026-09-12).
+    splitAncestors: line.splitAncestors || [],
   };
 }
 
@@ -1664,8 +1695,7 @@ function notifyAdminsBarriers(session) {
   for (const [group, lines] of groupWaitParkedByGroup(session)) {
     barriers.push({
       frame: `group:${group == null ? "?" : group}`,
-      targets:
-        group == null ? [] : orch.groupFramesLower(session.graph, group),
+      targets: group == null ? [] : orch.groupFramesLower(session.graph, group),
       parked: lines.map((l) => l.id),
       // Who the group is still waiting on from OUTSIDE — the operator's
       // "force advance stragglers" targets. No `advanceTargets`: a group
@@ -1736,7 +1766,8 @@ async function forceReleaseBarrier(session, frameName) {
   if (groupRef != null || !frameName) {
     for (const [group, lines] of groupWaitParkedByGroup(session)) {
       const matches =
-        groupRef == null || (group == null ? groupRef === "?" : group === groupRef);
+        groupRef == null ||
+        (group == null ? groupRef === "?" : group === groupRef);
       if (matches) {
         await releaseGroupWaitLines(session, lines);
       }
@@ -1787,7 +1818,9 @@ function mainFlowFrameForLine(session, line) {
 function subOriginFrameForLine(session, line) {
   const saved = (line.savedHistories || [])[0];
   const name =
-    saved && Array.isArray(saved.history) ? saved.history[saved.historyIndex] : null;
+    saved && Array.isArray(saved.history)
+      ? saved.history[saved.historyIndex]
+      : null;
   if (name == null) {
     return null;
   }
@@ -1815,7 +1848,8 @@ function groupWaitState(session, group) {
     // as incoming again — so a line rewound behind the group replays through
     // it without waiting for the lines ahead. Trail truncation on rewind is
     // what revokes this for the rewound line itself.
-    hasPassed: (l) => mainTrailForLine(l).some((f) => groupSet.has(f.toLowerCase())),
+    hasPassed: (l) =>
+      mainTrailForLine(l).some((f) => groupSet.has(f.toLowerCase())),
     canReach: (l) =>
       orch.canReachFrames(
         session.graph.frameLinks,
@@ -2071,7 +2105,10 @@ function refreshStragglerNotices(session) {
     if (!entry || entry.parked.size === 0) {
       continue;
     }
-    for (const { lineId, target } of holdUntilStragglerTargets(session, entry)) {
+    for (const { lineId, target } of holdUntilStragglerTargets(
+      session,
+      entry,
+    )) {
       const line = session.lines.find((l) => l.id === lineId);
       const ref = line && reachedRefForLine(session, line);
       if (ref && ref.toLowerCase() === String(target || "").toLowerCase()) {
@@ -2907,6 +2944,12 @@ async function resolveGroupVoting(session, line) {
   });
   const { isStay } = orch.resolveGroupStay(tallies, () => Math.random());
 
+  // One id for however many forks this release makes (2026-09-12), so the map
+  // can offer the release as ONE undo instead of one per line — allocated
+  // lazily, because most releases fork nothing and an unused id would still
+  // be persisted.
+  let gestureId = null;
+
   for (const l of groupLines) {
     // A grouped SPLIT frame still divides its line when the group advances
     // (decided 2026-07-17): delegate to resolveSplit — choosers land on their
@@ -2915,8 +2958,16 @@ async function resolveGroupVoting(session, line) {
     // split like any other grouped line (falls through to the stay handling
     // below). Must run before this line's votes are cleared: resolveSplit
     // reads conn.currentVoteTo for the choices.
-    if (!isStay && isSplitFrame(session, l)) {
-      await resolveSplit(session, l);
+    // …but only when there is somebody on it to divide (2026-09-12). A
+    // grouped window opens for EVERY line in the group, empty ones included,
+    // so an unpopulated line parked on a grouped split frame used to divide
+    // nobody into two empty lines on every release — the room's line count
+    // doubling each time the group let go. Falling through instead treats it
+    // like any other unpopulated grouped line: it advances whole, on its
+    // default link, and stays one line.
+    if (!isStay && isSplitFrame(session, l) && lineHasPopulation(session, l)) {
+      if (!gestureId) gestureId = orch.allocSplitGestureId(session);
+      await resolveSplit(session, l, gestureId);
       continue;
     }
 
@@ -3032,7 +3083,10 @@ async function stopVotingForSession(session, line) {
 
   // Session Lines: a choice window closing on a split frame divides the line
   // instead of advancing it. (Gated — vanilla scores never reach this.)
-  if (isSplitFrame(session, line)) {
+  // Nobody on it ⇒ nothing to divide, and it advances whole instead — the same
+  // rule the grouped path applies, for the window a line can still be holding
+  // when its last device goes.
+  if (isSplitFrame(session, line) && lineHasPopulation(session, line)) {
     await resolveSplit(session, line);
     return;
   }
@@ -3197,141 +3251,235 @@ async function clearLinePhaseForRoomRewind(session, line) {
   });
 }
 
+//
+// Returns a refusal reason, or null when it ran. Every one of the returns below
+// used to be a bare `return`, so a click on a checkpoint the room had just
+// stopped sharing was answered with silence — indistinguishable from a bug, and
+// the more confusing because THIS is the rewind that expires merge undos.
+// Nothing has moved at any of them: the whole plan is resolved before the first
+// line is touched.
 async function roomRewind(session, group) {
   if (!session.hasSessionLines || !session.graph || !session.graph.groups) {
-    return;
+    return { refusal: "no-checkpoints", moved: false };
   }
-  const lines = nonRetiredLines(session);
-  const plan = orch.roomRewindPlan({
-    group,
-    groups: session.graph.groups,
-    checkpointLines: populatedRewindCheckpointLines(session, lines),
-    lines: lines.map(rewindLineSnapshot),
-  });
+  const groups = session.graph.groups;
+  let lines = nonRetiredLines(session);
+  // Whether this group IS a checkpoint is the MENU population's question, and
+  // it stays theirs after the rejoin undos below bring absorbed lines back: a
+  // line that merged in before ever reaching this group has no occurrence of it
+  // to pass, so re-asking the question of the restored room would turn the
+  // gesture into `not-a-checkpoint` half-way through. `roomRewindPlan` splits
+  // the two roles for exactly this reason — `checkpointLines` decide legality,
+  // `lines` are the ones placed: by their own trail where they have an
+  // occurrence, then by the route their forks recorded, and only then by fill.
+  const checkpointLines = populatedRewindCheckpointLines(session, lines);
+  const planFor = (currentLines) =>
+    orch.roomRewindPlan({
+      group,
+      groups,
+      checkpointLines,
+      lines: currentLines.map(rewindLineSnapshot),
+      // Read only for the lines whose own trail does not reach the checkpoint —
+      // the forks they came from say where their route crossed it.
+      splitEvents: session.splitEvents,
+    });
+  let plan = planFor(lines);
   if (!plan) {
-    return;
+    return { refusal: "not-a-checkpoint", moved: false };
   }
 
-  const byLineId = new Map(plan.lines.map((p) => [p.lineId, p]));
-  const landings = [];
-  for (const line of lines) {
-    const entry = byLineId.get(line.id);
-    if (!entry) {
-      return;
+  // The rejoins the room made SINCE this checkpoint come off first (owner,
+  // 2026-09-11: rewinding the ROOM from a merged node back to an older barrier
+  // arrived with two lines where the room had crossed that barrier with three).
+  // Repositioning across a rejoin without undoing it is the room-scale version
+  // of the walk `lineRewind` has refused to make since 2026-09-05: the barrier
+  // being returned to is a moment those lines were still separate, so landing
+  // there with one of them swallowed is a room the score never produced.
+  // `mergesBehindRoomRewind` measures SINCE in each survivor's own trail,
+  // against the frame this rewind is landing it on.
+  // …and the FORKS, for the mirror reason (2026-09-12). Undoing only the
+  // rejoins got half the rule: the room could still come back with MORE lines
+  // than it crossed the checkpoint with, because every split made since was
+  // left standing. When the checkpoint frame is itself a split frame — one
+  // carrying both `session-track-group` and `session-split` — that is not
+  // cosmetic: the rewind lands all of those extra lines back on it and the next
+  // group release forks every one of them, so each rewind-and-replay multiplied
+  // the room instead of restoring it.
+  const behind = [
+    ...orch
+      .mergesBehindRoomRewind({
+        mergeEvents: session.mergeEvents,
+        lines,
+        plan,
+      })
+      .map((event) => ({ kind: "merge", event })),
+    ...orch
+      .splitsBehindRoomRewind({
+        splitEvents: session.splitEvents,
+        groupFrames: orch.groupFramesLower(session.graph, group),
+      })
+      .map((event) => ({ kind: "split", event })),
+  ]
+    // One order for the whole room across BOTH kinds: a fork built on a rejoin
+    // has to come off before it. `seq` is the session-wide structural counter
+    // that exists for exactly this (`structuralEvents`).
+    .sort((a, b) => structuralOrder(b.event) - structuralOrder(a.event));
+  // Asked before anything moves, so a step that cannot come off costs the room
+  // nothing — this rewind's own rule is that the whole plan resolves first.
+  // Only a legacy `expired` event can answer no now that a room rewind expires
+  // nothing, and repositioning regardless would be the bug above, committed in
+  // silence.
+  for (const { kind, event } of behind) {
+    if (
+      !orch.structuralRewindChain({ session, kind, eventId: event.id })
+        .available
+    ) {
+      return {
+        refusal: kind === "split" ? "split-undo-refused" : "merge-undo-refused",
+        moved: false,
+      };
     }
-    const idx = session.listFilesInLowerCase.indexOf(
-      String(entry.frame).toLowerCase(),
-    );
-    if (idx < 0) {
-      return;
-    }
-    landings.push({
-      line,
-      index: idx,
-      frame: session.listFiles[idx],
-      source: entry.source,
-      historyIndex: entry.historyIndex,
-    });
   }
 
-  const landingHoldTargets = [];
-  const seenHoldTarget = new Set();
-  for (const landing of landings) {
-    for (const target of (session.graph.holdUntilTargets || {})[
-      landing.frame
-    ] || []) {
-      const key = String(target).toLowerCase();
-      if (!seenHoldTarget.has(key)) {
-        seenHoldTarget.add(key);
-        landingHoldTargets.push(target);
+  // One operator gesture, one display drive. The undos and the repositioning
+  // under them are steps of a single rewind, so every device is addressed once,
+  // at the end (`flushDisplayHold`) — the devices an undo hands back to a
+  // restored line included, which no MSG_SHOW of this function's could reach.
+  // Opened HERE, before a dive is unwound, because the drive decides each
+  // connection's message from the view it was in when the gesture began.
+  const hold = openDisplayHold(session);
+  let moved = false;
+  try {
+    for (const { kind, event } of behind) {
+      // A convergence undoes whole and a cascade takes its own dependants with
+      // it, so an event further down this list may already be gone by the time
+      // we reach it — the walk working, not a refusal.
+      if (event.status !== "active") {
+        continue;
+      }
+      const step =
+        kind === "split"
+          ? await splitRewind(session, event.id, event.frame)
+          : await mergeRewind(session, event.id, event.frame);
+      if (step.moved) moved = true;
+      if (!step.ok) {
+        // REFUSE rather than reposition anyway: a fork or rejoin still standing
+        // is exactly the room this rule exists to prevent, and `moved` carries
+        // whatever the earlier steps already committed.
+        return {
+          refusal:
+            kind === "split" ? "split-undo-refused" : "merge-undo-refused",
+          moved,
+        };
       }
     }
-  }
-
-  const parkedAt = new Map();
-  for (const landing of landings) {
-    const { line } = landing;
-    parkedAt.set(
-      line.id,
-      line.isBarrierWaiting || line.isGroupWaiting
-        ? frameNameForLine(session, line)
-        : null,
-    );
-    await clearLinePhaseForRoomRewind(session, line);
-    // Remember the dive before unwinding it. Popping subStack here only fixes
-    // the SERVER's idea of where the line is; the devices are still in sub
-    // view and need MSG_SUB_EXIT below to leave it.
-    landing.wasInSub = line.subStack.length > 0;
-    while (line.subStack.length > 0) {
-      line.exitSub();
-    }
-  }
-
-  orch.beginReachedGeneration(session, landingHoldTargets);
-
-  for (const { line, index, frame, source, historyIndex } of landings) {
-    const wasGroupParked = line.isGroupWaiting === true;
-    line.isGroupWaiting = false;
-    if (orch.unparkLine(session, line) || wasGroupParked) {
-      sendToLine(session, line.id, 0, {
-        m: MESSAGES.MSG_BARRIER_RELEASED,
-        frame: parkedAt.get(line.id),
-      });
-    }
-    line._lastReachedRef = null;
-    if (source === "history") {
-      line.historyIndex = historyIndex;
-    }
-    line.setCurrIdxTo(index);
-    recordArrival(session, line);
-
-    if (orch.groupOfFrame(session.graph, frame)) {
-      session.latestGroupArrival = { frame, at: Date.now() };
-    }
-  }
-
-  await tryReleaseBarriers(session);
-  await tryReleaseGroupWaits(session);
-  await session.saveSessionStateToFile();
-  notifyAdminsBarriers(session);
-  pushAdminHistory(session);
-  updateNumberOfConnectionForSession(session);
-
-  // A line dragged out of a sub-score needs MSG_SUB_EXIT, not a bare MSG_SHOW
-  // — the same shape forceAdvanceStragglers uses. Its devices still hold the
-  // SUB's injected frame list and `frameContext`, so the main-flow index below
-  // resolves to no frame there: the display goes blank on a stale frame and the
-  // audio player throws on the unresolvable id. Sent even while paused — the
-  // stale sub context must not outlive the move, or the eventual unpause
-  // (main-flow index too) breaks the same way — with the pause placeholder
-  // restored right after.
-  for (const { line, index, wasInSub } of landings) {
-    if (!wasInSub) {
-      continue;
-    }
-    sendToLine(session, line.id, 0, {
-      m: MESSAGES.MSG_SUB_EXIT,
-      showIdx: index,
-    });
-    if (session.isPause) {
-      sendToLine(session, line.id, 0, {
-        m: MESSAGES.MSG_PAUSE,
-        isPause: true,
-        showIdx: index,
-      });
-    }
-  }
-
-  if (!session.isPause) {
-    for (const { line, index, wasInSub } of landings) {
-      if (wasInSub) {
-        continue; // MSG_SUB_EXIT above already drove this line's display
+    if (behind.length > 0) {
+      // Population and trails have both changed under the plan: lines came
+      // back or collapsed away, and every survivor's trail is truncated to
+      // where it stood before its rejoin or its fork.
+      lines = nonRetiredLines(session);
+      plan = planFor(lines);
+      if (!plan) {
+        return { refusal: "not-a-checkpoint", moved };
       }
-      sendToLine(session, line.id, Date.now() + session.preloadDuration, {
-        m: MESSAGES.MSG_SHOW,
-        showIdx: index,
+    }
+
+    const byLineId = new Map(plan.lines.map((p) => [p.lineId, p]));
+    const landings = [];
+    for (const line of lines) {
+      const entry = byLineId.get(line.id);
+      if (!entry) {
+        return { refusal: "line-unplaced", moved };
+      }
+      const idx = session.listFilesInLowerCase.indexOf(
+        String(entry.frame).toLowerCase(),
+      );
+      if (idx < 0) {
+        return { refusal: "frame-missing", moved };
+      }
+      landings.push({
+        line,
+        index: idx,
+        frame: session.listFiles[idx],
+        source: entry.source,
+        historyIndex: entry.historyIndex,
       });
     }
+
+    const landingHoldTargets = [];
+    const seenHoldTarget = new Set();
+    for (const landing of landings) {
+      for (const target of (session.graph.holdUntilTargets || {})[
+        landing.frame
+      ] || []) {
+        const key = String(target).toLowerCase();
+        if (!seenHoldTarget.has(key)) {
+          seenHoldTarget.add(key);
+          landingHoldTargets.push(target);
+        }
+      }
+    }
+
+    const parkedAt = new Map();
+    for (const landing of landings) {
+      const { line } = landing;
+      parkedAt.set(
+        line.id,
+        line.isBarrierWaiting || line.isGroupWaiting
+          ? frameNameForLine(session, line)
+          : null,
+      );
+      await clearLinePhaseForRoomRewind(session, line);
+      // Popping subStack here only fixes the SERVER's idea of where the line
+      // is; the devices are still in sub view, and the one display drive at the
+      // end is what takes them out of it — it compares the view each was in
+      // when the hold opened against the view its line ends in.
+      while (line.subStack.length > 0) {
+        line.exitSub();
+      }
+    }
+
+    orch.beginReachedGeneration(session, landingHoldTargets);
+
+    for (const { line, index, frame, source, historyIndex } of landings) {
+      const wasGroupParked = line.isGroupWaiting === true;
+      line.isGroupWaiting = false;
+      if (orch.unparkLine(session, line) || wasGroupParked) {
+        sendToLine(session, line.id, 0, {
+          m: MESSAGES.MSG_BARRIER_RELEASED,
+          frame: parkedAt.get(line.id),
+        });
+      }
+      line._lastReachedRef = null;
+      if (source === "history") {
+        line.historyIndex = historyIndex;
+      }
+      line.setCurrIdxTo(index);
+      recordArrival(session, line);
+
+      if (orch.groupOfFrame(session.graph, frame)) {
+        session.latestGroupArrival = { frame, at: Date.now() };
+      }
+    }
+
+    await tryReleaseBarriers(session);
+    await tryReleaseGroupWaits(session);
+    await session.saveSessionStateToFile();
+    notifyAdminsBarriers(session);
+    pushAdminHistory(session);
+    updateNumberOfConnectionForSession(session);
+
+    // Every line the gesture touched — repositioned, or brought back by an undo
+    // on the way — told once, in the shape its own devices need: a line dragged
+    // out of a sub-score gets MSG_SUB_EXIT rather than a bare MSG_SHOW (its
+    // devices still hold the SUB's injected frame list, so a main-flow index
+    // resolves to no frame there), and a paused room keeps its placeholder.
+    for (const { line } of landings) {
+      holdLineDisplay(session, line);
+    }
+    return { refusal: null, moved: true };
+  } finally {
+    flushDisplayHold(hold);
   }
 }
 
@@ -3343,9 +3491,85 @@ async function roomRewind(session, group) {
 //
 // Unlike a room-checkpoint rewind, this is a SUBTREE rewind: unrelated lines do
 // not move, so the room's reached registry + latestGroupArrival stay intact.
+//
+// Returns `{ ok, moved }`, not a bare boolean: the walk commits step by step,
+// so "it did not finish" and "nothing happened" are different answers and the
+// operator has to be told which one they got (see `reportRewindRefusal`).
 async function splitRewind(session, eventId, expectedFrame) {
   if (!session.hasSessionLines) {
-    return;
+    return { ok: false, moved: false };
+  }
+  // The race guard belongs BEFORE the walk. The chain commits real topology
+  // changes step by step, so leaving the guard to the final step meant a stale
+  // menu bought all of them and was then refused: one click on a split whose
+  // frame had moved took a whole rejoin off the room and collapsed nothing.
+  if (!structuralGuardHolds(session.splitEvents, eventId, expectedFrame)) {
+    return { ok: false, moved: false };
+  }
+  // One gesture, one display drive — the walk below can be several validated
+  // steps and the devices are told once, at the end (`flushDisplayHold`). The
+  // `finally` covers the refusal paths too: a walk that stops part-way has
+  // still moved the room, and the devices standing in it must be told where.
+  const hold = openDisplayHold(session);
+  try {
+    // ONE RELEASE, ONE GESTURE (2026-09-12) — the fork counterpart of the
+    // convergence rule above. A track group's release forks every populated
+    // line standing on a split frame, so one thing the operator watched is
+    // several events; undoing one of them left the room in a shape no single
+    // gesture had produced. Newest-first like every other walk, each member
+    // with its own cascade taken off first. Sibling forks divide DIFFERENT
+    // lines, so none of them is in another's chain and the order between them
+    // carries no constraint of its own.
+    //
+    // The race guard is this event's frame; the siblings are guarded by their
+    // own recorded frames, which is all they were ever offered under.
+    let moved = false;
+    let undone = 0;
+    for (const event of orch.splitGestureEvents({
+      splitEvents: session.splitEvents,
+      eventId,
+    })) {
+      // Already off — taken by an earlier member's cascade, or by something it
+      // was nested in. That is the walk working, not a refusal.
+      if (event.status !== "active") {
+        undone++;
+        continue;
+      }
+      const chain = await undoStructuralChain(session, "split", event.id);
+      moved = moved || chain.moved;
+      if (!chain.ok) {
+        return { ok: false, moved };
+      }
+      if (structuralEventDone(session.splitEvents, event.id)) {
+        undone++;
+        moved = true;
+        continue;
+      }
+      const done = await splitRewindOne(
+        session,
+        event.id,
+        event.id === eventId ? expectedFrame : event.frame,
+      );
+      if (!done) {
+        // Refuse rather than stop quietly: half a release undone is exactly
+        // the room this fold exists to prevent, and `moved` carries whatever
+        // the earlier members already committed.
+        return { ok: false, moved };
+      }
+      undone++;
+      moved = true;
+    }
+    return { ok: undone > 0, moved };
+  } finally {
+    flushDisplayHold(hold);
+  }
+}
+
+// One recorded split event, collapsed — with nothing of the room's built on
+// top of it any more (its caller cleared that first).
+async function splitRewindOne(session, eventId, expectedFrame) {
+  if (!session.hasSessionLines) {
+    return false;
   }
   const plan = orch.splitRewindPlan({
     splitEvents: session.splitEvents,
@@ -3354,7 +3578,7 @@ async function splitRewind(session, eventId, expectedFrame) {
     expectedFrame,
   });
   if (!plan.available) {
-    return;
+    return false;
   }
 
   // Synchronous phase cleanup before any connection changes: old child tabs
@@ -3388,31 +3612,6 @@ async function splitRewind(session, eventId, expectedFrame) {
     orch.unparkLine(session, line);
   }
 
-  // A device whose line is mid-dive is still in SUB view — it holds the sub's
-  // injected frame list and `frameContext`, so the main-flow index sent at the
-  // end of this function would resolve against THAT list and silently show an
-  // unrelated sub frame (§16, the same defect roomRewind and
-  // forceAdvanceStragglers were fixed for). Those connections are collected
-  // here, before rewindSplitStructure rebinds every one of them to the parent:
-  // after the rebind they all carry the same lineId and can no longer be told
-  // apart. Map views are left out — they never render sub view, so they keep
-  // the plain MSG_SHOW they have always had.
-  const inSubConns = [];
-  for (const line of plan.descendants) {
-    if (line.subStack.length === 0) {
-      continue;
-    }
-    for (const conn of wsServer.connections) {
-      if (
-        conn.sessionId === session.id &&
-        conn.lineId === line.id &&
-        !conn.isMapView
-      ) {
-        inSubConns.push(conn);
-      }
-    }
-  }
-
   const result = orch.rewindSplitStructure({
     session,
     eventId,
@@ -3420,7 +3619,7 @@ async function splitRewind(session, eventId, expectedFrame) {
     connections: wsServer.connections,
   });
   if (!result.available) {
-    return;
+    return false;
   }
 
   const parent = result.parent;
@@ -3444,45 +3643,627 @@ async function splitRewind(session, eventId, expectedFrame) {
   pushAdminHistory(session);
   updateNumberOfConnectionForSession(session);
 
-  // MSG_SUB_EXIT is the client's only way out of sub view, so the devices
-  // collected above get it instead of the main-flow MSG_SHOW below. Sent even
-  // while paused, with the pause placeholder restored right after, so the stale
-  // sub context cannot outlive the collapse and break the eventual unpause —
-  // the same shape roomRewind uses.
-  for (const conn of inSubConns) {
-    // The capture is older than the awaits above, so a socket may have gone in
-    // between: address only the ones the server still holds.
-    if (!wsServer.connections.includes(conn)) {
+  // The display itself is the GESTURE's, not this step's: a collapse can be one
+  // move of a walk-back, and a device told about this frame now is a device
+  // watching the room flash through a state it is in the middle of discarding
+  // (`flushDisplayHold`). The devices in SUB view are the hold's concern too —
+  // it captures its own set when the gesture opens, which for a walk is the
+  // only moment that still describes what every device is rendering (a step's
+  // own MSG_SUB_EXIT is suppressed with everything else, and the line a device
+  // ends on may have been in the main flow all along). §16's defect — a
+  // main-flow index resolved against an injected sub's frame list — is answered
+  // there, once, for whatever the walk finally leaves standing.
+  holdLineDisplay(session, parent);
+  return true;
+}
+
+// Everything the room built on top of ONE structural event, walked off first —
+// newest first (owner, 2026-09-06: "able to rewind back to multiple merge
+// points later still possible, not losing the route path").
+//
+// A merge used to stop being undoable the moment the merged line took its next
+// structural step, so on a score like FORK → MERGE1 → FORK2 → MERGE2 only the
+// newest convergence was ever reachable. Nothing expires now: the split at
+// FORK2 and the merge at MERGE2 are simply undone on the way back to MERGE1,
+// each one an ordinary fully-validated snapshot restore, so the room walks its
+// own history backwards instead of jumping to a state no snapshot describes.
+// orch.structuralRewindChain decides what is standing on top (transitively, by
+// durable line identity — a recycled number does NOT drag an unrelated branch
+// in) and in what order.
+//
+// Returns `{ ok, moved }`. `moved` is the honest half: a walk that stops at
+// step k has ALREADY committed steps 1..k-1, and every caller used to collapse
+// that into `false` — which the map then reported as "Nothing moved", the one
+// thing it certainly was not. Nothing here can put the committed steps back
+// (each is a validated snapshot restore in its own right), so the room keeps
+// them and the operator is told the walk stopped part-way.
+async function undoStructuralChain(session, kind, eventId) {
+  const chain = orch.structuralRewindChain({ session, kind, eventId });
+  if (!chain.available) {
+    return { ok: false, moved: false };
+  }
+  let moved = false;
+  for (const step of chain.chain) {
+    // A convergence undoes whole, so a later step may already be gone by the
+    // time we reach it — that is the walk working, not a refusal.
+    if (step.event.status !== "active") {
       continue;
     }
-    sendToClient(conn, 0, {
-      m: MESSAGES.MSG_SUB_EXIT,
-      showIdx: parent.currentIndex,
-    });
-    if (session.isPause) {
-      sendToClient(conn, 0, {
-        m: MESSAGES.MSG_PAUSE,
-        isPause: true,
-        showIdx: parent.currentIndex,
-      });
+    if (step.kind === "split") {
+      if (!(await splitRewindOne(session, step.event.id, null))) {
+        return { ok: false, moved }; // stop here rather than leave a half-walk
+      }
+      moved = true;
+      continue;
+    }
+    const undone = await mergeRewindConvergence(
+      session,
+      step.event.id,
+      step.event.frame,
+    );
+    moved = moved || undone.moved;
+    if (!undone.ok) {
+      return { ok: false, moved };
     }
   }
+  return { ok: true, moved };
+}
 
-  if (!session.isPause) {
-    const showTime = Date.now() + session.preloadDuration;
-    wsServer.connections.forEach(function each(conn) {
-      if (conn.sessionId !== session.id || conn.lineId !== parent.id) {
-        return;
-      }
-      if (inSubConns.includes(conn)) {
-        return; // MSG_SUB_EXIT above already drove this device's display
-      }
-      sendToClient(conn, showTime, {
-        m: MESSAGES.MSG_SHOW,
-        showIdx: parent.currentIndex,
+// Structural merge rewind (2026-09-05): undo one rejoin. Every line the merge
+// absorbed comes back at the frame it was standing on when it ran, carrying the
+// devices it had then, and the merged line goes back to its own pre-merge frame
+// — the mirror of the split undo, for the one structural event that DESTROYS
+// lines. Devices whose first sight of the room was after the merge have no
+// pre-merge line and stay with the survivor.
+//
+// Like the split undo this is a SUBTREE rewind: the reached registry and
+// latestGroupArrival stay as they are, and the restored lines land un-parked and
+// phase-less, an operator rewind being authoritative. Their next window is an
+// ordinary one, so a route that leads back to the rejoin frame merges them
+// again — this replays the passage rather than unmaking it.
+//
+// ONE CONVERGENCE, ONE GESTURE (owner, 2026-09-05): lines arriving on a rejoin
+// frame apart merge in PAIRS, so "everyone met at MERGE1" can be two or three
+// events. The operator watched one thing happen and asked for one undo of it,
+// so this walks the whole passage (orch.mergeConvergenceEvents) newest-first —
+// the only order §8.4 allows — and every line that met there comes back on the
+// node it came from. Undoing the newest frees the next, so each step is an
+// ordinary, fully validated undo; the pairing is left as the record of how the
+// room got there rather than a queue of clicks.
+//
+// Returns `{ ok, moved }` for the same reason `splitRewind` does — a cascade
+// that stops part-way has moved the room, and saying otherwise is a lie the
+// operator has no way to check.
+async function mergeRewind(session, eventId, expectedFrame) {
+  if (!session.hasSessionLines) {
+    return { ok: false, moved: false };
+  }
+  // Guard first, walk second — see `structuralGuardHolds`. Nothing below this
+  // line is free to the room, so a stale menu must be turned away before any
+  // of it runs.
+  if (!structuralGuardHolds(session.mergeEvents, eventId, expectedFrame)) {
+    return { ok: false, moved: false };
+  }
+  // One gesture, one display drive: the walk below is several validated steps
+  // and the devices are told once, at the end (`flushDisplayHold`).
+  const hold = openDisplayHold(session);
+  try {
+    // Whatever the room built on this population since — later splits, later
+    // merges — comes off first (2026-09-06), so a merge point stays reachable
+    // for the rest of the session instead of only until the next fork.
+    const chain = await undoStructuralChain(session, "merge", eventId);
+    if (!chain.ok) {
+      return { ok: false, moved: chain.moved };
+    }
+    // A convergence undoes WHOLE, so a later event of this very passage may
+    // have taken this one with it on the way back. That is the undo working:
+    // the rejoin the operator clicked is gone.
+    if (structuralEventDone(session.mergeEvents, eventId)) {
+      return { ok: true, moved: true };
+    }
+    const undone = await mergeRewindConvergence(
+      session,
+      eventId,
+      expectedFrame,
+    );
+    return { ok: undone.ok, moved: chain.moved || undone.moved };
+  } finally {
+    flushDisplayHold(hold);
+  }
+}
+
+/** One ordering across splits and merges — the session-wide `seq`, with the
+ * same fallbacks `structuralEvents` uses for records written before it. */
+function structuralOrder(event) {
+  if (!event) return 0;
+  if (event.seq != null) return event.seq;
+  return (event.createdAt || 0) / 1e13;
+}
+
+/**
+ * Does the menu that sent this still describe the event it names?
+ *
+ * The plans re-check `expectedFrame` themselves, but only when they run — which
+ * for a cascading undo is AFTER the chain has already committed. Asked here,
+ * before anything moves, a stale click costs the room nothing.
+ */
+function structuralGuardHolds(events, eventId, expectedFrame) {
+  const event = (events || []).find(
+    (candidate) => candidate && String(candidate.id) === String(eventId),
+  );
+  if (!event || event.status !== "active") {
+    return false;
+  }
+  if (!expectedFrame) {
+    return true;
+  }
+  return (
+    String(expectedFrame).toLowerCase() ===
+    String(event.frame || "").toLowerCase()
+  );
+}
+
+/**
+ * Did the room build something new on this passage while the operator was
+ * reading the confirm?
+ *
+ * `structuralGuardHolds` pins the EVENT — it is still on record, still active,
+ * still on the frame the menu named. It says nothing about the cascade, and the
+ * cascade is most of what the operator agreed to: "this first undoes 2 later
+ * steps — the split at ⟨FORK2⟩, then the merge at ⟨MERGE2⟩ — so everything the
+ * room played after them is discarded". A native `confirm()` blocks the map's
+ * script while the room keeps playing, so between the click and the OK a line
+ * can fork or rejoin and that sentence becomes an understatement: four steps
+ * discarded where two were agreed to, including a fork still on the operator's
+ * screen.
+ *
+ * So the click carries the cascade it was shown and the walk re-derives it. A
+ * mismatch in either direction is refused (`stale-cascade`) rather than
+ * silently doing more or less than was promised — the refusal re-pushes the
+ * map, so the next click is against a menu that tells the truth. A client that
+ * sends nothing (an older map tab) is trusted exactly as before.
+ */
+function cascadeSignature(steps) {
+  return (steps || [])
+    .map((step) =>
+      step && typeof step === "object"
+        ? `${step.kind}:${step.eventId}`
+        : String(step),
+    )
+    .join(",");
+}
+
+/** What one structural undo would take off on the way, right now — the same
+ * list, folded the same way, that the map's entry published. */
+function structuralCascadeNow(session, kind, eventId) {
+  // A split undo takes its whole GESTURE off (2026-09-12), so what it discards
+  // is the union of the members' chains — the same union `splitRewindOptions`
+  // published, deduped the same way. A gesture of one reduces to the single
+  // chain it always was.
+  const targets =
+    kind === "split"
+      ? orch
+          .splitGestureEvents({ splitEvents: session.splitEvents, eventId })
+          .map((member) => member.id)
+      : [eventId];
+  const seen = new Set();
+  const steps = [];
+  for (const target of targets) {
+    const chain = orch.structuralRewindChain({
+      session,
+      kind,
+      eventId: target,
+    });
+    if (!chain.available) {
+      return [];
+    }
+    for (const step of orch.cascadeSteps({
+      chain: chain.chain,
+      mergeEvents: session.mergeEvents,
+      // A merge's own convergence is not "on the way" — it IS the undo.
+      folded:
+        kind === "merge"
+          ? orch
+              .mergeConvergenceEvents({
+                mergeEvents: session.mergeEvents,
+                eventId: target,
+              })
+              .map((member) => member.id)
+          : [],
+    })) {
+      const key = `${step.kind}:${step.eventId}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      steps.push(step);
+    }
+  }
+  return steps;
+}
+
+/**
+ * True when the walk about to run takes off nothing the operator was not shown.
+ *
+ * Asymmetric on purpose. Discarding MORE than the confirm named is the harm —
+ * a fork still on the operator's screen goes with a click that never mentioned
+ * it — while discarding FEWER is not: the room took that step off by itself in
+ * the meantime, and the undo is simply smaller than advertised.
+ *
+ * Refusing on any difference (the first cut) made the guard brittle in a way
+ * that cost more than it caught: a room rewind's list comes from
+ * `roomCheckpointOptions`, which reads the live POPULATION, so one performer
+ * closing a tab between the push and the click changed the list and turned a
+ * legitimate rewind into a refusal the operator could do nothing about. Set
+ * containment is the rule that actually expresses the promise.
+ */
+function cascadeAgreed(promised, current) {
+  if (promised == null) {
+    return true; // a client that does not send one — trusted as before
+  }
+  const shown = new Set(
+    (Array.isArray(promised) ? promised : [promised]).map((step) =>
+      cascadeSignature([step]),
+    ),
+  );
+  return (current || []).every((step) => shown.has(cascadeSignature([step])));
+}
+
+/**
+ * The rejoins a per-line rewind would walk back through, folded to one entry
+ * per CONVERGENCE — the same list the map's confirm names, so the two can be
+ * compared without either side guessing at the other's shape.
+ */
+function mergesBehindLineFolded(session, line, atIndex) {
+  return orch
+    .mergesBehindLine({
+      mergeEvents: session.mergeEvents,
+      lineId: line.id,
+      lineUid: line.uid,
+      atIndex,
+    })
+    .filter((event) => {
+      const convergence = orch.mergeConvergenceEvents({
+        mergeEvents: session.mergeEvents,
+        eventId: event.id,
       });
+      return convergence.length === 0 || convergence[0] === event;
+    })
+    .map((event) => String(event.id));
+}
+
+/** Was this event already walked back (by a fold, or a nested collapse)? */
+function structuralEventDone(events, eventId) {
+  const event = (events || []).find(
+    (candidate) => candidate && String(candidate.id) === String(eventId),
+  );
+  return !!event && event.status === "undone";
+}
+
+// One whole convergence, undone — with nothing of the room's standing on top of
+// it any more (its caller cleared that first).
+//
+// `{ ok, moved }`: a passage that comes apart only halfway used to answer
+// `true` (any progress counted as success), so the operator was told three
+// lines had separated when two had. `ok` now means the whole convergence came
+// off; `moved` says whether the room changed while failing.
+async function mergeRewindConvergence(session, eventId, expectedFrame) {
+  if (!session.hasSessionLines) {
+    return { ok: false, moved: false };
+  }
+  const convergence = orch.mergeConvergenceEvents({
+    mergeEvents: session.mergeEvents,
+    eventId,
+  });
+  if (convergence.length === 0) {
+    return { ok: false, moved: false };
+  }
+  // Every device the passage's snapshots name, over ALL of its steps — the set
+  // the final balancing pass counts rather than spreads. Taken before the walk,
+  // because a step marks its event `undone` as it commits.
+  const knownDeviceIds = new Set();
+  for (const event of convergence) {
+    for (const snapshot of event.participants || []) {
+      for (const deviceId of (snapshot && snapshot.deviceIds) || []) {
+        knownDeviceIds.add(String(deviceId));
+      }
+    }
+  }
+  let undone = 0;
+  const restored = [];
+  for (const event of convergence) {
+    // Undoing the newest of a passage can take an older one with it; a step
+    // already off is the walk working, not something to redo.
+    if (event.status !== "active") {
+      continue;
+    }
+    // The race guard belongs to the frame the whole convergence happened on,
+    // which is the one the operator's menu was built against.
+    const step = await mergeRewindOne(session, event.id, expectedFrame);
+    if (!step) {
+      // Whatever came back before this refusal is standing in the room and has
+      // not been told so — the gesture drives the displays once, at its end.
+      for (const line of restored) holdLineDisplay(session, line);
+      return { ok: false, moved: undone > 0 };
+    }
+    for (const line of step) {
+      if (!restored.includes(line)) restored.push(line);
+    }
+    undone++;
+  }
+  // Balance the latecomers over the WHOLE passage, not step by step. A
+  // convergence merges in pairs, so an earlier step could only see part of the
+  // room coming back and spent them against a shorter list of destinations
+  // (2026-09-09) — three over three lines came out 2/1/3 while the confirm
+  // promised "evenly". Re-seeded from the snapshot devices and re-assigned from
+  // scratch, this is the same computation for a one-event merge.
+  if (undone > 0) {
+    orch.spreadMergeLatecomers({
+      session,
+      lines: restored,
+      knownDeviceIds,
+      connections: wsServer.connections,
+    });
+    await session.saveSessionStateToFile();
+    updateNumberOfConnectionForSession(session);
+    pushAdminHistory(session);
+    for (const line of restored) holdLineDisplay(session, line);
+  }
+  return { ok: undone > 0, moved: undone > 0 };
+}
+
+/**
+ * One operator gesture, one display drive.
+ *
+ * A structural undo is a WALK: `undoStructuralChain` takes the later events off
+ * before the target, and a convergence comes apart in pairs, so one click is
+ * several validated steps. Each step used to drive its own displays, and a
+ * device therefore received two or three MSG_SHOWs from one click — the states
+ * the room was in the middle of discarding first, the real one last. Two things
+ * are wrong with that. Devices FLASH through frames that are being thrown away
+ * (with their sounds), which reads as the tool losing its place mid-piece. And
+ * the order is not actually guaranteed: `ws-client` runs a message whose `t`
+ * has already passed inline and defers every other by `setTimeout`, so once the
+ * session's buffer duration is small enough for the computed delays to straddle
+ * zero — it is an operator setting with a minimum of 0 — a step's show lands
+ * AFTER the final one and leaves the device on a frame the server does not
+ * think it is on, until its line next moves.
+ *
+ * So the steps RECORD the lines they touched and the outermost gesture drives
+ * the displays once, from the room as it finally stands. Everything else a step
+ * sends still goes out as it happens — phase cancels, barrier releases, admin
+ * pushes — because those describe the room's state rather than what a device
+ * renders, and they are addressed to line ids that only that step still knows.
+ *
+ * This is the rule `mergeRewindConvergence` already followed inside one
+ * convergence (2026-09-09: "no device is told about a line the next step is
+ * about to move it off"), read across the whole walk.
+ */
+// Per SESSION, on the session object, like `__gestureQueue` and
+// `__structuralProjection` beside it — and never persisted (`toJSON` names
+// its fields explicitly). It was a module global until 2026-09-12, which made
+// the fix above only half a fix: `runExclusively` serializes one ROOM's
+// gestures, so two rooms rewinding at the same moment still collided on this
+// one variable. The second room's `openDisplayHold` found it taken and
+// returned null, its `holdLineDisplay` saw a session that was not its own and
+// drove each step's displays immediately, and its devices flashed through the
+// frames the walk was in the middle of discarding — the exact stranding this
+// hold exists to prevent, reached by a different route.
+
+/**
+ * Open the hold for one gesture, or return null when one is already open (a
+ * nested step — whoever opened it drives, and flushes).
+ *
+ * The devices in SUB view are captured HERE, at the start, because a step's own
+ * MSG_SUB_EXIT is suppressed with everything else and MSG_SUB_EXIT is the
+ * client's only way back to the main flow. The line a device ends up on may
+ * have been in the main flow all along, so the line's own `subStack` cannot
+ * answer for it — the device's view when the gesture began can.
+ *
+ * WHICH sub, not merely "a sub": a device already inside the score its line
+ * ends the gesture in needs a plain MSG_SHOW, because its index is sub-relative
+ * either way and re-sending MSG_SUB_ENTER would re-inject a sub it is standing
+ * in. That distinction is what lets `lineRewind` — whose whole sub-internal
+ * rewind is exactly that case — share this drive with the structural undos.
+ */
+function openDisplayHold(session) {
+  if (session.__displayHold) {
+    return null;
+  }
+  const diving = new Map();
+  for (const line of session.lines || []) {
+    const top =
+      line && line.subStack && line.subStack[line.subStack.length - 1];
+    if (top) {
+      diving.set(line.id, top.score);
+    }
+  }
+  const inSub = new Map();
+  for (const conn of wsServer.connections) {
+    if (conn.sessionId !== session.id || conn.isMapView) {
+      continue;
+    }
+    if (diving.has(conn.lineId)) {
+      inSub.set(conn, diving.get(conn.lineId));
+    }
+  }
+  session.__displayHold = { session, lines: [], inSub };
+  return session.__displayHold;
+}
+
+/** Record a line whose devices must be told where they are standing, once the
+ * gesture is over. With no hold open (a caller outside the structural undos)
+ * the drive happens immediately, so there is one display code path either way. */
+function holdLineDisplay(session, line) {
+  if (!line) {
+    return;
+  }
+  const hold = session.__displayHold;
+  if (!hold) {
+    driveLineDisplays(session, [line], new Map());
+    return;
+  }
+  if (!hold.lines.includes(line)) {
+    hold.lines.push(line);
+  }
+}
+
+/** Drive the recorded displays and close the hold. Only its opener may. */
+function flushDisplayHold(hold) {
+  const session = hold && hold.session;
+  if (!session || hold !== session.__displayHold) {
+    return;
+  }
+  session.__displayHold = null;
+  // A line the walk retired on its way back (a split collapse absorbs its
+  // children) has no devices left to address.
+  const lines = hold.lines.filter(
+    (line) =>
+      line &&
+      line.status !== "retired" &&
+      (session.lines || []).some((entry) => entry === line),
+  );
+  driveLineDisplays(session, lines, hold.inSub);
+}
+
+/**
+ * Tell each line's devices which line they are on and what to show.
+ *
+ * Same shapes as an operator advance, for the same reason: a frame index means
+ * nothing without the frame list its devices are holding. Which shape a device
+ * gets depends on the view it is IN (`inSub`, captured when the gesture opened)
+ * against the view its line ends in — a device already inside the right sub
+ * takes the plain show, since only the view MODE needs a message of its own.
+ *
+ * @param {Map<object,string>} inSub connection → the sub score it is rendering.
+ */
+function driveLineDisplays(session, lines, inSub) {
+  // Line id first, before anything addresses these devices about a frame.
+  for (const line of lines) {
+    sendToLine(session, line.id, 0, {
+      m: MESSAGES.MSG_LINE_ASSIGNED,
+      lineId: line.id,
     });
   }
+  const showTime = Date.now() + session.preloadDuration;
+  for (const line of lines) {
+    const top = line.subStack[line.subStack.length - 1];
+    for (const conn of wsServer.connections) {
+      if (conn.sessionId !== session.id || conn.lineId !== line.id) {
+        continue;
+      }
+      // Map views are never in `inSub` — they do not render sub view — so a
+      // dived line reaches them as MSG_SUB_ENTER, which they ignore. That is
+      // what keeps a sub-relative index off a page resolving against the main
+      // flow, and it is the behaviour they have always had.
+      const was = inSub.get(conn) || null;
+      if (top && was !== top.score) {
+        sendToClient(conn, 0, {
+          m: MESSAGES.MSG_SUB_ENTER,
+          sub: top.score,
+          showIdx: line.currentIndex,
+        });
+      } else if (!top && was) {
+        // Sent even while paused, with the placeholder restored right after, so
+        // a stale sub context cannot outlive the undo and break the unpause.
+        sendToClient(conn, 0, {
+          m: MESSAGES.MSG_SUB_EXIT,
+          showIdx: line.currentIndex,
+        });
+      } else if (!session.isPause) {
+        // Already in the right view — main flow, or the very sub its line ends
+        // in. Only the frame changes.
+        sendToClient(conn, showTime, {
+          m: MESSAGES.MSG_SHOW,
+          showIdx: line.currentIndex,
+        });
+      } else {
+        continue; // a paused device in the right view keeps its placeholder
+      }
+      if (session.isPause) {
+        sendToClient(conn, 0, {
+          m: MESSAGES.MSG_PAUSE,
+          isPause: true,
+          showIdx: line.currentIndex,
+        });
+      }
+    }
+  }
+}
+
+// One recorded merge event, undone.
+//
+// Returns the lines it brought back, or null when it refused. The DISPLAYS are
+// not driven here: a convergence is several of these, its balancing runs after
+// the last one, and the whole gesture may be a WALK over several events — so
+// the devices are addressed once, at the end (`flushDisplayHold`).
+async function mergeRewindOne(session, eventId, expectedFrame) {
+  const plan = orch.mergeRewindPlan({
+    mergeEvents: session.mergeEvents,
+    splitEvents: session.splitEvents,
+    lines: session.lines,
+    eventId,
+    expectedFrame,
+  });
+  if (!plan.available) {
+    return null;
+  }
+
+  // Synchronous phase cleanup while every device still carries the merged
+  // line's id — no await, so the guard above cannot race a landing between
+  // validation and commit (splitRewind's rule, same reason).
+  const survivor = plan.survivor;
+  cancelAttritionTimer(survivor);
+  if (survivor.isHolding || survivor.holdingTimer != null) {
+    sendToLine(session, survivor.id, 0, {
+      m: MESSAGES.MSG_BEGIN_HOLDING,
+      endTime: 0,
+      duration: 1,
+    });
+  }
+  if (survivor.isVoting || survivor.votingTimer != null) {
+    sendToLine(session, survivor.id, 0, {
+      m: MESSAGES.MSG_BEGIN_VOTING,
+      endTime: 0,
+      duration: 0,
+    });
+  }
+  if (survivor.isBarrierWaiting || survivor.isGroupWaiting) {
+    sendToLine(session, survivor.id, 0, {
+      m: MESSAGES.MSG_BARRIER_RELEASED,
+      frame: frameNameForLine(session, survivor),
+    });
+  }
+  survivor.clearAllTimer();
+  survivor.isGroupWaiting = false;
+  orch.unparkLine(session, survivor);
+
+  const result = orch.rewindMergeStructure({
+    session,
+    eventId,
+    expectedFrame,
+    connections: wsServer.connections,
+  });
+  if (!result.available) {
+    return null;
+  }
+
+  const restored = result.restores.map((entry) => entry.line);
+  for (const line of restored) {
+    // A line that comes back with no devices is dormant, and #11's attrition
+    // timer for it belongs to the merged line that no longer exists.
+    cancelAttritionTimer(line);
+    line._lastReachedRef = null;
+    recordArrival(session, line);
+  }
+
+  await tryReleaseBarriers(session);
+  await tryReleaseGroupWaits(session);
+  await session.saveSessionStateToFile();
+
+  notifyAdminsBarriers(session);
+  pushAdminHistory(session);
+  updateNumberOfConnectionForSession(session);
+
+  return restored;
 }
 
 async function jumpScoreForSession(session, line, value) {
@@ -3574,11 +4355,168 @@ async function jumpScoreForSession(session, line, value) {
   }
 }
 
+// Tell the operator their rewind did not happen, and why.
+//
+// Every rewind entry point can refuse — a menu built a moment before the room
+// moved, a topology no snapshot describes any more — and until now each of them
+// returned a boolean that nobody read: the operator answered a confirm()
+// promising a topology change and got silence, with no way to tell a refusal
+// from a bug. The map is also re-pushed, because a refusal usually means what
+// it is drawing is stale, and the reason alone would leave a menu still
+// offering the thing that just failed.
+// Why a structural undo is still not done, re-derived after the attempt. The
+// chain speaks first — a walk that could not start says so, and its reason
+// ("blocked-by-expired") is the one the plan alone would never mention — and
+// the race guard is re-applied, since a stale menu is the commonest refusal of
+// all and would otherwise report as a bare "unavailable".
+function splitRefusalReason(session, eventId, frame) {
+  const chain = orch.structuralRewindChain({
+    session,
+    kind: "split",
+    eventId,
+  });
+  if (!chain.available) {
+    return chain.reason;
+  }
+  return (
+    orch.splitRewindPlan({
+      splitEvents: session.splitEvents,
+      lines: session.lines,
+      eventId,
+      expectedFrame: frame,
+    }).reason || "unavailable"
+  );
+}
+
+function mergeRefusalReason(session, eventId, frame) {
+  const chain = orch.structuralRewindChain({
+    session,
+    kind: "merge",
+    eventId,
+  });
+  if (!chain.available) {
+    return chain.reason;
+  }
+  return (
+    orch.mergeRewindPlan({
+      mergeEvents: session.mergeEvents,
+      splitEvents: session.splitEvents,
+      lines: session.lines,
+      eventId,
+      expectedFrame: frame,
+    }).reason || "unavailable"
+  );
+}
+
+// `moved` is the difference between "your click did nothing" and "your click
+// did SOME of what it promised": a cascading undo commits step by step, and a
+// walk that stops half-way cannot be rolled back (each step is a validated
+// snapshot restore of its own). Reporting both as "Nothing moved" left the
+// operator trusting a map that had already changed under them.
+function reportRewindRefusal(conn, session, kind, reason, frame, moved) {
+  sendToClient(conn, 0, {
+    m: MESSAGES.MSG_REWIND_REFUSED,
+    kind,
+    reason: reason || "unavailable",
+    frame: frame || null,
+    moved: !!moved,
+  });
+  updateNumberOfConnectionForSession(session);
+}
+
+// The other half of the same conversation. Every rewind could already say why
+// it did NOT happen; a successful one — three lines re-created, every device
+// moved onto a different line, everything the room played since discarded —
+// said nothing at all, leaving the operator to infer from a redrawn canvas that
+// the confirm they had answered was acted on. Deliberately just `kind` and
+// `frame`: the map is holding the description it promised in that confirm, and
+// showing THAT back is what closes the loop. No lines push rides with it — the
+// rewind itself has already sent several.
+function reportRewindDone(session, kind, frame, emptied) {
+  // To EVERY operator tab (2026-09-12), not only the one that clicked. A
+  // structural undo re-creates lines and moves devices between them, and a
+  // second map open on the same room simply watched its canvas rearrange with
+  // no account of why — the one thing the receipt exists to prevent, for
+  // whichever operator was not holding the mouse. The clicking tab still shows
+  // the sentence its own confirm promised; the others compose a plainer one
+  // from `kind` + `frame`, which is why both still ride along.
+  sendToAllAdmins(session, 0, {
+    m: MESSAGES.MSG_REWIND_DONE,
+    kind,
+    frame: frame || null,
+    // The lines it left with NOBODY on them (2026-09-09), each with the frame
+    // it is standing on (2026-09-12). A merge undo can hand a route back to a
+    // performer who has since gone home: the line comes back DORMANT, and the
+    // operator — who answered a confirm promising "N lines go back, and every
+    // device goes back to the line it was on" — was left to notice `L2·0p` on
+    // the canvas for themselves, or not to.
+    //
+    // The FRAME is here because the numbers on the two ends of this gesture are
+    // not read on the same basis. The confirm names the numbers the REJOIN
+    // recorded ("merged here as L0, L1, L2"), while this names the numbers the
+    // lines actually came back ON — and `freeLineId` hands a route the lowest
+    // free number when an unrelated fork is holding its own, so the operator
+    // could read "L0, L1, L2 come back" and then "L4 has nobody on it". The
+    // frame is the landmark that keeps its word either way, which is the rule
+    // the rest of §8.4 already follows.
+    //
+    // Reported AFTER the fact rather than predicted in the confirm, because
+    // predicting it means simulating `spreadMergeLatecomers` through every
+    // step of a cascade, and a confirm that guesses wrong about who is about to
+    // be left alone is worse than one that says nothing. Here it is simply
+    // true.
+    ...(emptied && emptied.length > 0 ? { emptied } : {}),
+  });
+}
+
+/** Every dormant line's identity, before a rewind runs. Keyed on the uid, so a
+ * line the rewind RE-CREATES on a recycled number does not read as one that
+ * was already dormant (§8.4 — identity is the uid, in both directions). */
+function dormantLineKeys(session) {
+  const keys = new Set();
+  for (const line of (session && session.lines) || []) {
+    if (line && line.status === "dormant") {
+      keys.add(String(line.uid || line.id));
+    }
+  }
+  return keys;
+}
+
+/** …and the ones dormant NOW that were not dormant then — the lines this
+ * gesture left with nobody on them, by the number they carry today AND the
+ * frame they are standing on (the number alone can have been re-allocated —
+ * see `reportRewindDone`). */
+function linesLeftEmpty(session, before) {
+  if (!before) {
+    return [];
+  }
+  return ((session && session.lines) || [])
+    .filter(
+      (line) =>
+        line &&
+        line.status === "dormant" &&
+        !before.has(String(line.uid || line.id)),
+    )
+    .sort((a, b) => lineIdNum(a.id) - lineIdNum(b.id))
+    .map((line) => {
+      const sub = line.subStack && line.subStack[line.subStack.length - 1];
+      return {
+        id: line.id,
+        frame: frameNameForLine(session, line) || null,
+        sub: sub ? sub.score : null,
+      };
+    });
+}
+
 // Targeted per-line rewind (owner, 2026-07-19): move ONE named line to an
 // earlier entry of its own ACTIVE trail — main flow, or within its current sub
 // dive (a sub is its own session: `history` holds the sub trail while diving,
 // so the same undo semantics apply, resolved against the sub's frame list).
 // Undo, not teleport: the target must be in the trail.
+//
+// Returns a refusal reason, or null when the request was satisfied (which
+// includes "the merge undo alone already landed it there" — nothing further to
+// move is success, not a refusal).
 //
 // Deliberately UNLIKE the room-wide checkpoint rewind / the old SM jump:
 //   - the rendezvous registry is NOT restarted (no beginReachedGeneration) —
@@ -3590,14 +4528,114 @@ async function jumpScoreForSession(session, line, value) {
 //   - group waits: the "passed ⇒ arrived" excusal in groupWaitState is the
 //     matching rule — the rewound line replays through groups the room passed
 //     without wedging (its own truncated trail makes it re-arrive for real).
-async function lineRewind(session, lineId, value, expectedFrame) {
-  const line = (session.lines || []).find((l) => l && l.id === lineId);
-  if (!line || line.status === "retired") {
-    return;
+//
+// `progress` is an out-param the caller reads on refusal: this rewind can undo
+// merges on the way (below), and those commit before anything else is checked,
+// so a refusal AFTER one of them is not "nothing moved".
+async function lineRewind(
+  session,
+  lineId,
+  value,
+  expectedFrame,
+  absorbedEventId,
+  progress = {},
+) {
+  // One gesture, one display drive. This rewind can be a WALK too — it takes
+  // every merge standing behind its target off first (below), each of which is
+  // a full `mergeRewind` that lands several lines — and then moves its own line
+  // further still. Driven per step, the rewound line's devices were shown their
+  // merge landing and then the real target, which is the flash and the ordering
+  // hazard `flushDisplayHold` exists to remove. The `finally` covers the
+  // refusal paths: a walk that stopped after a merge came off has moved the
+  // room, and the devices standing in it must be told where.
+  const hold = openDisplayHold(session);
+  try {
+    return await lineRewindWalk(
+      session,
+      lineId,
+      value,
+      expectedFrame,
+      absorbedEventId,
+      progress,
+    );
+  } finally {
+    flushDisplayHold(hold);
+  }
+}
+
+async function lineRewindWalk(
+  session,
+  lineId,
+  value,
+  expectedFrame,
+  absorbedEventId,
+  progress,
+) {
+  let line = (session.lines || []).find(
+    (l) => l && l.id === lineId && l.status !== "retired",
+  );
+  // A merge-ABSORBED line (owner, 2026-09-05). The map offers its route too —
+  // as a ghost, since the line itself is gone — so the operator can reach for
+  // the line they watched walk there instead of the survivor that swallowed
+  // it. It has to come BACK before it can be rewound, so the merge undo runs
+  // first, and whole (mergeRewind folds the convergence, and takes off
+  // anything the room has built on top since): every line that met at the
+  // rejoin frame lands on the node it came from, and only then does this one
+  // carry on to the clicked frame. That is §8.2's rule read from the other
+  // side, and it lands the same room state as rewinding the survivor past the
+  // same merge.
+  if (!line) {
+    if (!session.hasSessionLines) {
+      return "unknown-line";
+    }
+    // The line's object was dissolved by the rejoin (its number went back in
+    // the pool), so its own merge record is what the map drew and what this
+    // reads back.
+    const absorbed = absorbedSnapshotFor(session, lineId, absorbedEventId);
+    if (!absorbed) {
+      return "unknown-line";
+    }
+    // The race guard FIRST: a stale menu must not buy a topology change. The
+    // absorbed trail the map was drawn from is the snapshot's, whose entries
+    // before the landing are the ones this can name — and the undo restores
+    // exactly that prefix, so the index means the same thing either side of it.
+    const want = absorbed.trail[value];
+    if (
+      want == null ||
+      (expectedFrame &&
+        String(want).toLowerCase() !== String(expectedFrame).toLowerCase())
+    ) {
+      return "stale-frame";
+    }
+    const undone = await mergeRewind(
+      session,
+      absorbed.event.id,
+      absorbed.event.frame,
+    );
+    if (undone.moved) progress.moved = true;
+    if (!undone.ok) {
+      return "merge-undo-refused"; // nothing can bring it back
+    }
+    // Re-created, so it is found by ROUTE: the undo asks for the number the
+    // line had, but an unrelated fork may be holding it and the route then
+    // comes back on another one.
+    const uid = absorbed.snapshot.lineUid;
+    line = (session.lines || []).find(
+      (l) => l && (uid ? l.uid === uid : l.id === lineId),
+    );
+    if (!line || line.status === "retired") {
+      return "restore-failed"; // the undo did not bring it back after all
+    }
+    // Landing on the node the undo already put it on IS the whole request —
+    // "bring L1 back where it was", the last entry of its ghost trail. The
+    // undo has pushed every display and admin update; nothing further moves.
+    if (value === line.historyIndex) {
+      return null; // the undo alone was the whole request
+    }
   }
   const filename = line.history[value];
   if (filename == null) {
-    return;
+    return "stale-trail";
   }
   // Race guard: the SM menu was built from a trail snapshot — if the line
   // moved (or exited its sub, swapping `history` back to the main trail)
@@ -3607,21 +4645,80 @@ async function lineRewind(session, lineId, value, expectedFrame) {
     expectedFrame &&
     filename.toLowerCase() !== String(expectedFrame).toLowerCase()
   ) {
-    return;
+    return "stale-frame";
   }
+
+  // Reaching behind a merge undoes it on the way (owner, 2026-09-05). The
+  // survivor keeps its pre-merge trail, so the map legitimately offers entries
+  // from before the rejoin — but walking the merged line back there whole would
+  // stand devices that arrived by another route on a frame that route never
+  // touched. Undo newest-first (mergeRewind refuses any other order), then
+  // re-resolve: each undo lands the lines on the node they came from and
+  // TRUNCATES this trail, so the clicked index no longer means what it did.
+  // Only main-flow rewinds qualify — inside a dive the active trail is the
+  // sub's, while a merge point indexes the main one.
+  if (session.hasSessionLines && line.subStack.length === 0) {
+    const behind = orch.mergesBehindLine({
+      mergeEvents: session.mergeEvents,
+      lineId: line.id,
+      lineUid: line.uid,
+      atIndex: value,
+    });
+    let undone = 0;
+    for (const event of behind) {
+      // A convergence undoes whole (mergeRewind), so an event further down this
+      // list may already be gone by the time we reach it — that is the undo
+      // working, not a refusal.
+      if (event.status !== "active") {
+        continue;
+      }
+      const step = await mergeRewind(session, event.id, event.frame);
+      if (step.moved) progress.moved = true;
+      if (!step.ok) {
+        // REFUSE rather than carry on. A merge that would not come off is
+        // still standing, so walking this line back behind it is exactly what
+        // §8.2 exists to prevent — devices that arrived by another route left
+        // on a frame that route never touched. Until now the loop simply broke
+        // and the rewind below ran anyway, quietly producing the impossible
+        // room the whole rule is about. `progress.moved` carries whatever the
+        // earlier steps already committed, so the refusal tells the truth
+        // about a part-way walk.
+        return "merge-undo-refused";
+      }
+      undone++;
+    }
+    if (undone > 0) {
+      // The clicked frame may be gone with the truncated tail — then the undos
+      // have already landed the line at or behind the target and there is
+      // nothing left to rewind.
+      const trail = line.history || [];
+      let at = -1;
+      for (let i = Math.min(value, trail.length - 1); i >= 0; i--) {
+        if (String(trail[i]).toLowerCase() === filename.toLowerCase()) {
+          at = i;
+          break;
+        }
+      }
+      if (at < 0 || (at === line.historyIndex && line.subStack.length === 0)) {
+        return null; // the undos already landed it at or behind the target
+      }
+      value = at;
+    }
+  }
+
   // Resolve within the line's ACTIVE frame list (sub-aware — the counterpart
   // of BMLine.activeFrameList, which setCurrIdxTo pushes from).
   const top = line.subStack[line.subStack.length - 1];
   const sub = top && session.subFrames && session.subFrames[top.score];
   if (top && !sub) {
-    return; // score reloaded without this sub — nothing safe to resolve
+    return "sub-unavailable"; // score reloaded without this sub
   }
   const frameList = sub ? sub.frameList : session.listFiles;
   const index = frameList.findIndex(
     (f) => f.toLowerCase() === filename.toLowerCase(),
   );
   if (index < 0) {
-    return;
+    return "frame-missing";
   }
 
   if (line.isHolding && line.holdingTimer != null) {
@@ -3674,12 +4771,13 @@ async function lineRewind(session, lineId, value, expectedFrame) {
   emitHistoryToAdmins(session, line);
   updateNumberOfConnectionForSession(session);
 
-  if (!session.isPause) {
-    sendToLine(session, line.id, Date.now() + session.preloadDuration, {
-      m: MESSAGES.MSG_SHOW,
-      showIdx: index,
-    });
-  }
+  // Last landing of the gesture, so this is the one its devices are shown —
+  // the merge landings the walk passed through are dropped with it. A line
+  // rewound INSIDE its dive is the case that kept this drive out of the hold
+  // until now: `driveLineDisplays` reads the view each device is actually in,
+  // so one already inside this sub takes the plain show it always did.
+  holdLineDisplay(session, line);
+  return null;
 }
 
 // Operator "roll this line back out of its dive" (2026-09-02) — the REWIND
@@ -3720,22 +4818,26 @@ async function rewindLineOutOfSub(
   const line = (session.lines || []).find(
     (l) => l && l.id === lineId && l.status !== "retired",
   );
-  if (!line || line.subStack.length === 0) {
-    return;
+  if (!line) {
+    return "unknown-line";
+  }
+  if (line.subStack.length === 0) {
+    return "not-in-sub"; // it surfaced on its own while the menu sat open
   }
   const top = line.subStack[line.subStack.length - 1];
   if (sub && String(top.score).toLowerCase() !== String(sub).toLowerCase()) {
-    return;
+    return "stale-sub";
   }
 
   // Everything is resolved off the SAVED trail before a single field is
   // mutated, so a refused race guard leaves the line exactly where it stood —
   // the whole point of validating a rewind rather than trusting the menu.
   const main = mainHistoryStateForLine(line);
-  const trailIdx = selectedIdx == null ? main.historyIndex : Number(selectedIdx);
+  const trailIdx =
+    selectedIdx == null ? main.historyIndex : Number(selectedIdx);
   const target = main.history[trailIdx];
   if (target == null) {
-    return;
+    return "stale-trail";
   }
   // Same race guard as lineRewind: the menu was built from a trail snapshot, so
   // the entry at this index must still name the frame that was clicked.
@@ -3743,20 +4845,21 @@ async function rewindLineOutOfSub(
     expectedFrame &&
     String(target).toLowerCase() !== String(expectedFrame).toLowerCase()
   ) {
-    // Refusing is a no-op on the operator's screen, so leave a trace: either
-    // the line moved since the menu was built (the case this guards), or a
-    // caller sent something other than the trail entry verbatim.
+    // The operator is told (the caller reports this reason), and the log keeps
+    // the detail: either the line moved since the menu was built — the case
+    // this guards — or a caller sent something other than the trail entry
+    // verbatim.
     console.warn(
       `rewindLineOutOfSub refused: ${lineId} trail[${trailIdx}] is ` +
         `"${target}", not "${expectedFrame}"`,
     );
-    return;
+    return "stale-frame";
   }
   const index = session.listFilesInLowerCase.indexOf(
     String(target).toLowerCase(),
   );
   if (index < 0) {
-    return;
+    return "frame-missing";
   }
 
   // The full phase clear, not lineRewind's bare timer cancels: a line left
@@ -3809,6 +4912,7 @@ async function rewindLineOutOfSub(
   emitHistoryToAdmins(session, line);
   notifyAdminsBarriers(session);
   updateNumberOfConnectionForSession(session);
+  return null;
 }
 
 async function cancelHoldingTimer(session, line, onOff) {
@@ -3854,9 +4958,42 @@ function updateNumberOfConnectionForSession(session) {
   // the room's split across lines and can spot stalled ones (dormant, or parked
   // at a barrier). Omitted for vanilla scores → message byte-identical to today.
   if (session.hasSessionLines) {
-    payload.splitRewinds = orch.splitRewindOptions({
-      splitEvents: session.splitEvents,
-      lines: session.lines,
+    const structural = structuralProjection(session);
+    // Which track groups the room can be rewound to, decided HERE (2026-09-12).
+    // The map used to re-derive this from `lines[]` with its own copy of
+    // `commonCheckpoints`, and the two answers could not agree: the copy counted
+    // riders as population (a spectator is never population — decision #12) so a
+    // rider-only line hid a checkpoint the server would have accepted, and it
+    // had no way to see the split records at all, so it could not know where a
+    // line whose trail a fork truncated had really crossed the group. One
+    // answer, computed where both inputs live, and the menu is a projection of
+    // it like everything else on that canvas. Outside the memoized projection
+    // because it turns on who is CONNECTED, which changes with every join and
+    // leave; `session.graph.groups` is small and the trails are already in hand.
+    payload.roomCheckpoints = roomCheckpointOptions(session);
+    payload.splitRewinds = structural.splitRewinds;
+    payload.mergeRewinds = structural.mergeRewinds.map((entry) => {
+      // Only where an undo could still run. An expired entry is a note on a
+      // node — a frame and a reason — and counting a redistribution that can
+      // never happen walked every connection and the whole device registry per
+      // expired event, on every push, for the life of the session.
+      if (!entry.available) {
+        return entry;
+      }
+      // How many performers this undo would have to SPREAD, because they were
+      // not in the room when the merge ran. Recounted on every push (the
+      // projection above is memoized, but this changes with every join and
+      // leave), and counted at all so the confirm can stop telling every
+      // operator about a redistribution that most of the time involves nobody.
+      // `latecomersHere` is the connected subset, so the confirm can name the
+      // devices the operator can actually SEE apart from the ones that
+      // registered and left.
+      const counted = mergeLatecomerCount(session, entry);
+      return {
+        ...entry,
+        latecomers: counted.total,
+        latecomersHere: counted.live,
+      };
     });
     payload.lines = session.lines
       .filter((l) => l.status !== "retired")
@@ -3885,6 +5022,11 @@ function updateNumberOfConnectionForSession(session) {
           .filter((t) => typeof t === "number");
         return {
           id: l.id,
+          // The durable identity behind the recycled number (§8.4). The map
+          // needs it to tell a merge this line really walked through from one
+          // that swallowed an OLDER route of the same number, before it warns
+          // that a rewind reaches back past it.
+          uid: l.uid,
           status: l.status,
           players: linePerformers.filter((c) => c.isStaff).length,
           riders: linePerformers.filter((c) => !c.isStaff).length,
@@ -3918,14 +5060,827 @@ function updateNumberOfConnectionForSession(session) {
           trail: l.history.slice(0, l.historyIndex + 1),
           // Main-flow trail for room-wide checkpoint detection while a line is
           // inside a sub; the active sub trail above still drives the overlay.
-          mainCheckpoint:
-            mainHistory.history[mainHistory.historyIndex] || null,
+          mainCheckpoint: mainHistory.history[mainHistory.historyIndex] || null,
           mainTrail: mainHistory.history.slice(0, mainHistory.historyIndex + 1),
         };
-      });
+      })
+      // By NUMBER, which is how the operator reads the room — `session.lines`
+      // is in creation order, and a structural undo re-creates the lines it
+      // brings back in the order it walks (newest event first), so an undo of
+      // a convergence left the panel and the map legend reading "L0, L2, L1".
+      // Sorted in the payload rather than in `session.lines`: the runtime's
+      // own order is nobody's business but its own.
+      .sort((a, b) => lineIdNum(a.id) - lineIdNum(b.id));
+    payload.absorbedLines = structural.absorbedLines;
   }
 
   sendToAllAdmins(session, 0, payload);
+}
+
+/**
+ * The three structural map projections, memoized on the topology they describe.
+ *
+ * Each of them is quadratic in the number of structural events —
+ * `mergeRewindOptions` runs a full plan, chain walk and convergence grouping
+ * per event, `splitRewindOptions` the same, `absorbedLineSnapshots` another
+ * plan per event — and `updateNumberOfConnectionForSession` fires on every
+ * arrival, join, leave and rewind. Since nothing expires any more (a merge
+ * point stays reachable for the whole session, 2026-09-06) the event list only
+ * grows, so a long piece was paying that on every push: measured on the real
+ * orchestrator, 100 fork/merge passages cost ~37 ms and 1.4 MB per push.
+ *
+ * The answer depends on exactly two things — the structural events and the
+ * lines' identities/status — so the cache key is built from those, in O(events
+ * + lines), rather than from a bump the twenty-odd mutation sites would each
+ * have to remember. A key that reads the same means an identical answer, so
+ * the cached arrays are re-sent verbatim. Everything that changes per push
+ * (positions, counts, `latecomers`) is computed outside this.
+ */
+function structuralProjection(session) {
+  // The score itself is part of the key: `absorbedLineSnapshots` resolves its
+  // ghost trails against `listFiles`, and a session outlives a folder swap
+  // (MSG_CHANGE_FOLDER rebuilds the score in place), so a cache keyed on the
+  // topology alone would hand the new score the old score's frames.
+  let key = `${session.contentHash || ""}:${(session.listFiles || []).length}|`;
+  for (const event of session.splitEvents || []) {
+    if (!event) continue;
+    key += `S${event.id}:${event.status}:${event.blockedByMerge ? 1 : 0}|`;
+  }
+  for (const event of session.mergeEvents || []) {
+    if (!event) continue;
+    key += `M${event.id}:${event.status}|`;
+  }
+  // Lines matter because the plans resolve snapshots against them: a line going
+  // dormant, retiring, or coming back on a recycled number changes what is
+  // offerable even with the event list untouched.
+  for (const line of session.lines || []) {
+    if (!line) continue;
+    key += `L${line.id}:${line.uid || ""}:${line.status}|`;
+  }
+  const cached = session.__structuralProjection;
+  if (cached && cached.key === key) {
+    return cached.value;
+  }
+  // Built BEFORE the ghosts and handed to them: a route is drawn for exactly
+  // the passages these entries offer an undo for, which is one question with
+  // one answer (2026-09-12 — see `absorbedLineSnapshots`).
+  const mergeRewinds = orch
+    .mergeRewindOptions({
+      mergeEvents: session.mergeEvents,
+      splitEvents: session.splitEvents,
+      lines: session.lines,
+    })
+    // The SURVIVOR's route into the rejoin, on the same terms as the routes
+    // of the lines it swallowed — so the map can draw all of them alike
+    // (owner, 2026-09-07). Only on the entry that carries the passage; the
+    // folded older halves would publish the same route twice.
+    .map((entry) =>
+      !entry.available
+        ? entry
+        : {
+            ...entry,
+            // Where every line of the passage comes back to. On EVERY
+            // available entry, folded halves included: a ghost's button
+            // names the event its own snapshot came from, which for a
+            // convergence that merged in pairs is often the older one.
+            landings: mergeRestoreLandings(session, entry),
+            ...(entry.partOfConvergence
+              ? {}
+              : survivorGhostRoute(session, entry)),
+          },
+    );
+  const value = {
+    splitRewinds: orch.splitRewindOptions({
+      splitEvents: session.splitEvents,
+      // A split undo cascades through the merges standing on its subtree
+      // exactly as a merge undo does (splitRewind → undoStructuralChain), so
+      // the projection has to read the same events the walk will.
+      mergeEvents: session.mergeEvents,
+      lines: session.lines,
+    }),
+    mergeRewinds,
+    absorbedLines: absorbedLineSnapshots(session, mergeRewinds),
+  };
+  session.__structuralProjection = { key, value };
+  return value;
+}
+
+/**
+ * The track groups the room can be rewound to, and what each rewind would take
+ * off on the way (2026-09-12).
+ *
+ * Both halves are answered HERE because both need inputs the map does not have.
+ * Legality needs the split records — a line whose own trail a fork truncated
+ * still crossed the group, inside its parent — and it needs the room's real
+ * population, which counts performers and admins but never riders (decision
+ * #12). The map used to re-derive this from `lines[]` alone and could only get
+ * both wrong: a rider-only line hid a checkpoint the server would have
+ * accepted, and a fork made older checkpoints vanish from the menu exactly when
+ * an operator reaches for one.
+ *
+ * `undoes` is the rejoin list the click will actually walk off, taken from the
+ * same `roomRewindPlan` + `mergesBehindRoomRewind` pair `roomRewind` runs — so
+ * the confirm promises what the gesture does rather than a second guess at it.
+ *
+ * Outside `structuralProjection` because it turns on who is CONNECTED, which
+ * changes with every join and leave; the groups are few and the trails are
+ * already in hand.
+ */
+function roomCheckpointOptions(session) {
+  const groups = (session.graph || {}).groups || {};
+  const lines = nonRetiredLines(session);
+  const checkpointLines = populatedRewindCheckpointLines(session, lines);
+  const snapshots = lines.map(rewindLineSnapshot);
+  return orch
+    .commonCheckpoints({
+      lines: checkpointLines,
+      groups,
+      splitEvents: session.splitEvents,
+    })
+    .map((checkpoint) => {
+      const plan = orch.roomRewindPlan({
+        group: checkpoint.group,
+        groups,
+        checkpointLines,
+        lines: snapshots,
+        splitEvents: session.splitEvents,
+      });
+      return {
+        ...checkpoint,
+        undoes: plan
+          ? orch
+              .mergesBehindRoomRewind({
+                mergeEvents: session.mergeEvents,
+                lines,
+                plan,
+              })
+              .map((event) => event.id)
+          : [],
+        // …and the FORKS it takes off (2026-09-12). Not derived from `plan` —
+        // a fork is measured against the checkpoint in the PARENT's recorded
+        // trail, which is the only place it survives its children's truncation
+        // (`splitsBehindRoomRewind`).
+        undoesSplits: orch
+          .splitsBehindRoomRewind({
+            splitEvents: session.splitEvents,
+            groupFrames: orch.groupFramesLower(session.graph, checkpoint.group),
+          })
+          .map((event) => ({ eventId: event.id, frame: event.frame })),
+      };
+    });
+}
+
+/** The rejoins a room rewind to `group` would undo on the way, as the map was
+ * told them (`roomCheckpointOptions`). Empty for a group that is no longer a
+ * common checkpoint — that refusal belongs to `roomRewind` itself. */
+function roomRewindUndoes(session, group) {
+  const entry = roomCheckpointOptions(session).find(
+    (candidate) => candidate && candidate.group === group,
+  );
+  if (!entry) {
+    return [];
+  }
+  // Both kinds, tagged — a fork added while the confirm was open is as much a
+  // thing the operator was not shown as a rejoin is.
+  return [
+    ...(entry.undoes || []).map((id) => `merge:${id}`),
+    ...(entry.undoesSplits || []).map((step) => `split:${step.eventId}`),
+  ];
+}
+
+/**
+ * Where each line of one convergence comes back to — the landing
+ * `rewindMergeStructure` will give it, worked out in advance so the confirm can
+ * NAME the destinations before the operator commits to a topology change.
+ *
+ * It matters most exactly where the map can say least: behind a still-undoable
+ * rejoin the ghosts already draw the landings, but reaching an OLDER merge
+ * draws nothing at all (its absorbed numbers are back in the pool), so
+ * "⏪⏪ undo merge here — also undoes 2 later steps" was asking the operator to
+ * commit with no idea where three lines were about to appear.
+ *
+ * Walked NEWEST-FIRST and overwritten, which is the order the undo runs in: the
+ * survivor takes part in every event of a convergence, and the landing it keeps
+ * is the one the LAST (oldest) step gives it — the frame it was standing on
+ * before the passage began.
+ *
+ * `barrier` is the other half of the same honesty. A hold-until barrier is NOT
+ * re-armed by an undo (§8.4: restored lines land un-parked and phase-less, an
+ * operator rewind being authoritative), so lines put back on a barrier frame
+ * can walk straight off it and the rejoin replays as a co-presence merge rather
+ * than the barrier release it was. Said in the confirm rather than discovered
+ * mid-piece.
+ *
+ * `lineId` is the number the REJOIN recorded, the same basis as the button's
+ * "merged here as L0, L1, L2" — not a promise about the number the line comes
+ * back on. Undoing a passage frees the numbers its own cascade took, so the
+ * two agree in every ordinary case; a fork on an unrelated population is not in
+ * that cascade, and a route whose number it took is re-created on the lowest
+ * free one instead (`freeLineId`). The FRAME is exact either way.
+ *
+ * @returns {{lineId: string, frame: string, sub: (string|null), barrier: boolean}[]}
+ */
+function mergeRestoreLandings(session, entry) {
+  const landings = new Map();
+  const holdUntil = (session.graph || {}).holdUntilTargets || {};
+  for (const event of orch.mergeConvergenceEvents({
+    mergeEvents: session.mergeEvents,
+    eventId: entry.eventId,
+  })) {
+    for (const snapshot of event.participants || []) {
+      if (!snapshot || !snapshot.lineId) continue;
+      const route = absorbedRoute(session, event, snapshot);
+      if (!route) continue;
+      const frame = route.trail[route.trail.length - 1];
+      landings.set(snapshot.lineId, {
+        lineId: snapshot.lineId,
+        frame,
+        sub: route.sub || null,
+        // Barriers live on the main flow only, so a landing inside a dive is
+        // never one.
+        barrier: !route.sub && (holdUntil[frame] || []).length > 0,
+      });
+    }
+  }
+  // By NUMBER, like every other list the operator reads: the walk above is
+  // newest-first, which for a convergence that merged in pairs put the last
+  // line to arrive in the middle.
+  return [...landings.values()].sort(
+    (a, b) => lineIdNum(a.lineId) - lineIdNum(b.lineId),
+  );
+}
+
+/**
+ * The SURVIVOR's route into one rejoin — the same thing `absorbedLineSnapshots`
+ * publishes for the lines that merge swallowed, for the line that swallowed
+ * them (owner, 2026-09-07: "all lines should be equal … the map has no main
+ * line, it only lines").
+ *
+ * Without it the map drew one of the routes feeding a rejoin as live green
+ * history and the rest as ghosts, and which one got the green was decided by
+ * nothing but `planRecombine` electing the lowest-numbered line as survivor —
+ * so `L0` won every merge it was in and read as a main line the model does not
+ * have. Behind a still-undoable rejoin the survivor's own pre-merge route is
+ * exactly as past as its co-arrivals': nobody is standing on it, and the same
+ * one undo gives all of them back.
+ *
+ * Taken from the OLDEST member of the convergence, because that is the
+ * position the whole passage's undo restores the survivor to (a barrier
+ * release records it still parked on its own frame; a later co-presence event
+ * records it standing on the rejoin frame). `absorbedRoute` then applies the
+ * same `preMergeLanding` step-back, so the last entry is always the node the
+ * undo would land it on.
+ *
+ * @returns {{survivorTrail: string[], survivorLanding: string, survivorSub: (string|null)}|{}}
+ */
+function survivorGhostRoute(session, entry) {
+  const convergence = orch.mergeConvergenceEvents({
+    mergeEvents: session.mergeEvents,
+    eventId: entry.eventId,
+  });
+  const oldest = convergence[convergence.length - 1]; // newest-first
+  if (!oldest) {
+    return {};
+  }
+  // The SAME gate `absorbedLineSnapshots` applies — the entry's own
+  // `available`, and nothing else (2026-09-12). This used to re-run
+  // `mergeRewindPlan`, which asks something NARROWER: a plan refuses a merge
+  // with anything built on top of it (`superseded`), while the entry beside it
+  // reads available because the undo walks that cascade off first. So the
+  // survivor's route lost its ghost as soon as the room rejoined anywhere
+  // else — in step with the routes it swallowed, which is the only reason the
+  // lopsidedness this ghost exists to remove did not come straight back.
+  if (!entry.available) {
+    return {};
+  }
+  const snapshot = (oldest.participants || []).find(
+    (candidate) => candidate && candidate.lineId === oldest.survivorLineId,
+  );
+  if (!snapshot) {
+    return {}; // a record that does not carry the survivor's own snapshot
+  }
+  const route = absorbedRoute(session, oldest, snapshot);
+  if (!route) {
+    return {};
+  }
+  return {
+    survivorTrail: route.trail,
+    survivorLanding: route.trail[route.trail.length - 1],
+    survivorSub: route.sub,
+  };
+}
+
+/**
+ * Devices a merge undo would have to spread, because they were not in the room
+ * when the rejoin ran and so appear in no snapshot.
+ *
+ * Counts the OFFLINE ones too: `rewindMergeStructure` sweeps the registry the
+ * same way it sweeps live connections, so counting connections alone let the
+ * confirm say nothing at all while a dozen registered-but-absent devices were
+ * about to be redistributed. Riders are excluded in both places — a spectator
+ * is never population (decision #12).
+ *
+ * Reported as BOTH numbers (2026-09-09), because the operator checks the one
+ * they are shown against the room in front of them. A device that registered
+ * and left really is about to be reassigned, so it belongs in the total — but
+ * counting it silently made the confirm promise to spread four devices to an
+ * operator who could see three performers, and a number that does not match
+ * the room is a reason to distrust the whole gesture, mid-piece.
+ *
+ * @returns {{total:number, live:number}} everything the undo reassigns, and
+ *   the subset that is connected right now.
+ */
+function mergeLatecomerCount(session, entry) {
+  const known = new Set();
+  for (const member of orch.mergeConvergenceEvents({
+    mergeEvents: session.mergeEvents,
+    eventId: entry.eventId,
+  })) {
+    for (const snapshot of member.participants || []) {
+      for (const deviceId of (snapshot && snapshot.deviceIds) || []) {
+        known.add(String(deviceId));
+      }
+    }
+  }
+  const live = wsServer.connections.filter(
+    (conn) =>
+      conn &&
+      conn.sessionId === session.id &&
+      conn.lineId === entry.survivorLineId &&
+      !conn.isMapView &&
+      conn.isStaff !== false &&
+      !(conn.deviceId != null && known.has(String(conn.deviceId))),
+  );
+  // The same set `rewindMergeStructure` skips when sweeping the registry: a
+  // device counted above must not be counted twice from its offline record.
+  const liveIds = new Set(
+    wsServer.connections
+      .filter(
+        (conn) =>
+          conn &&
+          conn.sessionId === session.id &&
+          !conn.isMapView &&
+          conn.deviceId != null,
+      )
+      .map((conn) => String(conn.deviceId)),
+  );
+  let offline = 0;
+  for (const [deviceId, lineId] of Object.entries(
+    session.deviceRegistry || {},
+  )) {
+    if (lineId !== entry.survivorLineId) continue;
+    if (known.has(String(deviceId)) || liveIds.has(String(deviceId))) continue;
+    offline++;
+  }
+  return { total: live.length + offline, live: live.length };
+}
+
+/**
+ * The lines a merge swallowed that its undo can still bring back (owner,
+ * 2026-09-05): "we should have the option to unmerge on those lines too".
+ *
+ * They are hard-retired, so they are in no count, no line panel and no
+ * `lines[]` entry — and until now the map had nothing to hang an entry on
+ * either: after a rejoin the only route on the canvas was the survivor's, so
+ * `A1/A2` offered "rewind L0 here" while `B1/B2` and `C1/C2`, where the
+ * operator actually watched L1 and L2 walk, offered nothing at all. The map
+ * paints these as a GHOST route and offers the same per-line rewind on them;
+ * `lineRewind` brings the line back out of the merge on the way (§8.2's rule,
+ * applied to the line that was swallowed rather than the one that swallowed
+ * it).
+ *
+ * `trail` is the trail the undo will RESTORE, not the one the merge recorded:
+ * `preMergeLanding` steps a co-presence merge's snapshot back off the rejoin
+ * frame, so the last entry is always the node the line will land on and every
+ * entry is a legitimate destination. The window is the merge's own — the
+ * moment it expires these lines are dropped from `lines[]` altogether and
+ * their numbers go back in the pool.
+ *
+ * @param {object} session
+ * @param {object[]} mergeRewinds the map's own merge entries, which decide
+ *   WHICH passages are drawn — see the gate below.
+ */
+function absorbedLineSnapshots(session, mergeRewinds) {
+  const out = [];
+  // A route is ghosted for exactly the passages the map OFFERS an undo for —
+  // the `mergeRewinds` entries, which have already answered that question for
+  // the whole convergence AND for whatever cascade stands on it (2026-09-12).
+  //
+  // This used to ask `mergeRewindPlan` again, which is a NARROWER question: a
+  // plan refuses a merge with anything built on top of it (`superseded`), while
+  // the entry beside it reads `available` because the undo walks that cascade
+  // off first. A room that forked three ways, rejoined at Z and rejoined again
+  // at B-prime therefore drew a ⏪⏪ badge on Z, offered the undo and named the
+  // line it would bring back — and drew no route for that line at all, while
+  // the two routes feeding the newer rejoin were greyed as usual. Two ghosts
+  // where the operator had watched three lines walk in, and the missing one
+  // was always the line swallowed by the older rejoin.
+  //
+  // The recycled-number worry the old gate carried is not what it was guarding:
+  // a ghost route paints no number on the canvas (badges are built from the
+  // live `lines[]` only), and the number a ghost's MENU names is kept honest by
+  // the check below, which is the one that knows whether the room is playing an
+  // "L1" today.
+  const offered = new Set(
+    (mergeRewinds || [])
+      .filter((entry) => entry && entry.available)
+      .map((entry) => entry.eventId),
+  );
+  for (const event of session.mergeEvents || []) {
+    if (!event || event.status !== "active") {
+      continue;
+    }
+    // Asked of this event in its own right, folded halves included: an older
+    // half of a convergence always reads `superseded` alone, and one click
+    // undoes the passage whole, so every line it brings back gets its route.
+    if (!offered.has(event.id)) {
+      continue;
+    }
+    for (const snapshot of event.participants || []) {
+      if (!snapshot || snapshot.lineId === event.survivorLineId) {
+        continue; // the survivor is a live line, already in lines[]
+      }
+      // The number this route walked under is free again the moment its merge
+      // runs, so an unrelated fork may be holding it now. The undo would give
+      // this line a different one, and a ghost cannot say which — so it stays
+      // off the canvas and the rejoin node's own entry carries the passage.
+      //
+      // Asked of the lines the map DRAWS, which is what a ghost could be
+      // confused with: `lines[]` is filtered to non-retired. A merge-absorbed
+      // line whose object `pruneRetiredLines` keeps because an active split
+      // still names it as its parent carries this very number — matching on
+      // that hid the route the ghost is for, and explained nothing.
+      if (
+        (session.lines || []).some(
+          (l) => l && l.id === snapshot.lineId && l.status !== "retired",
+        )
+      ) {
+        continue;
+      }
+      const route = absorbedRoute(session, event, snapshot);
+      if (!route) {
+        continue;
+      }
+      out.push({
+        id: snapshot.lineId,
+        mergeEventId: event.id,
+        mergeFrame: event.frame,
+        survivorLineId: event.survivorLineId,
+        // Same prefix rule as a live line's: a line absorbed mid-DIVE carries
+        // the sub's trail and its ghost belongs inside that sub's box.
+        sub: route.sub,
+        trail: route.trail,
+        // Where the undo alone would put it back — the ghost's "here".
+        landing: route.trail[route.trail.length - 1],
+      });
+    }
+  }
+  return out;
+}
+
+/**
+ * The route ONE merge snapshot gives back: the trail the undo will restore, not
+ * the one the merge recorded. `preMergeLanding` steps a co-presence snapshot
+ * back off the rejoin frame, so the last entry is always the node the line will
+ * land on and every entry is a legitimate rewind destination.
+ */
+function absorbedRoute(session, event, snapshot) {
+  const lowerFrames =
+    session.listFilesInLowerCase ||
+    (session.listFiles || []).map((f) => f.toLowerCase());
+  const frameIndexOf = (name) =>
+    lowerFrames.indexOf(String(name || "").toLowerCase());
+  const stepBack = orch.preMergeLanding({
+    snapshot,
+    mergeFrame: event.frame,
+    frameIndexOf,
+  });
+  const history = Array.isArray(snapshot.history) ? snapshot.history : [];
+  const at =
+    snapshot.historyIndex == null ? history.length - 1 : snapshot.historyIndex;
+  const trail = stepBack ? stepBack.history.slice() : history.slice(0, at + 1);
+  if (trail.length === 0) {
+    return null;
+  }
+  const top = (snapshot.subStack || [])[(snapshot.subStack || []).length - 1];
+  return { trail, sub: top ? top.score : null };
+}
+
+/**
+ * The merge snapshot a ghost rewind names — the line is not in `session.lines`
+ * at all any more, so the record IS the line until the undo re-creates it.
+ * Newest first, and narrowed to the event the map's entry was built from when
+ * it names one.
+ */
+function absorbedSnapshotFor(session, lineId, eventId) {
+  const events = (session.mergeEvents || []).filter(
+    (event) =>
+      event &&
+      event.status === "active" &&
+      (!eventId || String(event.id) === String(eventId)),
+  );
+  for (let i = events.length - 1; i >= 0; i--) {
+    const event = events[i];
+    if (event.survivorLineId === lineId) {
+      continue;
+    }
+    const snapshot = (event.participants || []).find(
+      (entry) => entry && entry.lineId === lineId,
+    );
+    if (!snapshot) {
+      continue;
+    }
+    const route = absorbedRoute(session, event, snapshot);
+    if (route) {
+      return { event, snapshot, trail: route.trail };
+    }
+  }
+  return null;
+}
+
+/**
+ * Run one room-changing gesture at a time, per session.
+ *
+ * Returns a promise for THIS gesture's result; the queue itself never rejects,
+ * so one failing gesture cannot wedge the room's rewinds for the rest of the
+ * session. Kept on the session object (like `__structuralProjection`) and never
+ * persisted — `toJSON` names its fields explicitly.
+ */
+function runExclusively(session, work) {
+  const queued = (session.__gestureQueue || Promise.resolve()).then(work, work);
+  session.__gestureQueue = queued.then(
+    () => undefined,
+    () => undefined,
+  );
+  return queued;
+}
+
+/**
+ * The five rewinds, told apart by their payload shape. Serialized by
+ * `runExclusively` — see the call site.
+ */
+async function handleSelectHistory(conn, session, messageData) {
+  // Taken before any of the five rewinds below runs, so each can report the
+  // lines it left with nobody on them (`reportRewindDone`).
+  const dormantBefore = session.hasSessionLines
+    ? dormantLineKeys(session)
+    : null;
+  if (messageData.splitEventId && session.hasSessionLines) {
+    // What the operator agreed to discard, checked before anything commits.
+    if (
+      !cascadeAgreed(
+        messageData.cascade,
+        structuralCascadeNow(session, "split", messageData.splitEventId),
+      )
+    ) {
+      reportRewindRefusal(
+        conn,
+        session,
+        "split",
+        "stale-cascade",
+        messageData.frame,
+        false,
+      );
+      return;
+    }
+    const done = await splitRewind(
+      session,
+      messageData.splitEventId,
+      messageData.frame,
+    );
+    if (!done.ok) {
+      // Re-planned AFTER the attempt on purpose: what the operator needs is
+      // why it is still not done, which for a walk that stopped part-way is
+      // the step that stopped it, not the state the menu was built from.
+      reportRewindRefusal(
+        conn,
+        session,
+        "split",
+        splitRefusalReason(
+          session,
+          messageData.splitEventId,
+          messageData.frame,
+        ),
+        messageData.frame,
+        done.moved,
+      );
+    } else {
+      reportRewindDone(
+        session,
+        "split",
+        messageData.frame,
+        linesLeftEmpty(session, dormantBefore),
+      );
+    }
+    return;
+  }
+  // Structural merge undo (2026-09-05): put the lines one rejoin swallowed
+  // back where they stood, with the devices they had. `frame` is the race
+  // guard — the merge frame the menu was built against.
+  if (messageData.mergeEventId && session.hasSessionLines) {
+    if (
+      !cascadeAgreed(
+        messageData.cascade,
+        structuralCascadeNow(session, "merge", messageData.mergeEventId),
+      )
+    ) {
+      reportRewindRefusal(
+        conn,
+        session,
+        "merge",
+        "stale-cascade",
+        messageData.frame,
+        false,
+      );
+      return;
+    }
+    const done = await mergeRewind(
+      session,
+      messageData.mergeEventId,
+      messageData.frame,
+    );
+    if (!done.ok) {
+      reportRewindRefusal(
+        conn,
+        session,
+        "merge",
+        mergeRefusalReason(
+          session,
+          messageData.mergeEventId,
+          messageData.frame,
+        ),
+        messageData.frame,
+        done.moved,
+      );
+    } else {
+      reportRewindDone(
+        session,
+        "merge",
+        messageData.frame,
+        linesLeftEmpty(session, dormantBefore),
+      );
+    }
+    return;
+  }
+  if (messageData.group && session.hasSessionLines) {
+    // The room rewind refuses as readily as the other three (a checkpoint
+    // stops being common the moment a line leaves the group), and used to do
+    // it in silence. It validates its whole plan — the rejoins it will walk
+    // back through included — before touching a line, so it still refuses as
+    // a clean no-op; `moved` is for the one case that cannot be clean, a
+    // rejoin that came apart and a later one that would not (2026-09-11).
+    // The rejoins it promised to take off on the way (`restoredMergeClause`),
+    // re-derived — the room can rejoin somewhere else while the confirm is up.
+    if (
+      messageData.cascade != null &&
+      !cascadeAgreed(
+        messageData.cascade,
+        roomRewindUndoes(session, messageData.group),
+      )
+    ) {
+      reportRewindRefusal(
+        conn,
+        session,
+        "room",
+        "stale-cascade",
+        messageData.group,
+        false,
+      );
+      return;
+    }
+    const outcome = await roomRewind(session, messageData.group);
+    if (outcome.refusal) {
+      reportRewindRefusal(
+        conn,
+        session,
+        "room",
+        outcome.refusal,
+        messageData.group,
+        outcome.moved,
+      );
+    } else {
+      reportRewindDone(
+        session,
+        "room",
+        messageData.group,
+        linesLeftEmpty(session, dormantBefore),
+      );
+    }
+    return;
+  }
+  // Roll ONE line back out of its dive, onto any main-flow frame it has
+  // already visited (2026-09-02) — payload-distinguished like the three
+  // rewinds around it. `selectedIdx` indexes the line's MAIN trail; omitted,
+  // it means the frame the line dived from. `frame` is the race guard.
+  if (
+    messageData.exitSub &&
+    messageData.lineId != null &&
+    session.hasSessionLines
+  ) {
+    // Same reasoning as the room rewind above: it validates everything off
+    // the saved trail before touching the line, so a refusal is always a
+    // clean no-op — but a silent one read as a broken button.
+    const refusal = await rewindLineOutOfSub(
+      session,
+      messageData.lineId,
+      messageData.sub,
+      messageData.selectedIdx,
+      messageData.frame,
+    );
+    if (refusal) {
+      reportRewindRefusal(
+        conn,
+        session,
+        "sub",
+        refusal,
+        messageData.frame,
+        false,
+      );
+    } else {
+      reportRewindDone(
+        session,
+        "sub",
+        messageData.frame,
+        linesLeftEmpty(session, dormantBefore),
+      );
+    }
+    return;
+  }
+  // Targeted per-line rewind (owner, 2026-07-19): an EXPLICIT, admin-only
+  // jump of one NAMED line within its own active trail (main flow or its
+  // current sub dive). `frame` is the race guard — it must still be the
+  // trail entry at selectedIdx.
+  if (messageData.lineId != null && session.hasSessionLines) {
+    // The rejoins this rewind promised to walk back through, re-derived. Only
+    // for a line that is still standing: a GHOST entry names a line that is not
+    // in `session.lines` at all, and its own `absorbedEventId` + `frame` are
+    // already the guard for the one merge it undoes.
+    if (messageData.cascade != null && !messageData.absorbedEventId) {
+      const target = (session.lines || []).find(
+        (l) => l && l.id === messageData.lineId && l.status !== "retired",
+      );
+      if (
+        target &&
+        !cascadeAgreed(
+          messageData.cascade,
+          mergesBehindLineFolded(session, target, messageData.selectedIdx),
+        )
+      ) {
+        reportRewindRefusal(
+          conn,
+          session,
+          "line",
+          "stale-cascade",
+          messageData.frame,
+          false,
+        );
+        return;
+      }
+    }
+    // This rewind can take merges off on the way, and those commit before the
+    // rest of it is checked — so a refusal here is not automatically a no-op.
+    const progress = { moved: false };
+    const refusal = await lineRewind(
+      session,
+      messageData.lineId,
+      messageData.selectedIdx,
+      messageData.frame,
+      // A ghost entry names the merge its route came from: the line is not in
+      // session.lines at all, so the event is how the server finds it.
+      messageData.absorbedEventId,
+      progress,
+    );
+    if (refusal) {
+      reportRewindRefusal(
+        conn,
+        session,
+        "line",
+        refusal,
+        messageData.frame,
+        progress.moved,
+      );
+    } else {
+      reportRewindDone(
+        session,
+        "line",
+        messageData.frame,
+        linesLeftEmpty(session, dormantBefore),
+      );
+    }
+    return;
+  }
+  // The IMPLICIT bound-line {selectedIdx} jump stays retired for
+  // session-lines rooms (decided 2026-07-19): rewinds are the room-wide
+  // {group} checkpoint rewind or the explicit {lineId} rewind above — the
+  // clients no longer offer the implicit form, but don't trust them.
+  // Vanilla scores keep {selectedIdx}: their single playhead IS the room.
+  if (session.hasSessionLines) {
+    return;
+  }
+  const line = lineForConn(session, conn);
+  const { selectedIdx } = messageData;
+  await jumpScoreForSession(session, line, selectedIdx);
+  return;
 }
 
 async function messageHandle(conn, message) {
@@ -3953,9 +5908,7 @@ async function messageHandle(conn, message) {
     setTimeout(() => {
       tryReleaseBarriers(session)
         .then(() => tryReleaseGroupWaits(session))
-        .catch((e) =>
-          console.error("post-rehydrate barrier check error", e),
-        );
+        .catch((e) => console.error("post-rehydrate barrier check error", e));
     }, ATTRITION_GRACE_MS);
   }
 
@@ -4099,6 +6052,22 @@ async function messageHandle(conn, message) {
     // to have reconnected first.)
     notifyAdminsBarriers(session);
 
+    // …and tell the device which line that is (2026-09-09). MSG_LINE_ASSIGNED
+    // was only ever sent when a line CHANGED under a device — a split, a
+    // rejoin, a structural undo, a rider re-home — so a device that simply
+    // joined or reconnected carried `window.lineId === null` for the rest of
+    // the session while the operator panel had it placed correctly. Nothing
+    // functional reads the global, but it is the first thing anyone reaches
+    // for when a live room misbehaves, and a null there sends them hunting a
+    // binding bug that does not exist. Riders included: a spectator is bound
+    // to the line it watches, and its re-home already reports the same way.
+    if (session.hasSessionLines) {
+      sendToClient(conn, 0, {
+        m: MESSAGES.MSG_LINE_ASSIGNED,
+        lineId: line.id,
+      });
+    }
+
     if (!session.isPause) {
       // Session Lines: a device reconnecting into a line that is mid-sub-session
       // must re-fetch + re-enter the sub, not show a main-flow index.
@@ -4203,11 +6172,20 @@ async function messageHandle(conn, message) {
 
   if (msg === MESSAGES.MSG_CHECK_HOLD) {
     const { isHold } = messageData;
-    // Session Lines (Chunk M): SM hold is global — apply to EVERY active line
-    // (pause / global-refresh are already global). A vanilla score has exactly
-    // one line, so this reduces to today's behavior.
+    // Session Lines (Chunk M): SM hold is global — apply to EVERY line the
+    // room still has (pause / global-refresh are already global). A vanilla
+    // score has exactly one line, so this reduces to today's behavior.
+    //
+    // NON-RETIRED, not merely active (2026-09-12), for the reason MSG_PAUSE
+    // below already gives: a dormant line is one nothing counts as POPULATION
+    // stands on, and it can be revived at any moment (#11). Skipping it here
+    // left it holding `isHolding` from before a global hold-OFF, with no timer
+    // to end it — and the first performer to revive it lands on a line whose
+    // taps MSG_TAP drops in silence, with no way out but another toggle. The
+    // same stale-hold wedge a mid-hold state restore produces, reached without
+    // a restart.
     const targetLines = session.hasSessionLines
-      ? activeLines(session)
+      ? nonRetiredLines(session)
       : session.lines;
     for (const line of targetLines) {
       if (line.isHolding && line.holdingTimer != null) {
@@ -4251,8 +6229,16 @@ async function messageHandle(conn, message) {
     await session.patchState({ isPause }, true);
     // Session Lines: pause is global, but each line must resume on ITS own
     // frame — a session-wide showIdx would yank every line to the admin's.
+    //
+    // EVERY non-retired line, not just the active ones (2026-09-12): a line is
+    // "dormant" when nothing on it counts as POPULATION (decision #12), which
+    // riders never do — so a merge undo that hands a route back to a performer
+    // who has gone home leaves a line carrying only spectators, and addressing
+    // the active ones alone left those devices on a placeholder through the
+    // next unpause, with no way back until someone joined the line. A dormant
+    // line with nobody on it at all is simply a send to no one.
     if (session.hasSessionLines) {
-      for (const l of activeLines(session)) {
+      for (const l of nonRetiredLines(session)) {
         sendToLine(session, l.id, 0, {
           m: MESSAGES.MSG_PAUSE,
           isPause,
@@ -4270,61 +6256,21 @@ async function messageHandle(conn, message) {
   }
 
   if (msg === MESSAGES.MSG_SELECT_HISTORY) {
-    if (messageData.splitEventId && session.hasSessionLines) {
-      await splitRewind(
-        session,
-        messageData.splitEventId,
-        messageData.frame,
-      );
-      return;
-    }
-    if (messageData.group && session.hasSessionLines) {
-      await roomRewind(session, messageData.group);
-      return;
-    }
-    // Roll ONE line back out of its dive, onto any main-flow frame it has
-    // already visited (2026-09-02) — payload-distinguished like the three
-    // rewinds around it. `selectedIdx` indexes the line's MAIN trail; omitted,
-    // it means the frame the line dived from. `frame` is the race guard.
-    if (
-      messageData.exitSub &&
-      messageData.lineId != null &&
-      session.hasSessionLines
-    ) {
-      await rewindLineOutOfSub(
-        session,
-        messageData.lineId,
-        messageData.sub,
-        messageData.selectedIdx,
-        messageData.frame,
-      );
-      return;
-    }
-    // Targeted per-line rewind (owner, 2026-07-19): an EXPLICIT, admin-only
-    // jump of one NAMED line within its own active trail (main flow or its
-    // current sub dive). `frame` is the race guard — it must still be the
-    // trail entry at selectedIdx.
-    if (messageData.lineId != null && session.hasSessionLines) {
-      await lineRewind(
-        session,
-        messageData.lineId,
-        messageData.selectedIdx,
-        messageData.frame,
-      );
-      return;
-    }
-    // The IMPLICIT bound-line {selectedIdx} jump stays retired for
-    // session-lines rooms (decided 2026-07-19): rewinds are the room-wide
-    // {group} checkpoint rewind or the explicit {lineId} rewind above — the
-    // clients no longer offer the implicit form, but don't trust them.
-    // Vanilla scores keep {selectedIdx}: their single playhead IS the room.
-    if (session.hasSessionLines) {
-      return;
-    }
-    const line = lineForConn(session, conn);
-    const { selectedIdx } = messageData;
-    await jumpScoreForSession(session, line, selectedIdx);
-    return;
+    // One rewind at a time, per room. Every gesture below is a multi-step walk
+    // over shared state — `undoStructuralChain`, a convergence, then the line
+    // itself — with `await`s in the middle, and `connection.on("message")`
+    // dispatches without waiting for the previous message to finish. Two
+    // operator tabs clicking at once therefore interleaved: the second gesture
+    // found `displayHold` already open, recorded its lines into the FIRST
+    // gesture's hold, and then had nothing of its own to flush — so the devices
+    // it moved last were never told where they ended up, which is exactly the
+    // stranding `flushDisplayHold` exists to prevent, reached through timing
+    // instead of ordering. Serialized here rather than inside the hold because
+    // the same interleaving also lets one gesture commit between another's
+    // validation and its own commit.
+    return runExclusively(session, () =>
+      handleSelectHistory(conn, session, messageData),
+    );
   }
 
   if (msg === MESSAGES.MSG_GLOBAL_REFRESH) {
@@ -4351,17 +6297,29 @@ async function messageHandle(conn, message) {
   // different rewinds.
   if (msg === MESSAGES.MSG_BARRIER_RELEASED) {
     if (session.hasSessionLines) {
-      if (messageData.eject) {
-        await ejectLineFromSub(session, messageData.lineId, messageData.sub);
-      } else if (messageData.advance) {
-        await forceAdvanceStragglers(
-          session,
-          messageData.frame,
-          messageData.lineIds,
-        );
-      } else {
-        await forceReleaseBarrier(session, messageData.frame);
-      }
+      // On the SAME queue as MSG_SELECT_HISTORY (2026-09-12). Everything below
+      // is what that message already is — an admin gesture that walks the
+      // room's shared state over several `await`s — and the queue was put
+      // there because `connection.on("message")` dispatches without waiting
+      // for the previous message to finish. Serializing only the rewinds left
+      // the other half of the same map's toolbar free to interleave with them:
+      // `forceAdvanceStragglers` can reach `applyRecombine` and record a
+      // rejoin on the very population a rewind validated its whole chain
+      // against a moment earlier, and an eject can move a line out of a sub
+      // between a walk's validation and its commit.
+      return runExclusively(session, async () => {
+        if (messageData.eject) {
+          await ejectLineFromSub(session, messageData.lineId, messageData.sub);
+        } else if (messageData.advance) {
+          await forceAdvanceStragglers(
+            session,
+            messageData.frame,
+            messageData.lineIds,
+          );
+        } else {
+          await forceReleaseBarrier(session, messageData.frame);
+        }
+      });
     }
     return;
   }

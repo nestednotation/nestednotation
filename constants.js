@@ -23,6 +23,8 @@ const MESSAGES = {
   MSG_BARRIER_RELEASED: 19, // barrier satisfied — line may proceed
   MSG_SUB_ENTER: 20, // line dived into a sub-score
   MSG_SUB_EXIT: 21, // line popped back to the main flow
+  MSG_REWIND_REFUSED: 22, // an operator rewind was refused, and why
+  MSG_REWIND_DONE: 23, // …and the same rewind, when it DID happen
 };
 
 const FORM_MESSAGES = {
