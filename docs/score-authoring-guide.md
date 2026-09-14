@@ -189,6 +189,10 @@ It announces: "a line standing here will merge at `DONE.svg` when it moves there
 or more lines that made this announcement are on the meeting frame together, they become
 one line — one voting pool again.
 
+It is an **announcement and nothing more**: it never moves a line. Performers leave the frame
+by playing it, exactly as anywhere else, and the merge happens when they arrive together on
+the target. (This holds even when the frame also waits — see "Guaranteed merge" in §3.6.)
+
 Rules:
 
 - The target **must be one of that frame's own links** — the merge point is somewhere the
@@ -257,12 +261,23 @@ Rules and notes:
 
 - List one or more frames, comma-separated. A frame inside a sub-score is written
   `SubScoreName/FrameName.svg`.
+- **The wait lasts as long as the note.** A listed frame counts only once a line has
+  played it for that frame's full holding period — if someone is standing on it and still
+  playing it, the wait continues, even if the room played that frame earlier.
+- **A replayed passage waits again.** If the operator rewinds lines back behind a listed
+  frame, that frame stops counting as played — the wait gates like a first pass next time
+  the room comes through. (Frames inside a sub-score are the exception: once a line has
+  stood on one it stays played.)
 - **It does not deadlock.** If a listed frame becomes unreachable — every line that could
   still get there has gone empty or moved past it — the wait dissolves by itself rather
   than freezing the room forever.
 - **The frame is played first.** The wait *extends* the frame's own holding period, it never
   cuts it short: even if everything on the list was played long ago, the line still plays
   this frame in full before moving on.
+- **The release frees the line; it does not move it.** When the wait lifts, the "waiting"
+  notice clears and the frame becomes an ordinary one again — the performers choose their
+  next step and play it. That holds even when the frame announces a merge with
+  `session-rejoin-at` (§3.2).
 - **Frames may wait on each other.** A mutual rendezvous — two or three barrier frames
   each listing the others — is legal and releases them all together once each has been
   reached; a circular wait does not freeze.
@@ -348,6 +363,17 @@ Rules:
   validator treats this as an error.
 - Frames played inside a sub-score can satisfy other lines' `session-hold-until` waits via
   the `SubScoreName/FrameName.svg` form.
+- **The exit frame's timing is its own and goes unused.** Reaching it pops the line in the
+  same moment, so no device ever displays it; the frame the performers land on — and whose
+  `holding` they play — is the return landing back in the main score. Put the pause you want
+  after a sub-score on that landing, not on the exit frame. The general rule: **every frame
+  plays its own `holding`, wherever the line arrived from** — a sub-score's `START`, a split
+  destination, a `rejoin-at` target. The one exception is a frame an operator *advances* a
+  line onto, which lands without a pause on purpose (that command exists to end a wait).
+- **A frame's own `holding` wins over the session default, including when that default is
+  zero.** A session created with no holding period still plays `holding="12"` where the
+  score asks for one, and still plays none where the score says `holding="false"` — the
+  attribute is the score's instruction, not a modifier on the operator's setting.
 
 ---
 
@@ -376,13 +402,18 @@ START.svg ── split 2 ─┤                                                 
 - `Barrier.svg` — `session-hold-until="Left.svg,Tetra/Echo.svg"`: nobody proceeds until
   both `Left.svg` and the sub-score's `Echo.svg` have been played somewhere in the room.
   It also carries `session-rejoin-at="DONE.svg"`: since both lines end up held on this
-  same frame, the wait guarantees co-presence, and they merge into one line on `DONE.svg`.
+  same frame, the wait brings them together, and they merge into one line when they play
+  `Barrier.svg` and arrive on `DONE.svg`. The release of the wait frees them where they
+  stand — it does not move them there.
 
 That last frame shows the two most useful **patterns**:
 
-- **Guaranteed merge** = `session-rejoin-at` on a frame that also *waits* (a hold-until
-  barrier, or a track-group frame). The wait ensures the lines are there together; the
-  rejoin makes them one.
+- **Reliable merge** = `session-rejoin-at` on a frame that also *waits* (a hold-until
+  barrier, or a track-group frame). The wait puts the lines on their frames together and
+  frees them together, so their next step lands them on the meeting frame together and the
+  rejoin makes them one. It is reliable, not automatic: each line still has to be played
+  off its frame, and a line nobody plays stays where it is (the operator valves in the
+  session manager are the way to move it).
 - **Rendezvous without travel** = `session-hold-until` alone. Lines pause in their own
   place until the material they depend on has happened elsewhere.
 

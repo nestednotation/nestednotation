@@ -71,82 +71,90 @@ router.get("/", async function (req, res) {
         const hold = parseInt(holdDur);
         const vote = parseInt(voteDur);
         const size = parseInt(votingSize);
-        await session.patchState(
-          {
-            isHtml5,
-            fadeDuration,
-            preloadDuration: preloadDuration >= 0 ? preloadDuration : session.preloadDuration,
-            holdDuration: hold >= 0 ? hold : session.holdDuration,
-            votingDuration: vote >= 0 ? vote : session.votingDuration,
-            votingSize: size >= 0 ? size : session.votingSize,
-            defaultVolume:
-              defaultVolume >= 0 ? defaultVolume : session.defaultVolume,
-            defaultAutoplay: defaultAutoplay ?? session.defaultAutoplay,
-            enableAutoplayByDefault:
-              enableAutoplayByDefault ?? session.enableAutoplayByDefault,
-          },
-          true,
-        );
+        await session.runExclusively(async () => {
+          await session.patchState(
+            {
+              isHtml5,
+              fadeDuration,
+              preloadDuration:
+                preloadDuration >= 0
+                  ? preloadDuration
+                  : session.preloadDuration,
+              holdDuration: hold >= 0 ? hold : session.holdDuration,
+              votingDuration: vote >= 0 ? vote : session.votingDuration,
+              votingSize: size >= 0 ? size : session.votingSize,
+              defaultVolume:
+                defaultVolume >= 0 ? defaultVolume : session.defaultVolume,
+              defaultAutoplay: defaultAutoplay ?? session.defaultAutoplay,
+              enableAutoplayByDefault:
+                enableAutoplayByDefault ?? session.enableAutoplayByDefault,
+            },
+            true,
+          );
 
-        const sendToAllClients = req.app.get("sendToAllClients");
+          const sendToAllClients = req.app.get("sendToAllClients");
+          const resetSessionConnections = req.app.get(
+            "resetSessionConnections",
+          );
 
-        if (session.folder.trim() !== folder) {
-          const listScore = db.getListScore();
-          if (listScore.indexOf(folder) >= 0) {
-            await session.reloadScore(folder);
-            session.clearAllTimer();
-            session.resetSessionHistory();
-            await session.saveSessionStateToFile();
+          if (session.folder.trim() !== folder) {
+            const listScore = db.getListScore();
+            if (listScore.indexOf(folder) >= 0) {
+              await session.reloadScore(folder);
+              resetSessionConnections(session);
+              await session.saveSessionStateToFile();
 
-            sendToAllClients(session, 0, {
-              m: MESSAGES.MSG_CHANGE_FOLDER,
-              soundList: session.soundList,
-              listFiles: session.listFiles,
-              folder: session.folder,
-              sessionId: session.id,
-              wsPath: session.wsPath,
-              qrSharePath: session.qrSharePath,
-              votingSize: session.votingSize,
-              isHtml5: session.isHtml5,
-              fadeDuration: session.fadeDuration,
-              scoreHasAbout: session.aboutSvg !== null,
-              scoreTitle: session.folder,
-              defaultVolume: session.defaultVolume,
-              defaultAutoplay: session.defaultAutoplay,
-              enableAutoplayByDefault: session.enableAutoplayByDefault,
-            });
+              sendToAllClients(session, 0, {
+                m: MESSAGES.MSG_CHANGE_FOLDER,
+                soundList: session.soundList,
+                listFiles: session.listFiles,
+                folder: session.folder,
+                sessionId: session.id,
+                wsPath: session.wsPath,
+                qrSharePath: session.qrSharePath,
+                votingSize: session.votingSize,
+                isHtml5: session.isHtml5,
+                fadeDuration: session.fadeDuration,
+                scoreHasAbout: session.aboutSvg !== null,
+                scoreTitle: session.folder,
+                defaultVolume: session.defaultVolume,
+                defaultAutoplay: session.defaultAutoplay,
+                enableAutoplayByDefault: session.enableAutoplayByDefault,
+              });
+            }
+          } else {
+            // Same folder: "update session" doubles as "rebuild this score" —
+            // the operator edited the frames on disk and is applying them. The
+            // rebuild replaces the baked svg, the frame list and the graph
+            // server-side (and clears apicache below), but every attached device
+            // is still holding the OLD score: session pages keep the frames they
+            // injected at load, and the standalone /map keeps the graph it
+            // fetched. Send them the same MSG_CHANGE_FOLDER the swap above does.
+            //
+            // Gated on the score CONTENT actually having changed: this same form
+            // also carries pure parameter edits (hold/vote duration, voting
+            // size, volume…), and those must not reload a room mid-performance.
+            const contentChanged = await session.rebuildScore();
+
+            if (contentChanged) {
+              resetSessionConnections(session);
+              await session.saveSessionStateToFile();
+              sendToAllClients(session, 0, {
+                m: MESSAGES.MSG_CHANGE_FOLDER,
+                soundList: session.soundList,
+                listFiles: session.listFiles,
+                folder: session.folder,
+              });
+            }
+
+            if (isVolumeChanged) {
+              sendToAllClients(session, 0, {
+                m: MESSAGES.MSG_CHANGE_VOLUME,
+                volume: defaultVolume,
+              });
+            }
           }
-        } else {
-          // Same folder: "update session" doubles as "rebuild this score" —
-          // the operator edited the frames on disk and is applying them. The
-          // rebuild replaces the baked svg, the frame list and the graph
-          // server-side (and clears apicache below), but every attached device
-          // is still holding the OLD score: session pages keep the frames they
-          // injected at load, and the standalone /map keeps the graph it
-          // fetched. Send them the same MSG_CHANGE_FOLDER the swap above does.
-          //
-          // Gated on the score CONTENT actually having changed: this same form
-          // also carries pure parameter edits (hold/vote duration, voting
-          // size, volume…), and those must not reload a room mid-performance.
-          const contentBefore = session.contentHash;
-          await session.buildSVGContent();
-
-          if (session.contentHash !== contentBefore) {
-            sendToAllClients(session, 0, {
-              m: MESSAGES.MSG_CHANGE_FOLDER,
-              soundList: session.soundList,
-              listFiles: session.listFiles,
-              folder: session.folder,
-            });
-          }
-
-          if (isVolumeChanged) {
-            sendToAllClients(session, 0, {
-              m: MESSAGES.MSG_CHANGE_VOLUME,
-              volume: defaultVolume,
-            });
-          }
-        }
+        });
 
         apicache.clear(SESSION_CACHE_KEY);
       } else if (command === "create-session") {
@@ -186,16 +194,18 @@ router.get("/", async function (req, res) {
       } else if (command === "stop-session") {
         const session = db.sessionTable.getById(sessionId);
         if (session != null) {
-          await db.sessionTable.forceSessionStop(session);
+          await session.runExclusively(async () => {
+            await db.sessionTable.forceSessionStop(session);
 
-          const sendToAllClientsWithDelay = req.app.get(
-            "sendToAllClientsWithDelay",
-          );
-          sendToAllClientsWithDelay(session, 0, {
-            m: MESSAGES.MSG_CHANGE_FOLDER,
-            soundList: session.soundList,
-            listFiles: session.listFiles,
-            folder: session.folder,
+            const sendToAllClientsWithDelay = req.app.get(
+              "sendToAllClientsWithDelay",
+            );
+            sendToAllClientsWithDelay(session, 0, {
+              m: MESSAGES.MSG_CHANGE_FOLDER,
+              soundList: session.soundList,
+              listFiles: session.listFiles,
+              folder: session.folder,
+            });
           });
         }
       }

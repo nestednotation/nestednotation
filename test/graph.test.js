@@ -204,4 +204,31 @@ module.exports = {
     const g = buildGraph([{ name: "A.svg", attrs }]);
     assert.strictEqual(g.splits["A.svg"].n, 2);
   },
+
+  "every frame answers for its own holding — vanilla scores included": () => {
+    // What the runtime's landingHoldSeconds (bin/www) leans on: the graph is
+    // built for EVERY score, and every frame in it carries a `holding` key —
+    // `null` when nothing was authored, which means "take the session
+    // default". That distinction is the whole point: a frame the graph KNOWS
+    // answers for itself, so the value a tap reported is only consulted when
+    // the graph has no entry at all. A builder that omitted the key for
+    // unauthored frames would silently hand every one of them back to the
+    // client, and with it the class of bug where a landing plays the timing of
+    // whichever frame the tapped link happened to name.
+    const g = buildGraph([
+      frame("A.svg", { holding: "12" }, ["B.svg"]),
+      frame("B.svg", { holding: "false" }, ["C.svg"]),
+      frame("C.svg", {}, []),
+    ]);
+    assert.strictEqual(g.hasSessionLines, false, "a vanilla score all the same");
+    for (const name of ["A.svg", "B.svg", "C.svg"]) {
+      assert.ok(
+        Object.hasOwn(g.byFrame[name], "holding"),
+        `${name} must carry a holding key for the graph to answer for it`,
+      );
+    }
+    assert.strictEqual(g.byFrame["A.svg"].holding, "12");
+    assert.strictEqual(g.byFrame["B.svg"].holding, "false");
+    assert.strictEqual(g.byFrame["C.svg"].holding, null);
+  },
 };

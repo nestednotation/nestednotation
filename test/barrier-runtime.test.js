@@ -2,12 +2,12 @@
  * Chunk J — barrier + rejoin runtime (real BMSession + BMLine, no ws boot).
  *
  * Builds the test-only session-lines fixture and reproduces the converge phase
- * under RENDEZVOUS semantics (#6, decided 2026-07-04): the Barrier frame
- * carries hold-until="Left.svg,Tetra/Echo.svg" + rejoin-at="DONE.svg", and it
- * releases once both targets are "done" in the session-global reached
- * registry — including the qualified sub-end ref — without the reaching line
- * having to converge on the barrier. Then the co-present lines merge to the
- * lowest-id survivor at DONE.
+ * under RENDEZVOUS semantics (#6): the Barrier frame carries
+ * hold-until="Left.svg,Tetra/Echo.svg" + rejoin-at="DONE.svg", and it releases
+ * once both targets are "done" in the session-global reached registry —
+ * including the qualified sub-end ref — without the reaching line having to
+ * converge on the barrier. Then the co-present lines merge to the lowest-id
+ * survivor at DONE.
  */
 
 const assert = require("node:assert");
@@ -112,10 +112,10 @@ module.exports = {
   },
 
   "track-group arrival barrier waits for incoming lines (real score graph)": async () => {
-    // Decided 2026-07-16: grouped frames wait for each other. Over the demo's
-    // real graph (group "converge" = Left + Right, START splits into both),
-    // the first line to land parks until every populated line that can still
-    // REACH a group frame has arrived — reachability computed over the built
+    // Decided: grouped frames wait for each other. Over the demo's real graph
+    // (group "converge" = Left + Right, START splits into both), the first
+    // line to land parks until every populated line that can still REACH a
+    // group frame has arrived — reachability computed over the built
     // frameLinks, empty lines excluded.
     const session = await buildSessionLinesFixture({
       id: "__group_arrival_test__",
@@ -182,7 +182,7 @@ module.exports = {
     assert.strictEqual(state.waiting, false);
   },
 
-  "group wait counts admin connections as population (L3 decided 2026-07-18)": async () => {
+  "group wait counts admin connections as population (L3)": async () => {
     // Owner ruling: an admin is a PLAYER with extra session controls — an
     // admin/SM/map connection populates its line exactly like a player
     // connection. So a line occupied only by an admin tab IS incoming and the
@@ -254,7 +254,7 @@ module.exports = {
     assert.strictEqual(state.waiting, false);
   },
 
-  "group wait ignores map-view tabs (observation tool, owner 2026-07-18)": async () => {
+  "group wait ignores map-view tabs (observation tool, owner)": async () => {
     // The standalone /map page's connection can never tap or vote — it is a
     // pure observer, NOT population (unlike an admin session tab, above). A
     // line held open only by a map tab is treated as empty: it neither

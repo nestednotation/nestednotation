@@ -35,12 +35,22 @@
   let lastMergeRewinds = [];
 
   // The lines a still-undoable merge swallowed, with the trail its undo would
-  // give them back (owner, 2026-09-05). They are retired, so they are in no
-  // count and no `lastLines` entry — but their route is where the operator
-  // watched them walk, so the map paints it as a GHOST and offers the same
-  // per-line rewind on it. Clicking one brings the line back out of the merge
-  // on the way (bin/www lineRewind).
+  // give them back (owner). They are retired, so they are in no count and no
+  // `lastLines` entry — but their route is where the operator watched them
+  // walk, so the map paints it as a GHOST and offers the same per-line rewind
+  // on it. Clicking one brings the line back out of the merge on the way
+  // (bin/www lineRewind).
   let lastAbsorbedLines = [];
+
+  // The structural topology the three projections above describe, and the one
+  // this page has already asked for. Cascades, restored identities, landings
+  // and ghost trails are quadratic in the number of passages, so the count
+  // push only announces a version tag: the map fetches the bodies once per
+  // topology and leaves them alone on the ordinary landing/join/leave pushes
+  // that carry the same tag. Leaving them alone is the point — a regular push
+  // says nothing about them, so it must not be read as saying there are none.
+  let structuralVersion = null;
+  let structuralRequested = null;
 
   // The track groups the room can be rewound to, decided server-side and
   // pushed with the lines (`roomCheckpointFor`). The map does not re-derive
@@ -70,11 +80,11 @@
 
   // History of the line this admin connection is assigned to, as pushed via
   // MSG_SELECT_HISTORY. VANILLA MODE ONLY: it drives the per-step rewind menu
-  // (click / tap a visited node → "rewind here" {selectedIdx} —
-  // legitimate there, the single playhead IS the room) and paints the overlay
-  // before the first lines push. In session-lines mode the implicit bound-line
-  // rewind is retired (2026-07-19): the menu offers room-wide track-group,
-  // explicit line-targeted, and structural split rewinds.
+  // (click / tap a visited node → "rewind here" {selectedIdx} — legitimate
+  // there, the single playhead IS the room) and paints the overlay before the
+  // first lines push. In session-lines mode the implicit bound-line rewind is
+  // retired: the menu offers room-wide track-group, explicit line-targeted,
+  // and structural split rewinds.
   let historyState = { history: [], selectedIdx: -1 };
 
   // Vanilla mode: a score without session-* markup is presented as a
@@ -138,43 +148,102 @@
     el.style.top = `${Math.round(bottom) + 8}px`;
   }
 
-  // The last few receipts, newest first. A rewind is the one gesture whose
-  // effect an operator may have to account for afterwards — "why is L2 empty?"
-  // — and a toast that has timed out was the only record there was.
+  // The session's last few receipts, newest first. The server owns and persists
+  // these; this array is only the current rendering of that shared audit.
   const REWIND_LOG_MAX = 20;
   const rewindLog = [];
 
-  function logRewind(text) {
-    rewindLog.unshift({ text, at: new Date().toLocaleTimeString() });
+  function rewindLogText(entry) {
+    if (entry.text) return entry.text;
+    const where = entry.frame
+      ? `⟨${frameLabel(entry.frame)}⟩`
+      : "this room";
+    let text;
+    switch (entry.kind) {
+      case "merge":
+        text = `Undid the merge at ${where}.`;
+        break;
+      case "split":
+        text = `Undid the split at ${where}.`;
+        break;
+      case "room":
+        text = `Rewound the room to checkpoint ${where}.`;
+        break;
+      case "sub":
+        text =
+          `Rewound ${entry.lineId || "a line"} out of its sub-score ` +
+          `to ${where}.`;
+        break;
+      default:
+        text = `Rewound ${entry.lineId || "a line"} to ${where}.`;
+        break;
+    }
+    return text + emptiedClause(entry.emptied);
+  }
+
+  function sameRewindEntry(a, b) {
+    return (
+      a &&
+      b &&
+      a.at === b.at &&
+      a.kind === b.kind &&
+      a.frame === b.frame &&
+      a.lineId === b.lineId
+    );
+  }
+
+  function logRewind(entry) {
+    const normalized =
+      entry && typeof entry === "object"
+        ? entry
+        : { text: String(entry || ""), at: Date.now() };
+    if (!rewindLog.some((old) => sameRewindEntry(old, normalized))) {
+      rewindLog.unshift(normalized);
+    }
     rewindLog.splice(REWIND_LOG_MAX);
     renderRewindLog();
     const toggle = document.getElementById("session-map-log-toggle");
     if (toggle) toggle.disabled = false;
   }
 
+  function syncRewindLog(entries) {
+    rewindLog.splice(
+      0,
+      rewindLog.length,
+      ...(Array.isArray(entries) ? entries.slice(0, REWIND_LOG_MAX) : []),
+    );
+    renderRewindLog();
+    const toggle = document.getElementById("session-map-log-toggle");
+    if (toggle) toggle.disabled = rewindLog.length === 0;
+  }
+
   function renderRewindLog() {
     const panel = document.getElementById("session-map-log");
     if (!panel) return;
     panel.innerHTML =
-      '<div class="legend-heading">what this map has rewound</div>' +
+      '<div class="legend-heading">what this session has rewound</div>' +
       (rewindLog.length === 0
         ? '<div class="log-empty">nothing yet</div>'
         : rewindLog
             .map(
               (entry) =>
                 '<div class="log-row"><span class="log-time">' +
-                escapeHtml(entry.at) +
+                escapeHtml(
+                  typeof entry.at === "number"
+                    ? new Date(entry.at).toLocaleTimeString()
+                    : entry.at,
+                ) +
                 "</span><span>" +
-                escapeHtml(entry.text) +
+                escapeHtml(rewindLogText(entry)) +
                 "</span></div>",
             )
             .join(""));
   }
 
-  function showToast(text) {
+  function showToast(text, rewindEntry) {
     const el = document.getElementById("session-map-toast");
     if (!el || !text) return;
-    logRewind(text);
+    logRewind(rewindEntry || text);
     // The × is not decoration: these run to several lines now, and a receipt
     // sitting over the canvas for its full dwell is in the way of the very
     // room it is describing.
@@ -461,12 +530,12 @@
     {
       selector: "node.ghost-trail",
       style: {
-        // Distinctly greyer than the #f4f4f4 an unvisited frame carries
-        // (2026-09-09): at map zoom the old #eceff1 differed from "never
-        // walked" by a dashed border alone, so the routes a rejoin can still be
-        // undone along read as blank score rather than as history. The dimmed
-        // label and the dashed `ghost-edge` between two of these carry the
-        // rest — a route has to look like a route.
+        // Distinctly greyer than the #f4f4f4 an unvisited frame carries : at
+        // map zoom the old #eceff1 differed from "never walked" by a dashed
+        // border alone, so the routes a rejoin can still be undone along read
+        // as blank score rather than as history. The dimmed label and the
+        // dashed `ghost-edge` between two of these carry the rest — a route
+        // has to look like a route.
         "background-color": "#cfd8dc",
         "border-style": "dashed",
         "border-color": "#607d8b",
@@ -558,12 +627,12 @@
       },
     },
     { selector: "edge.via-sub", style: { "line-style": "dotted", "line-color": "#ccc" } },
-    // A hop INSIDE a ghosted route (2026-09-09). Declared last so it wins over
-    // the structural edge colors along that stretch: what the operator needs to
+    // A hop INSIDE a ghosted route. Declared last so it wins over the
+    // structural edge colors along that stretch: what the operator needs to
     // see there is one dashed path, not a split's orange and a plain hop
-    // reading as live score. The final hop INTO the rejoin is not ghosted — its
-    // target is the node a line is standing on — so the purple rejoin arrow
-    // still says where the passage ends.
+    // reading as live score. The final hop INTO the rejoin is not ghosted —
+    // its target is the node a line is standing on — so the purple rejoin
+    // arrow still says where the passage ends.
     {
       selector: "edge.ghost-edge",
       style: {
@@ -801,9 +870,9 @@
       }
       // A still-undoable split or rejoin, marked on the frame it happened at.
       //
-      // A merge point stays reachable for the whole session (2026-09-06), but
-      // once its passage stops being the newest one NOTHING drew it: the ghosts
-      // come off (the absorbed numbers are back in the pool, so painting their
+      // A merge point stays reachable for the whole session, but once its
+      // passage stops being the newest one NOTHING drew it: the ghosts come
+      // off (the absorbed numbers are back in the pool, so painting their
       // routes would put an "L1" on the canvas that is not the L1 the room is
       // playing) and the node carries no marking of its own — so the only way
       // to reach an older rejoin was to remember which frame it was and click
@@ -998,10 +1067,10 @@
       if (stragglers.length) {
         anyStragglers = true;
         info.appendChild(document.createTextNode(" waiting on:"));
-        // One button per straggler — "advance THIS line" (2026-08-28), the same
-        // command the node menu carries, for the operator already reading the
-        // strip. The plain id list this replaces named who was holding the room
-        // up but gave no way to act on one of them.
+        // One button per straggler — "advance THIS line", the same command the
+        // node menu carries, for the operator already reading the strip. The
+        // plain id list this replaces named who was holding the room up but
+        // gave no way to act on one of them.
         for (const id of stragglers) {
           const dest = advanceDestination(b, id);
           const one = document.createElement("button");
@@ -1091,11 +1160,11 @@
     sendBarrierCommand(frame, true);
   }
 
-  // "Advance this line" (2026-08-28) — one straggler, from the node menu or the
-  // strip. A track group takes the line to its least-occupied frame; a
-  // hold-until takes it to the target it still owes, so the wait ends met
-  // rather than waived. `destination` is advanceDestination()'s reading of
-  // where that is; null means there is nowhere to send it.
+  // "Advance this line" — one straggler, from the node menu or the strip. A
+  // track group takes the line to its least-occupied frame; a hold-until takes
+  // it to the target it still owes, so the wait ends met rather than waived.
+  // `destination` is advanceDestination()'s reading of where that is; null
+  // means there is nowhere to send it.
   async function confirmAdvanceLine(lineId, frame, destination) {
     hideMenu();
     if (!destination) return;
@@ -1115,11 +1184,11 @@
     sendBarrierCommand(frame, true, [lineId]);
   }
 
-  // "Eject this line from its sub-score" (2026-09-01) — a forward move like the
-  // advances, but tied to no barrier: it pops one line out of a dive onto that
-  // dive's own return landing. Confirmed, because it moves performers' devices.
-  // `sub` rides along as the server's race guard, so a stale click on a line
-  // that has already popped out on its own is refused rather than acted on.
+  // "Eject this line from its sub-score" — a forward move like the advances,
+  // but tied to no barrier: it pops one line out of a dive onto that dive's
+  // own return landing. Confirmed, because it moves performers' devices. `sub`
+  // rides along as the server's race guard, so a stale click on a line that
+  // has already popped out on its own is refused rather than acted on.
   async function confirmEjectLine(lineId, sub, label) {
     hideMenu();
     if (!lineId || !sub) return;
@@ -1136,11 +1205,11 @@
     sendToServer(MSG_BARRIER_RELEASED, { eject: true, lineId, sub });
   }
 
-  // "Roll this line back out of its dive" (2026-09-02) — the eject's opposite.
-  // A rewind, so it rides MSG_SELECT_HISTORY with the other three. `idx` picks
-  // an entry of the line's MAIN trail; null means the frame it dived from, which
-  // the server resolves from the line's own saved trail. `sub` and `frame` are
-  // the server's two race guards.
+  // "Roll this line back out of its dive" — the eject's opposite. A rewind, so
+  // it rides MSG_SELECT_HISTORY with the other three. `idx` picks an entry of
+  // the line's MAIN trail; null means the frame it dived from, which the
+  // server resolves from the line's own saved trail. `sub` and `frame` are the
+  // server's two race guards.
   async function confirmRewindOutOfSub(lineId, sub, frame, idx) {
     hideMenu();
     if (!lineId || !sub) return;
@@ -1169,7 +1238,13 @@
         frame,
       )}⟩`,
     );
-    const payload = { lineId, exitSub: true, sub, frame };
+    const payload = {
+      lineId,
+      exitSub: true,
+      sub,
+      frame,
+      operationId: pendingOperationId(),
+    };
     if (idx != null) payload.selectedIdx = idx;
     sendToServer(MSG_SELECT_HISTORY, payload);
   }
@@ -1177,15 +1252,15 @@
   // ── History overlay + rewind node menu ─────────────────────────────────────
 
   // The groups the room can be rewound to, as the SERVER decided them
-  // (`roomCheckpoints`, 2026-09-12). This used to be a second implementation of
+  // (`roomCheckpoints`). This used to be a second implementation of
   // `commonCheckpoints` running on `lines[]`, and the two could not agree: it
   // counted riders as population, so a line carrying only spectators hid a
   // checkpoint the server would have accepted; and it could not see the split
-  // records, so a line whose trail a fork had truncated blocked every group the
-  // room crossed before that fork — the menu lost checkpoints as the room split
-  // and merged, which is precisely when an operator reaches for one. The rule
-  // needs inputs that live on the server, so it is answered there and the menu
-  // is a projection of that answer, like everything else on this canvas.
+  // records, so a line whose trail a fork had truncated blocked every group
+  // the room crossed before that fork — the menu lost checkpoints as the room
+  // split and merged, which is precisely when an operator reaches for one. The
+  // rule needs inputs that live on the server, so it is answered there and the
+  // menu is a projection of that answer, like everything else on this canvas.
   function roomCheckpointFor(group) {
     return (
       (lastRoomCheckpoints || []).find(
@@ -1239,8 +1314,8 @@
         for (const l of lastAbsorbedLines || []) {
           ghost(l.sub ? `sub:${l.sub}:` : "main:", l.trail, l.landing);
         }
-        // …and the SURVIVOR's own route into each rejoin (owner, 2026-09-07).
-        // Behind a still-undoable merge it is exactly as past as the routes it
+        // …and the SURVIVOR's own route into each rejoin (owner). Behind a
+        // still-undoable merge it is exactly as past as the routes it
         // swallowed — nobody is standing on it, and one undo gives all of them
         // back — so drawing it as live green history said the room had a main
         // line, when all it had was `planRecombine` electing the lowest number
@@ -1761,7 +1836,10 @@
       danger: true,
     });
     if (!ok) return;
-    sendToServer(MSG_SELECT_HISTORY, { selectedIdx: idx });
+    sendToServer(MSG_SELECT_HISTORY, {
+      selectedIdx: idx,
+      operationId: newRewindOperationId(),
+    });
     // The server answers with fresh MSG_SELECT_HISTORY + positions pushes,
     // which redraw the overlay — nothing to do locally.
   }
@@ -1774,15 +1852,14 @@
   //
   // Folded per PASSAGE, like every other merge affordance on this map: a
   // convergence is one thing the operator watched happen, and one thing the
-  // undo takes off.
-  // Named by the SERVER (`roomCheckpoints[].undoes`, 2026-09-12): the rejoins
-  // this rewind will walk off are decided by the same plan the click runs, so
-  // the confirm promises what the gesture does. The map used to re-walk the
-  // trails itself and could not see past a fork — a line whose trail a split
-  // had truncated named none of its rejoins, so the confirm under-reported
-  // exactly the case the ancestry landing exists for. Resolved against the
-  // merge entries for their frames and `restoredLineIds`, which ride the same
-  // push, so the two are always the same snapshot.
+  // undo takes off. Named by the SERVER (`roomCheckpoints[].undoes`): the
+  // rejoins this rewind will walk off are decided by the same plan the click
+  // runs, so the confirm promises what the gesture does. The map used to
+  // re-walk the trails itself and could not see past a fork — a line whose
+  // trail a split had truncated named none of its rejoins, so the confirm
+  // under-reported exactly the case the ancestry landing exists for. Resolved
+  // against the merge entries for their frames and `restoredLineIds`, which
+  // ride the same push, so the two are always the same snapshot.
   function roomRewindMerges(group) {
     const checkpoint = roomCheckpointFor(group);
     const passages = [];
@@ -1795,12 +1872,12 @@
     return passages;
   }
 
-  // A room rewind is a walk back, so it says what the walk puts back (owner,
-  // 2026-09-11: rewinding the room from a merged node to an older barrier
-  // arrived there with two lines where the room had crossed it with three).
-  // The rejoins made since the checkpoint come off on the way, which is a
-  // topology change the operator did not literally ask for — the same thing
-  // the per-line rewind's confirm has disclosed since 2026-09-05.
+  // A room rewind is a walk back, so it says what the walk puts back (owner:
+  // rewinding the room from a merged node to an older barrier arrived there
+  // with two lines where the room had crossed it with three). The rejoins made
+  // since the checkpoint come off on the way, which is a topology change the
+  // operator did not literally ask for — the same thing the per-line rewind's
+  // confirm already discloses.
   function restoredMergeClause(group) {
     const passages = roomRewindMerges(group);
     if (passages.length === 0) return "";
@@ -1822,12 +1899,12 @@
 
   // The forks a room rewind takes off on the way, in the operator's terms.
   //
-  // The same disclosure the rejoins have had since 2026-09-11, for the same
-  // reason: rewinding to a checkpoint the room crossed as two lines has to
-  // arrive with two lines, so every fork made since comes off — and that is a
-  // topology change the operator did not literally ask for. It matters most on
-  // a checkpoint frame that is ITSELF a split frame, where the lines land back
-  // on it and the next release would otherwise fork every one of them again.
+  // The same disclosure the rejoins get, for the same reason: rewinding to a
+  // checkpoint the room crossed as two lines has to arrive with two lines, so
+  // every fork made since comes off — and that is a topology change the
+  // operator did not literally ask for. It matters most on a checkpoint frame
+  // that is ITSELF a split frame, where the lines land back on it and the next
+  // release would otherwise fork every one of them again.
   function undoneSplitsClause(group) {
     const forks = ((roomCheckpointFor(group) || {}).undoesSplits || []).filter(
       Boolean,
@@ -1888,7 +1965,11 @@
             } made since came off`
           : ""),
     );
-    sendToServer(MSG_SELECT_HISTORY, { group, cascade: undoes });
+    sendToServer(MSG_SELECT_HISTORY, {
+      group,
+      cascade: undoes,
+      operationId: pendingOperationId(),
+    });
   }
 
   // The OTHER forks of the same release this click also takes off.
@@ -1977,6 +2058,7 @@
       splitEventId: eventId,
       frame,
       cascade,
+      operationId: pendingOperationId(),
     });
   }
 
@@ -2029,7 +2111,25 @@
       mergeEventId: eventId,
       frame,
       cascade,
+      operationId: pendingOperationId(),
     });
+  }
+
+  // Unique per click. The server echoes it on both answers (MSG_REWIND_DONE /
+  // MSG_REWIND_REFUSED) so each map tab can tell its own gesture from one a
+  // different operator made at the same frame.
+  let rewindOperationSeq = 0;
+  function newRewindOperationId() {
+    rewindOperationSeq++;
+    return `${Date.now().toString(36)}-${rewindOperationSeq}-${Math.random()
+      .toString(36)
+      .slice(2, 8)}`;
+  }
+
+  // The id of the gesture whose confirm was just answered — attached to the
+  // message that carries it out.
+  function pendingOperationId() {
+    return (pendingRewind && pendingRewind.operationId) || null;
   }
 
   // What to show back when the server says this rewind happened. Composed at
@@ -2041,6 +2141,12 @@
       ? mergeLandingList(mergeEventId, exceptLineId)
       : "";
     pendingRewind = {
+      // The one value that says WHICH click this is. Kind + frame described
+      // the event, and two rewinds of the same kind on the same frame — a
+      // second operator tab, or this one clicking twice — answer to the same
+      // description, so a receipt could be matched to the wrong confirm and
+      // the sentence shown back would be another operator gesture.
+      operationId: newRewindOperationId(),
       kind,
       frame,
       text: where
@@ -2133,6 +2239,10 @@
     // Sub rollback.
     "not-in-sub": "that line is not inside a sub-score any more",
     "stale-sub": "that line is in a different sub-score now",
+    // Not a refusal the room decided — the gesture itself fell over, and this
+    // is the server saying so rather than leaving the click unanswered.
+    "internal-error":
+      "the server hit an error part-way through this rewind, and stopped where it was",
   };
 
   // What a tab that did not click sees. Deliberately plainer than the
@@ -2264,17 +2374,17 @@
     return (entry && entry.cascade) || [];
   }
 
-  // A structural rewind point stays reachable for the whole session
-  // (2026-09-06), so the room may well have built on top of it since. The
-  // server walks those later steps off first; the confirm says which, because
-  // "undo the merge at MERGE1" an hour later can discard a fork and a rejoin
-  // the operator still has on screen.
+  // A structural rewind point stays reachable for the whole session , so the
+  // room may well have built on top of it since. The server walks those later
+  // steps off first; the confirm says which, because "undo the merge at
+  // MERGE1" an hour later can discard a fork and a rejoin the operator still
+  // has on screen.
   //
   // `targetLabel` names the event the operator actually clicked, and it is not
-  // decoration (2026-09-12). A node that is BOTH a rejoin frame and the landing
-  // of a LATER rejoin carries two ⏪⏪ buttons, and the cascade of the first one
-  // names the second one's frame — so the confirm for "undo the rejoin at ⟨Z⟩"
-  // read "…the merge at ⟨B-prime⟩…", which is exactly the frame an operator who
+  // decoration. A node that is BOTH a rejoin frame and the landing of a LATER
+  // rejoin carries two ⏪⏪ buttons, and the cascade of the first one names the
+  // second one's frame — so the confirm for "undo the rejoin at ⟨Z⟩" read
+  // "…the merge at ⟨B-prime⟩…", which is exactly the frame an operator who
   // meant to undo B-prime was looking for. One did, and said yes to the wrong
   // gesture. Saying what this undo IS before saying what it drags with it is
   // the difference.
@@ -2298,7 +2408,7 @@
   //
   // "— also undoes 1 later step" told the operator there was one and left them
   // to find out which after committing, which on a node carrying two undos is
-  // the whole question (2026-09-12).
+  // the whole question.
   function cascadeLabel(cascade) {
     if (!cascade || cascade.length === 0) return "";
     const where = cascade.map(
@@ -2337,18 +2447,18 @@
 
   // "L0 → ⟨A2⟩, L1 → ⟨B2⟩, L2 → ⟨C2⟩", or "" when the server sent no landings.
   // `exceptLineId` drops a line the sentence around this one has already
-  // placed: the one that walks on AFTER the undo (naming where it was put back,
-  // one clause after saying it then moves further, described a position it does
-  // not end on) — and, since 2026-09-09, the one an entry was reached from its
-  // own LANDING node, whose confirm opens "onto ⟨A2⟩, the frame it came into it
-  // from" and then went on to read "They land L0 → ⟨A2⟩, …", saying A2 twice in
-  // one breath. The list says "The others" in both cases; only the barrier note
-  // tells them apart (`staysAtLanding`).
+  // placed: the one that walks on AFTER the undo (naming where it was put
+  // back, one clause after saying it then moves further, described a position
+  // it does not end on) — and the one an entry was reached from its own
+  // LANDING node, whose confirm opens "onto ⟨A2⟩, the frame it came into it
+  // from" and then went on to read "They land L0 → ⟨A2⟩, …", saying A2 twice
+  // in one breath. The list says "The others" in both cases; only the barrier
+  // note tells them apart (`staysAtLanding`).
   function mergeLandingList(eventId, exceptLineId) {
-    // Grouped by DESTINATION (2026-09-09). A barrier release parks every line
-    // on one frame, so the list came out "L0 → ⟨BARRIER⟩, L1 → ⟨BARRIER⟩, L2 →
-    // ⟨BARRIER⟩" — three clauses saying one thing, which reads as the sentence
-    // having gone wrong rather than as the lines really landing together.
+    // Grouped by DESTINATION. A barrier release parks every line on one frame,
+    // so the list came out "L0 → ⟨BARRIER⟩, L1 → ⟨BARRIER⟩, L2 → ⟨BARRIER⟩" —
+    // three clauses saying one thing, which reads as the sentence having gone
+    // wrong rather than as the lines really landing together.
     const groups = [];
     for (const l of mergeLandingsFor(eventId)) {
       if (exceptLineId && l.lineId === exceptLineId) continue;
@@ -2434,12 +2544,12 @@
     );
   }
 
-  // Session-lines: targeted rewind of one named line within its own trail
-  // (2026-07-19). `frame` is the server's race guard — refused if the line
-  // moved (or left its sub) since this menu was built.
-  // The merges this line would be reaching back THROUGH, newest first — the
-  // server undoes exactly these on the way (lineRewind), so the confirm says so
-  // before the operator commits to a topology change they did not ask for.
+  // Session-lines: targeted rewind of one named line within its own trail .
+  // `frame` is the server's race guard — refused if the line moved (or left
+  // its sub) since this menu was built. The merges this line would be reaching
+  // back THROUGH, newest first — the server undoes exactly these on the way
+  // (lineRewind), so the confirm says so before the operator commits to a
+  // topology change they did not ask for.
   //
   // Matched on the durable `uid`, not the number, for the same reason
   // `orch.mergesBehindLine` is: a fork mints a fresh identity for the line that
@@ -2466,13 +2576,13 @@
           (uid && entry.survivorLineUid
             ? entry.survivorLineUid === uid
             : entry.survivorLineId === lineId) &&
-          // BELOW the floor, not at it (2026-09-13). The floor is the merged
-          // line's own position — for a co-presence rejoin, the rejoin frame
-          // itself — and standing the line back on a frame it stood on AS the
-          // merged line asks nothing of the merge. Reading it as "at or
-          // behind" left the rejoin node offering "⏪⏪ rewind L0 here — out of
-          // the merge at ⟨B-prime⟩" beside "⏪⏪ undo the merge at ⟨B-prime⟩",
-          // so the operator who wanted only the first had no way to buy it.
+          // BELOW the floor, not at it. The floor is the merged line's own
+          // position — for a co-presence rejoin, the rejoin frame itself — and
+          // standing the line back on a frame it stood on AS the merged line
+          // asks nothing of the merge. Reading it as "at or behind" left the
+          // rejoin node offering "⏪⏪ rewind L0 here — out of the merge at
+          // ⟨B-prime⟩" beside "⏪⏪ undo the merge at ⟨B-prime⟩", so the
+          // operator who wanted only the first had no way to buy it.
           entry.survivorRewindFloor != null &&
           idx < entry.survivorRewindFloor,
       )
@@ -2481,12 +2591,12 @@
       .reverse();
   }
 
-  // The same targeted rewind, aimed at a line a merge SWALLOWED (2026-09-05).
-  // It cannot move until it exists again, so the click undoes the merge that
-  // took it — the whole convergence, exactly as the rejoin node's own entry
-  // does — and then walks this line on alone. Aiming at the last node of its
-  // ghost trail is simply "bring it back where it was": the undo lands it
-  // there and nothing else moves.
+  // The same targeted rewind, aimed at a line a merge SWALLOWED. It cannot
+  // move until it exists again, so the click undoes the merge that took it —
+  // the whole convergence, exactly as the rejoin node's own entry does — and
+  // then walks this line on alone. Aiming at the last node of its ghost trail
+  // is simply "bring it back where it was": the undo lands it there and
+  // nothing else moves.
   async function requestAbsorbedRewind(lineId, idx, frame, label, eventId) {
     hideMenu();
     // Identified by the passage as well as the number: `absorbedLines[]` can
@@ -2559,6 +2669,7 @@
       selectedIdx: idx,
       frame,
       absorbedEventId: ghost.mergeEventId,
+      operationId: pendingOperationId(),
     });
   }
 
@@ -2739,10 +2850,10 @@
     // Does the undo alone BE the whole request? The merges come off oldest
     // last, so the frame this line ends on is the landing the OLDEST of them
     // gives it; when that is the frame the operator clicked, nothing walks any
-    // further. The ghost entries have always said so (their `atLanding`), while
-    // the live survivor's confirm ended "Only L0 then moves any further" about
-    // a line that did not move — the same lopsidedness the button labels had
-    // until 2026-09-07, one level down.
+    // further. The ghost entries have always said so (their `atLanding`),
+    // while the live survivor's confirm ended "Only L0 then moves any further"
+    // about a line that did not move — the same lopsidedness the button labels
+    // had, one level down.
     const oldest = behind[behind.length - 1];
     const landsHere =
       !!oldest &&
@@ -2806,6 +2917,7 @@
       // The rejoins this rewind promised to walk back through, so the server
       // can refuse one the room has added since (`stale-cascade`).
       cascade,
+      operationId: pendingOperationId(),
     });
   }
 
@@ -2854,7 +2966,7 @@
     return html;
   }
 
-  // "⏩ advance <line> to ⟨…⟩" (2026-08-28) — the per-line half of the strip's
+  // "⏩ advance <line> to ⟨…⟩" — the per-line half of the strip's
   // force-advance, offered on the node the straggler is standing on, which is
   // where the operator is already looking when a track group or a hold-until
   // has stalled the room on one line. The barrier is found by asking which
@@ -2900,9 +3012,9 @@
   // barrier: the whole point is the line nothing is waiting on, whose only
   // previous way out was a room rewind that discards everyone's progress.
   //
-  //   ⏫ eject  (2026-09-01) — forward, to where this dive RETURNS (`subReturn`).
-  //   ⏪ rewind (2026-09-02) — back to where it dived FROM (`subOrigin`), the
-  //              dive undone, the line free to take it again.
+  // ⏫ eject — forward, to where this dive RETURNS (`subReturn`). ⏪ rewind —
+  // back to where it dived FROM (`subOrigin`), the dive undone, the line free
+  // to take it again.
   //
   // Both destinations come from the same push, so each entry names its landing
   // before the operator commits to it.
@@ -2960,11 +3072,11 @@
     );
   }
 
-  // The same command from the destination end, and generalized (2026-09-02): on
-  // a MAIN frame, one entry per occurrence of it in the MAIN trail of every line
-  // currently mid-dive. An operator thinking "send it back to B" looks at B, not
-  // at the sub box the line is lost inside — and any frame the line has already
-  // played is a legitimate answer, not only the fork it dived from.
+  // The same command from the destination end, and generalized: on a MAIN
+  // frame, one entry per occurrence of it in the MAIN trail of every line
+  // currently mid-dive. An operator thinking "send it back to B" looks at B,
+  // not at the sub box the line is lost inside — and any frame the line has
+  // already played is a legitimate answer, not only the fork it dived from.
   //
   // Unlike a main-flow line's entries, the trail-END occurrence is offered here:
   // the line is not standing on it, it is down in a sub, and that entry IS the
@@ -3007,8 +3119,8 @@
           entry.parentLineId,
         )}" data-split-count="${count}">⏪⏪ undo ${
           // One release forks every populated line of a track group standing
-          // on a split frame, and undoing it takes all of them off (2026-09-12
-          // — `orch.splitGestureEvents`). Say which, so the button is not
+          // on a split frame, and undoing it takes all of them off
+          // (`orch.splitGestureEvents`). Say which, so the button is not
           // promising less than it does.
           forks > 0 ? "the release that forked" : "the split of"
         } ${escapeHtml(entry.parentLineId)} at ⟨${escapeHtml(
@@ -3030,30 +3142,30 @@
             : ""
         }${cascadeLabel(entry.cascade)}</button>`;
       } else if (entry.reason === "expired") {
-        // The fork counterpart of the merge menu's expired note (2026-09-12).
-        // Nothing expires a fork at runtime; the uid migration on load does,
-        // when a saved room's records cannot be tied back to its lines — and
-        // until now that node simply offered an empty menu.
+        // The fork counterpart of the merge menu's expired note. Nothing
+        // expires a fork at runtime; the uid migration on load does, when a
+        // saved room's records cannot be tied back to its lines — and until
+        // now that node simply offered an empty menu.
         html +=
           `<div class="menu-note">split rewind unavailable — ` +
           `this room's saved state does not say which lines that fork ` +
           `produced, so it can no longer be collapsed</div>`;
       } else if (entry.reason === "mixed-merge") {
         // Only printed when the block is FINAL: while the crossing merge is
-        // still active the undo takes it off on the way (2026-09-06), so the
-        // entry above is a button instead.
+        // still active the undo takes it off on the way, so the entry above is
+        // a button instead.
         html +=
           `<div class="menu-note">split rewind unavailable — ` +
           `a later merge mixed this branch with another split subtree, ` +
           `and that merge can no longer be undone</div>`;
       } else if (entry.reason) {
         // Every OTHER refusal used to render nothing at all, so a split frame
-        // whose undo had become impossible offered an empty menu that said
-        // why it was empty — indistinguishable from a bug. Naming the reason
-        // is worth more than hiding it — in the operator's own words where
-        // there are any (2026-09-09: the same table the refusal alert reads,
-        // so the note and the alert it saves say the same thing), raw
-        // otherwise, which still beats silence.
+        // whose undo had become impossible offered an empty menu that said why
+        // it was empty — indistinguishable from a bug. Naming the reason is
+        // worth more than hiding it — in the operator's own words where there
+        // are any (the same table the refusal alert reads, so the note and the
+        // alert it saves say the same thing), raw otherwise, which still beats
+        // silence.
         html +=
           `<div class="menu-note">split rewind unavailable — ` +
           `${escapeHtml(REWIND_REFUSALS[entry.reason] || entry.reason)}</div>`;
@@ -3076,9 +3188,9 @@
       if (entry.available) {
         // Named as the numbers the REJOIN recorded, which is what "merged here
         // as L0, L1, L2" says and all it says: an absorbed line's number goes
-        // into the pool at the merge, so a fork since — related or not — can be
-        // holding it, and the undo then re-creates the route on the lowest free
-        // one (`freeLineId`). The confirm's landings (2026-09-08) name the same
+        // into the pool at the merge, so a fork since — related or not — can
+        // be holding it, and the undo then re-creates the route on the lowest
+        // free one (`freeLineId`). The confirm's landings name the same
         // recorded numbers, so the same caveat covers both: unwinding this
         // passage frees the numbers its own cascade took, but a fork on an
         // unrelated population is not in that cascade and keeps the one it
@@ -3111,7 +3223,7 @@
     }
     // One note for the frame, and only when nothing here is still undoable —
     // which no longer includes "something newer is in the way": the undo takes
-    // that off itself (2026-09-06).
+    // that off itself.
     if (!html && supersededBy) {
       html +=
         `<div class="menu-note">merge rewind unavailable — ` +
@@ -3147,8 +3259,8 @@
         // see: a line sitting inside a sub-score with no way back out.
         subValveButtonsHtml(id);
       html += liveHtml;
-      // Session-lines rooms (2026-07-19): room checkpoint, explicit line, and
-      // structural split rewinds. The implicit bound-line rewind stays retired.
+      // Session-lines rooms: room checkpoint, explicit line, and structural
+      // split rewinds. The implicit bound-line rewind stays retired.
       if (isMain) {
         // Both structural undos, split and merge, live on the frame the
         // event happened at — which is where the operator goes looking.
@@ -3407,10 +3519,17 @@
     // "flex", not "block": the stylesheet's column layout must survive this
     // inline override, or the entries render side by side on one line.
     menu.style.display = "flex";
-    // Clamp inside the viewport (menu must be visible to measure).
+    // Clamp inside the viewport (menu must be visible to measure). Both ends
+    // matter: on a phone-width screen a menu can be WIDER or TALLER than the
+    // viewport, and then the right/bottom clamp alone put it at a negative
+    // offset — the entries scrolled off the top-left corner with no way back.
+    // The CSS caps its size against the viewport; this keeps its origin on
+    // screen so what does not fit is reachable by scrolling the menu itself.
     const rect = menu.getBoundingClientRect();
-    menu.style.left = `${Math.min(clientX, window.innerWidth - rect.width - 4)}px`;
-    menu.style.top = `${Math.min(clientY, window.innerHeight - rect.height - 4)}px`;
+    const maxLeft = Math.max(4, window.innerWidth - rect.width - 4);
+    const maxTop = Math.max(4, window.innerHeight - rect.height - 4);
+    menu.style.left = `${Math.max(4, Math.min(clientX, maxLeft))}px`;
+    menu.style.top = `${Math.max(4, Math.min(clientY, maxTop))}px`;
   }
 
   function wireNodeMenu(container) {
@@ -3427,6 +3546,27 @@
       if (evt.target === cy) hideMenu();
     });
     cy.on("pan zoom", hideMenu);
+  }
+
+  // Ask for the heavy structural bodies behind an announced topology version.
+  // Cheap to call on every push: it sends nothing while the version already in
+  // hand matches, and nothing while a request for that same version is still
+  // in flight. The in-flight mark ages out, so a reply lost to a reconnect or
+  // a restart is re-asked for on the next push rather than leaving the menus
+  // built on a topology the room has moved past.
+  const STRUCTURAL_RETRY_MS = 5000;
+  function requestStructuralDetails(version) {
+    if (!version) return; // vanilla score: no structural topology to describe
+    if (version === structuralVersion) return;
+    if (
+      structuralRequested &&
+      structuralRequested.version === version &&
+      Date.now() - structuralRequested.at < STRUCTURAL_RETRY_MS
+    ) {
+      return;
+    }
+    structuralRequested = { version, at: Date.now() };
+    sendToServer(MSG_NEED_DISPLAY, { structuralDetails: true });
   }
 
   // Minimal ws-client parseMessage contract for this page: MSG_PING time
@@ -3492,7 +3632,16 @@
     // as a broken app. The lines payload follows this message, so the menu the
     // click came from is already being rebuilt behind the alert.
     if (msg === window.MSG_REWIND_REFUSED) {
-      pendingRewind = null;
+      // Only this tab own gesture clears the sentence it is holding: a refusal
+      // of somebody else click must not swallow the receipt this operator is
+      // still waiting for. A refusal with no id at all (an older server) is
+      // taken as ours, which is what the previous behaviour was.
+      if (
+        !data.operationId ||
+        (pendingRewind && pendingRewind.operationId === data.operationId)
+      ) {
+        pendingRewind = null;
+      }
       // The in-page panel rather than alert(): same interruption, but the
       // canvas behind it keeps drawing the room the operator is about to look
       // at, and the reason gets a line of its own instead of being run together
@@ -3504,13 +3653,16 @@
     // re-creates lines, moves every device onto a different one and discards
     // everything the room played since, and until now said nothing at all:
     // the operator answered a confirm and got a redrawn canvas to infer from.
-    // The server sends only kind + frame; the sentence shown back is the one
-    // the confirm promised, held here since the click.
+    // The sentence shown back is the one the confirm promised, held here since
+    // the click; `rewindEntry` is the canonical receipt shared by the log.
     if (msg === window.MSG_REWIND_DONE) {
+      // Correlated on the operation id alone. Kind + frame describe the EVENT,
+      // and two operators can undo at the same frame within a second of each
+      // other — so that pair matched another tab gesture and showed its
+      // sentence back as this one.
       const mine =
-        pendingRewind &&
-        pendingRewind.kind === data.kind &&
-        lc(pendingRewind.frame || "") === lc(data.frame || "");
+        pendingRewind && !!data.operationId &&
+        pendingRewind.operationId === data.operationId;
       // The receipt reaches every operator tab now, not only the one that
       // clicked. Only the clicking tab holds the sentence its own confirm
       // promised — the others watched the canvas rearrange and got no account
@@ -3519,12 +3671,21 @@
       showToast(
         (mine ? pendingRewind.text : othersRewindText(data)) +
           emptiedClause(data.emptied),
+        data.rewindEntry,
       );
       if (mine) pendingRewind = null;
       return;
     }
     if (msg === MSG_SHOW_NUMBER_CONNECTION) {
-      if (Array.isArray(data.lines)) {
+      if (Array.isArray(data.rewindLog)) {
+        syncRewindLog(data.rewindLog);
+      }
+      // The answer to this page own detail request: the heavy half of the
+      // structural projection, carrying no lines[] of its own. Redraw off the
+      // snapshot already in hand rather than waiting for the next push, or the
+      // ghosts and undo buttons of a passage that just happened would not
+      // appear until the room moved again.
+      if (data.structuralDetails) {
         lastSplitRewinds = Array.isArray(data.splitRewinds)
           ? data.splitRewinds
           : [];
@@ -3534,9 +3695,16 @@
         lastAbsorbedLines = Array.isArray(data.absorbedLines)
           ? data.absorbedLines
           : [];
+        structuralVersion = data.structuralVersion || null;
+        structuralRequested = null;
+        if (Array.isArray(lastLines)) updateLines(lastLines);
+        return;
+      }
+      if (Array.isArray(data.lines)) {
         lastRoomCheckpoints = Array.isArray(data.roomCheckpoints)
           ? data.roomCheckpoints
           : [];
+        requestStructuralDetails(data.structuralVersion);
         updateLines(data.lines);
       } else if (vanillaMode) {
         vanillaState.players = data.playerCount || 0;

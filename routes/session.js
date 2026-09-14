@@ -98,6 +98,14 @@ router.get("/:sessionId/map", function (req, res) {
     return;
   }
 
+  if (req.query.p !== session.adminPassword) {
+    res
+      .status(403)
+      .type("text/plain")
+      .send("Admin password invalid or expired");
+    return;
+  }
+
   // One JSON blob instead of per-constant locals: jade renders the view from
   // disk per request, so a view newer than the running process would turn a
   // missing local into `window.X = ;` — a SyntaxError killing the whole

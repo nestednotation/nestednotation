@@ -33,6 +33,8 @@ const {
   rewindSplitStructure,
   mergeRewindPlan,
   structuralRewindChain,
+  compareStructural,
+  splitStepState,
   mergeRewindOptions,
   mergeConvergenceEvents,
   splitGestureEvents,
@@ -92,8 +94,8 @@ function fakeSession() {
 // Mark every recorded rejoin unundoable, the way loading a state file whose
 // participants carry no `uid` does (`migrateStructuralIdentities`) — the only
 // route to `expired` there is. A room checkpoint rewind used to be the other
-// one; since 2026-09-11 it undoes the rejoins it rewinds past instead, so it
-// ends nothing (`mergesBehindRoomRewind`).
+// one; it undoes the rejoins it rewinds past instead, so it ends nothing
+// (`mergesBehindRoomRewind`).
 function expireMerges(session) {
   for (const event of session.mergeEvents || []) {
     if (event.status === "active") {
@@ -655,7 +657,7 @@ module.exports = {
     );
   },
 
-  // ── revival fast-forward (decision #13 revision, 2026-07-18) ────────────
+  // ── revival fast-forward (decision #13 revision) ────────────
   "revivalLandingFrame: no recorded grouped landing → revive in place": () => {
     const graph = { byFrame: {}, groups: {} };
     const line = { currentIndex: 0, subStack: [] };
@@ -1189,8 +1191,8 @@ module.exports = {
     );
 
     // They rejoin. The absorbed line is unaddressable, so it goes entirely —
-    // its number is back in the pool at once (2026-09-06). The merge undo does
-    // not need the object: it re-creates the line from the snapshot.
+    // its number is back in the pool at once. The merge undo does not need the
+    // object: it re-creates the line from the snapshot.
     const { survivor } = o.applyRecombine({
       session,
       lineIds: ["L0", "L1"],
@@ -1454,9 +1456,9 @@ module.exports = {
       "stale-frame",
     );
 
-    // …splitting the merged line no longer ends anything (2026-09-06): the
-    // single STEP is refused while the fork stands on it, and the fork is what
-    // the cascade takes off first.
+    // …splitting the merged line no longer ends anything: the single STEP is
+    // refused while the fork stands on it, and the fork is what the cascade
+    // takes off first.
     const split = o.applySplit({
       session,
       parentLine: l0,
@@ -1654,9 +1656,9 @@ module.exports = {
   // the survivor already there and moves nothing, so that trail entry is the
   // MERGED line's own position — every participant walked to it. Rewinding the
   // line back onto it therefore asks nothing of the rejoin, and the node ended
-  // up offering both "⏪⏪ undo the merge at ⟨B-prime⟩" and "⏪⏪ rewind L0 here
-  // — out of the merge at ⟨B-prime⟩", with no way to buy the second without
-  // the first (owner, 2026-09-13).
+  // up offering both "⏪⏪ undo the merge at ⟨B-prime⟩" and "⏪⏪ rewind L0 here —
+  // out of the merge at ⟨B-prime⟩", with no way to buy the second without the
+  // first (owner).
   "a rewind to the frame a rejoin happened ON leaves the rejoin standing": () => {
     const session = fakeSession();
     const l0 = fakeLine(session, "L0");
@@ -1743,8 +1745,8 @@ module.exports = {
   // The same question asked of the whole room. Rewinding every line to a
   // checkpoint BEHIND a rejoin used to leave the rejoin standing, so the room
   // arrived at a barrier it had once crossed with three lines and only two
-  // were there (owner, 2026-09-11) — the room-scale version of the walk
-  // `lineRewind` has refused to make since 2026-09-05.
+  // were there (owner) — the room-scale version of the walk `lineRewind`
+  // refuses to make.
   "a room rewind names the rejoins made since its checkpoint, newest first":
     () => {
       const session = fakeSession();
@@ -1967,9 +1969,9 @@ module.exports = {
     assert.notStrictEqual(plan.parent, impostor);
   },
 
-  // …but the operator undoes the CONVERGENCE, not the pairing (owner,
-  // 2026-09-05): three lines meeting on one frame is one thing they watched
-  // happen, so one click puts all three back.
+  // …but the operator undoes the CONVERGENCE, not the pairing (owner, three
+  // lines meeting on one frame is one thing they watched happen, so one click
+  // puts all three back.
   "a convergence groups its pair-merges, newest first": () => {
     const session = fakeSession();
     const l0 = fakeLine(session, "L0");
@@ -2096,11 +2098,11 @@ module.exports = {
 
   // Two rejoins on DIFFERENT frames are two convergences, and the older one is
   // `superseded` — which is what the map's ghost routes are gated on, so this
-  // pins the two answers apart (2026-09-12). The ghosts read the OPTION, which
-  // says "one click still brings these lines back, walking the newer rejoin off
-  // on the way"; reading the PLAN instead drew no route at all for the line the
-  // older rejoin swallowed, while the newer rejoin's routes were greyed as
-  // usual — an operator who had watched three lines converge saw two.
+  // pins the two answers apart. The ghosts read the OPTION, which says "one
+  // click still brings these lines back, walking the newer rejoin off on the
+  // way"; reading the PLAN instead drew no route at all for the line the older
+  // rejoin swallowed, while the newer rejoin's routes were greyed as usual —
+  // an operator who had watched three lines converge saw two.
   "an older rejoin is superseded but still offered": () => {
     const session = fakeSession();
     const l0 = fakeLine(session, "L0");
@@ -2236,7 +2238,7 @@ module.exports = {
     },
 
   // ── the cascade: an old merge point is still a place to go back to ───────
-  "a merge stays undoable behind a later fork and a later rejoin (2026-09-06)":
+  "a merge stays undoable behind a later fork and a later rejoin":
     () => {
       const session = fakeSession();
       const l0 = fakeLine(session, "L0");
@@ -2426,7 +2428,7 @@ module.exports = {
         true,
       );
 
-      // Balanced, not dumped on the survivor (owner, 2026-09-06).
+      // Balanced, not dumped on the survivor (owner).
       const on = (id) =>
         connections.filter((conn) => conn.lineId === id && conn.isStaff).length;
       assert.strictEqual(on("L0"), 3); // dA + two of the four
@@ -2446,11 +2448,11 @@ module.exports = {
       assert.ok(["L0", "L1"].includes(session.deviceRegistry.dOff));
     },
 
-  // A convergence undoes in PAIRS, so balancing inside each event in turn spent
-  // the latecomers before the last line was back: three over three lines came
-  // out 2/1/3 (browser-verified, 2026-09-09) while the confirm promised them
-  // "spread evenly" — the first step could only see two of the three
-  // destinations. The runtime re-runs the spread over the whole passage.
+  // A convergence undoes in PAIRS, so balancing inside each event in turn
+  // spent the latecomers before the last line was back: three over three lines
+  // came out 2/1/3 (browser-verified) while the confirm promised them "spread
+  // evenly" — the first step could only see two of the three destinations. The
+  // runtime re-runs the spread over the whole passage.
   "a convergence's latecomers are balanced over the whole passage": () => {
     const session = fakeSession();
     const l0 = fakeLine(session, "L0");
@@ -2623,14 +2625,13 @@ module.exports = {
     );
   },
 
-  // The map spent 2026-09-07 learning that a button which always refuses is
-  // worse than a note saying why there is none, and the split side had one
-  // left: `splitRewindPlan` answers about this ONE step and never sees the
-  // chain, so a split whose own collapse is fine but which has an expired
-  // event standing on it was published `available` and bought
-  // `blocked-by-expired` on the click. After a room checkpoint rewind that was
-  // the only affordance left on the fork, so the operator's last apparent
-  // route back was a dead one.
+  // The map has learnt that a button which always refuses is worse than a note
+  // saying why there is none, and the split side had one left:
+  // `splitRewindPlan` answers about this ONE step and never sees the chain, so
+  // a split whose own collapse is fine but which has an expired event standing
+  // on it was published `available` and bought `blocked-by-expired` on the
+  // click. After a room checkpoint rewind that was the only affordance left on
+  // the fork, so the operator's last apparent route back was a dead one.
   "a split with an expired merge standing on it is not offered": () => {
     const session = fakeSession();
     const root = fakeLine(session, "L0");
@@ -2834,8 +2835,8 @@ module.exports = {
     );
     // The single-step plan still refuses it — but the MENU offers it again,
     // because the split undo cascades: the crossing merge comes off first and
-    // takes the block with it (§8.3, 2026-09-06). The projection has to be
-    // handed the merge events to see that.
+    // takes the block with it (§8.3). The projection has to be handed the
+    // merge events to see that.
     const options = splitRewindOptions({
       splitEvents: session.splitEvents,
       mergeEvents: session.mergeEvents,
@@ -3009,7 +3010,7 @@ module.exports = {
     assert.strictEqual(session.deviceRegistry.dOff, children[1].id);
   },
 
-  // ── SM jump rewind semantics (S2 option (b) + R4, decided 2026-07-07) ─────
+  // ── SM jump rewind semantics (S2 option (b) + R4) ─────
   "beginReachedGeneration restarts the registry, pre-satisfying only the landing barrier": () => {
     const session = {
       reachedTargets: {},
@@ -3090,7 +3091,7 @@ module.exports = {
     assert.strictEqual(uncovered.size, 0);
   },
 
-  // ── track-group ARRIVAL barrier (decided 2026-07-16) ─────────────────────
+  // ── track-group ARRIVAL barrier ─────────────────────
   "canReachFrames walks links transitively (case-insensitive)": () => {
     // START → A → B → C; frameLinks carry indices into listFiles.
     const listFiles = ["START.svg", "A.svg", "B.svg", "C.svg"];
@@ -3191,7 +3192,7 @@ module.exports = {
     assert.deepStrictEqual(state.blockedIds, ["L1"]);
   },
 
-  "groupArrivalState keeps waiting while a co-occupant is still holding (2026-07-20)": () => {
+  "groupArrivalState keeps waiting while a co-occupant is still holding": () => {
     // Both arrived on group frames, but L1 is still in its holding period — the
     // group waits for the last node's hold to release so they leave together.
     const lines = [
@@ -3210,7 +3211,7 @@ module.exports = {
     assert.deepStrictEqual(state.holdingIds, ["L1"]);
   },
 
-  "groupArrivalState releases once every occupant's hold has ended (2026-07-20)": () => {
+  "groupArrivalState releases once every occupant's hold has ended": () => {
     const lines = [
       { id: "L1", status: "active", isHolding: false },
       { id: "L2", status: "active", isHolding: false },
@@ -3226,7 +3227,7 @@ module.exports = {
     assert.deepStrictEqual(state.holdingIds, []);
   },
 
-  "groupArrivalState: a lone holding occupant never self-parks (2026-07-20)": () => {
+  "groupArrivalState: a lone holding occupant never self-parks": () => {
     // Only one populated line is on the group (the other is empty and excluded).
     // Hold sync needs 2+ occupants, so a solo held frame must NOT raise a wait
     // (which would flash a spurious "waiting for other lines" banner).
@@ -3264,7 +3265,7 @@ module.exports = {
     assert.deepStrictEqual(state.incomingIds, ["L2"]);
   },
 
-  "groupArrivalState: a line that already PASSED the group is never incoming (2026-07-19)": () => {
+  "groupArrivalState: a line that already PASSED the group is never incoming": () => {
     // Targeted-rewind rule: L1 was rewound behind the group and replays onto
     // it; L2 is ahead but its trail already went through the group — even on a
     // loopy score where L2 could technically reach it again (canReach true),
@@ -3285,7 +3286,7 @@ module.exports = {
     assert.deepStrictEqual(state.incomingIds, []);
   },
 
-  "groupStragglerIds: the incoming lines the group is waiting on (2026-08-16)": () => {
+  "groupStragglerIds: the incoming lines the group is waiting on": () => {
     // L1 occupies a group frame; L2 and L3 are still travelling. Both are what
     // the room is waiting for, so both are told "your move".
     const lines = [
@@ -3306,7 +3307,7 @@ module.exports = {
     );
   },
 
-  "groupStragglerIds: a parked incoming line is NOT a straggler (2026-08-16)": () => {
+  "groupStragglerIds: a parked incoming line is NOT a straggler": () => {
     // L2 can still reach the group but is held at its own hold-until barrier,
     // and L3 is parked at ANOTHER group's arrival barrier. The group keeps
     // waiting on both (incomingIds is unchanged — dropping them would release
@@ -3334,7 +3335,7 @@ module.exports = {
     );
   },
 
-  "groupStragglerIds: a blocked OCCUPANT is never a straggler (2026-08-16)": () => {
+  "groupStragglerIds: a blocked OCCUPANT is never a straggler": () => {
     // L1 has arrived but its own hold-until has not released. The group waits
     // (blockedIds), yet there is nobody to prompt: nothing is travelling.
     const lines = [
@@ -3359,7 +3360,7 @@ module.exports = {
     );
   },
 
-  "holdUntilStragglerTargets: who a hold-until is waiting on, and where they'd go (2026-08-28)": () => {
+  "holdUntilStragglerTargets: who a hold-until is waiting on, and where they'd go": () => {
     // The barrier waits on Left.svg and Right.svg; Left is already done, so the
     // wait is entirely on Right. L2 can still get there, L3 cannot — only L2 is
     // what the barrier is held open FOR, and Right is where an advance sends it.
@@ -3379,7 +3380,7 @@ module.exports = {
     );
   },
 
-  "holdUntilStragglerTargets: pairs each line with the FIRST target it can reach (2026-08-28)": () => {
+  "holdUntilStragglerTargets: pairs each line with the FIRST target it can reach": () => {
     // Author order decides, so two lines owing different halves of the same
     // barrier are each sent where they can actually go.
     const reach = { L2: "Right.svg", L3: "Left.svg" };
@@ -3400,7 +3401,7 @@ module.exports = {
     );
   },
 
-  "holdUntilStragglerTargets: a sub-score target IS a landing when the score has a way in (2026-08-30)": () => {
+  "holdUntilStragglerTargets: a sub-score target IS a landing when the score has a way in": () => {
     // "Tetra/Echo.svg" names a frame inside a sub-score. The advance drops the
     // line into that sub (bin/www subAdvanceLanding resolves the dive it would
     // have taken), so the ref is a destination like any other — and canLandOn
@@ -3427,7 +3428,7 @@ module.exports = {
     assert.deepStrictEqual(asked, [["Tetra/Echo.svg", "L2"]]);
   },
 
-  "holdUntilStragglerTargets: a target with NO landing leaves the straggler listed (2026-08-28)": () => {
+  "holdUntilStragglerTargets: a target with NO landing leaves the straggler listed": () => {
     // Same shape, but the score offers no usable way in (unknown sub, unknown
     // frame, or no dive whose return landing survives). The barrier really is
     // waiting on L2 — it must be listed, or the panel would claim the wait is
@@ -3450,7 +3451,7 @@ module.exports = {
     );
   },
 
-  "holdUntilStragglerTargets: a satisfied barrier is waiting on nobody (2026-08-28)": () => {
+  "holdUntilStragglerTargets: a satisfied barrier is waiting on nobody": () => {
     const lines = [{ id: "L2" }];
     const state = holdUntilReachabilityState(
       ["Left.svg"],
@@ -3464,7 +3465,7 @@ module.exports = {
     );
   },
 
-  "revivalLandingFrame doubles as the forced-advance landing (2026-08-16)": () => {
+  "revivalLandingFrame doubles as the forced-advance landing": () => {
     // "Force advance stragglers" reuses the revival rule with the group's
     // CURRENT position as the anchor: the straggler lands on the group's
     // least-occupied frame, so a forced arrival fills the empty track slot.
@@ -3503,7 +3504,7 @@ module.exports = {
     assert.deepStrictEqual(state.incomingIds, ["L2"]);
   },
 
-  "groupArrivalState: hasPassed omitted keeps the pre-2026-07-19 behavior": () => {
+  "groupArrivalState: hasPassed omitted keeps the pre-rewind behavior": () => {
     const lines = [
       { id: "L1", status: "active" },
       { id: "L2", status: "active" },
@@ -3516,5 +3517,106 @@ module.exports = {
     });
     assert.strictEqual(state.waiting, true);
     assert.deepStrictEqual(state.incomingIds, ["L2"]);
+  },
+
+  // ── One ordering across both event kinds ─────────────────────────────────
+  //
+  // `roomRewind` used to sort its own list of forks and rejoins with a second
+  // comparator, which mapped a missing `seq` onto a scaled `createdAt` so that
+  // every legacy event sorted below every stamped one. It agreed with this one
+  // only through the arithmetic of the scaling factor; both read the same
+  // function now, and these pin what that function promises.
+
+  "compareStructural: seq decides when both events carry one": () => {
+    const a = { kind: "split", event: { seq: 2, createdAt: 9000 } };
+    const b = { kind: "merge", event: { seq: 5, createdAt: 1000 } };
+    assert.ok(compareStructural(a, b) < 0, "lower seq is older");
+    assert.ok(compareStructural(b, a) > 0);
+  },
+
+  "compareStructural: a record written before seq falls back to createdAt": () => {
+    // The upgrade path: `migrateStructuralIdentities` stamps uids but never
+    // backfills `seq`, so a room mid-session across the deploy holds both
+    // shapes. The legacy event really is the older one, and must read that way
+    // whichever of the two it is compared against.
+    const legacy = { kind: "split", event: { createdAt: 1000 } };
+    const stamped = { kind: "merge", event: { seq: 1, createdAt: 2000 } };
+    assert.ok(compareStructural(legacy, stamped) < 0);
+    assert.ok(compareStructural(stamped, legacy) > 0);
+  },
+
+  "compareStructural: two legacy records order by createdAt, then by `at`": () => {
+    const older = { kind: "split", event: { createdAt: 1000 }, at: 3 };
+    const newer = { kind: "merge", event: { createdAt: 2000 }, at: 0 };
+    assert.ok(compareStructural(older, newer) < 0);
+    const tieA = { kind: "split", event: { createdAt: 7 }, at: 0 };
+    const tieB = { kind: "merge", event: { createdAt: 7 }, at: 1 };
+    assert.ok(compareStructural(tieA, tieB) < 0, "`at` breaks an exact tie");
+    // A caller that omits `at` leaves ties to its own stable sort.
+    assert.strictEqual(
+      compareStructural(
+        { event: { createdAt: 7 } },
+        { event: { createdAt: 7 } },
+      ),
+      0,
+    );
+  },
+
+  // ── A stale `blockedByMerge` mark is not a liftable one ──────────────────
+  //
+  // `splitRewindPlan` refuses `mixed-merge` on the MARK itself, so a menu that
+  // answered "the cascade will lift it" when no merge is left holding it would
+  // publish a button that always refuses — the one shape this menu has learnt
+  // not to have. `rewindMergeStructure` clears the mark as it takes the last
+  // holder off, so the state is unreachable in the runtime and only a migrated
+  // or hand-edited file can produce it; the two callers used to disagree about
+  // it, and this pins the stricter answer they now share.
+
+  "splitStepState: a blockedByMerge mark no merge still holds does not lift": () => {
+    const splitEvents = [
+      {
+        id: "S1",
+        seq: 1,
+        status: "active",
+        frame: "FORK.svg",
+        parentLineId: "L0",
+        parentLineUid: "u-parent",
+        childLineIds: ["L0", "L1"],
+        childLineUids: ["u-parent", "u-child"],
+        parentCurrentIndex: 0,
+        parentHistory: ["FORK.svg"],
+        parentHistoryIndex: 0,
+        blockedByMerge: true,
+        blockedAt: 1,
+      },
+    ];
+    // Every merge that ever named S1 has been undone, so nothing holds the
+    // mark — and nothing in a walk can take it off either.
+    const mergeEvents = [
+      {
+        id: "M1",
+        seq: 2,
+        status: "undone",
+        frame: "MERGE.svg",
+        survivorLineId: "L0",
+        blockedSplitEventIds: ["S1"],
+        participants: [
+          { lineId: "L0", lineUid: "u-parent", history: ["FORK.svg"] },
+          { lineId: "L1", lineUid: "u-child", history: ["FORK.svg"] },
+        ],
+      },
+    ];
+    const lines = [
+      { id: "L0", uid: "u-parent", status: "active", splitAncestors: ["S1"] },
+      { id: "L1", uid: "u-child", status: "active", splitAncestors: ["S1"] },
+    ];
+    const state = splitStepState({
+      event: splitEvents[0],
+      splitEvents,
+      mergeEvents,
+      lines,
+    });
+    assert.strictEqual(state.available, false);
+    assert.strictEqual(state.reason, "mixed-merge");
   },
 };

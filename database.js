@@ -14,8 +14,10 @@ const { parseFrameAttrs } = require("./lib/session-lines/parse");
 const { buildGraph } = require("./lib/session-lines/graph");
 // Session Lines: per-playhead line model + persistence helpers.
 const { BMLine, migrateState } = require("./lib/session-lines/line");
+const { compactPersistedEvents } = require("./lib/session-lines/map-payload");
 
 const IGNORE_STATE_KEYS = ["svgContent", "htmlContent"];
+const REWIND_LOG_MAX = 20;
 const HREF_REGX = /(?<=href=")(.*?)(?=")/;
 const LINK_REGEX = /((xlink:href)|(href))="(.*?)"/;
 
@@ -215,8 +217,9 @@ class BMSession {
   // etc.), and BMSession's own playhead helpers below delegate to `lines[0]`.
   lines = [new BMLine(this)];
   // Structural split history used by the score map's "undo split" operation.
-  // Events are append-only (active → undone) so ids remain race-safe across
-  // restarts and repeated visits to the same split frame.
+  // Events are append-only in memory (active → undone) so ids remain race-safe
+  // during a gesture. `toJSON` omits terminal undone records; the persisted
+  // monotonic counters keep ids safe across restarts.
   splitEvents = [];
   nextSplitEventId = 1;
   // One operator GESTURE can fork several lines at once (a track group's
@@ -225,15 +228,19 @@ class BMSession {
   // shared `gestureId` from this counter (`orch.splitGestureEvents`).
   nextSplitGestureId = 1;
   // Structural merge (rejoin) history used by the score map's "undo merge"
-  // operation. Append-only like splitEvents (active → undone/expired) and kept
-  // for the whole session (2026-09-06): a merge point stays somewhere the room
-  // can go back to, with anything built on top of it undone first
-  // (`structuralRewindChain`). Only a room checkpoint rewind expires one, and
-  // even then the routes it recorded are kept — the map still draws where each
-  // line walked. Absorbed lines' NUMBERS are not held: the undo re-creates the
-  // lines from these snapshots.
+  // operation. Active records are kept for the whole session: a merge point
+  // stays somewhere the room can go back
+  // to, with anything built on top of it undone first
+  // (`structuralRewindChain`). Terminal undone records are omitted from saved
+  // state, while expired records are reduced to the identity and trail evidence
+  // still needed for rewind blocking and barrier corroboration. Absorbed lines'
+  // NUMBERS are not held: the undo re-creates them from active snapshots.
   mergeEvents = [];
   nextMergeEventId = 1;
+  // Successful operator rewinds, newest first. This is session-owned rather
+  // than map-page-owned so the audit survives reloads, reconnects and server
+  // restarts. Entries are deliberately compact; the map turns them into prose.
+  rewindLog = [];
   // One ordering across both event kinds, so a cascade can walk splits and
   // merges in the order they actually happened (their ids come from separate
   // counters).
@@ -243,14 +250,19 @@ class BMSession {
   // any line — { "<lower ref>": "arrived" | "done" }. Sub frames use the
   // qualified "score/frame" form. Only written on session-lines scores.
   reachedTargets = {};
-  // SM-jump rewind generation (S2 option (b), decided 2026-07-07): bumped on
-  // every session-lines history jump, when the registry above is restarted so
-  // replayed barriers gate like first passes.
+  // SM-jump rewind generation (S2 option (b)): bumped on every session-lines
+  // history jump, when the registry above is restarted so replayed barriers
+  // gate like first passes.
   reachedGeneration = 0;
-  // Decision #13 revision (2026-07-18): the newest main-flow track-group
-  // landing ({ frame, at }) — dormant-line revivals fast-forward to this
-  // group instead of resuming their frozen position. Cleared on rewind
-  // (beginReachedGeneration) and when a reloaded score drops its markup.
+  // The rewind-landing carve-out: hold-until targets the room is DECLARED to
+  // have met (it passed that barrier before the rewind), which no line's trail
+  // can corroborate afterwards — `orch.registryClaimants` counts them in so the
+  // barrier at a rewind landing stays unlocked.
+  reachedGranted = [];
+  // Decision #13 revision: the newest main-flow track-group landing ({ frame,
+  // at }) — dormant-line revivals fast-forward to this group instead of
+  // resuming their frozen position. Cleared on rewind (beginReachedGeneration)
+  // and when a reloaded score drops its markup.
   latestGroupArrival = null;
 
   selectedScoreIndex = -1;
@@ -262,6 +274,12 @@ class BMSession {
 
   // Serializes this session's state-file writes; see saveSessionStateToFile.
   #stateWrites = Promise.resolve();
+
+  // One mutation lane for every live operation that can change a room. A
+  // structural rewind deliberately awaits saves and notifications between its
+  // steps; keeping the queue on the session prevents taps, disconnects,
+  // countdowns, and score rebuilds from entering through those await gaps.
+  #mutations = Promise.resolve();
 
   synTimeInterval = 0.5;
   standbyDuration = 3;
@@ -304,6 +322,17 @@ class BMSession {
       // `lines`, so they fall through to the plain assignment below.
       if (key === "lines" && Array.isArray(val)) {
         this.lines = val.map((lineObj) => BMLine.fromJSON(this, lineObj));
+        continue;
+      }
+
+      // State files are local, but keep a malformed/hand-edited log from
+      // growing the live session without bound or breaking map rendering.
+      if (key === "rewindLog") {
+        this.rewindLog = Array.isArray(val)
+          ? val
+              .filter((entry) => entry && typeof entry === "object")
+              .slice(0, REWIND_LOG_MAX)
+          : [];
         continue;
       }
 
@@ -362,12 +391,58 @@ class BMSession {
     this.soundList = this.hasSounds ? await this.getSoundList(folderName) : [];
 
     await this.buildSVGContent();
+    this.resetForScoreChange();
+  }
 
-    if (this.listFiles.length <= 0) {
-      return;
+  // Rebuild a score edited in place. A content change cannot safely keep
+  // numeric playheads or structural snapshots: frame insertion/reordering
+  // changes what those indexes mean. Reset exactly as a folder swap does.
+  async rebuildScore() {
+    const contentBefore = this.contentHash;
+    await this.buildSVGContent();
+    const changed = this.contentHash !== contentBefore;
+    if (changed) {
+      this.resetForScoreChange();
+    }
+    return changed;
     }
 
-    this.setCurrIdxToStart();
+  resetForScoreChange() {
+    for (const line of this.lines || []) {
+      line.clearAllTimer();
+      if (line._attritionTimer != null) {
+        clearTimeout(line._attritionTimer);
+        line._attritionTimer = null;
+      }
+    }
+
+    this.lines = [new BMLine(this)];
+    if (this.listFiles && this.listFiles.length > 0) {
+      this.lines[0].setCurrIdxToStart();
+    }
+
+    this.splitEvents = [];
+    this.nextSplitEventId = 1;
+    this.nextSplitGestureId = 1;
+    this.mergeEvents = [];
+    this.nextMergeEventId = 1;
+    this.nextStructuralSeq = 1;
+    this.deviceRegistry = {};
+    this.reachedTargets = {};
+    this.reachedGeneration = 0;
+    this.reachedGranted = [];
+    this.latestGroupArrival = null;
+    // The rewind log goes with them (owner). Every entry names a frame of the
+    // score being replaced, so on the new one it is an audit of acts at frames
+    // that do not exist.
+    this.rewindLog = [];
+
+    // Runtime-only projections/barrier state are derived from the score and
+    // topology above. They must not survive onto the replacement graph.
+    this._barrier = undefined;
+    this._barrierRehydrated = false;
+    this.__structuralProjection = undefined;
+    this.__displayHold = null;
   }
 
   // Session Lines: playhead operations delegate to the (single, until split)
@@ -394,17 +469,35 @@ class BMSession {
     return files.map((file) => file.replace("\\", "/"));
   }
 
+  markScoreUnavailable(reason) {
+    this.listFiles = [];
+    this.listFilesInLowerCase = [];
+    this.listMultiChooseImages = [];
+    this.graph = buildGraph([]);
+    this.hasSessionLines = false;
+    this.subFrames = {};
+    this.reachedTargets = {};
+    this.reachedGranted = [];
+    this.latestGroupArrival = null;
+    this.contentHash = crypto
+      .createHash("sha256")
+      .update(`${this.folder}:${reason}`)
+      .digest("hex");
+  }
+
   async buildSVGContent() {
     const scoreDir = `${this.scoreDataDir}/${this.folder}`;
     const framesDir = `${scoreDir}/Frames`;
     const dir = fs.existsSync(framesDir) ? framesDir : scoreDir;
     if (!fs.existsSync(dir)) {
+      this.markScoreUnavailable("missing");
       return;
     }
 
     this.listFiles = await readDirSorted(dir);
 
     if (this.listFiles.length <= 0) {
+      this.markScoreUnavailable("empty");
       return;
     }
 
@@ -484,10 +577,6 @@ class BMSession {
       );
     }
 
-    // Not persisted (toJSON allowlist) — buildSVGContent re-derives it on load,
-    // exactly like listFiles and graph.
-    this.contentHash = contentDigest.digest("hex");
-
     // Session Lines: the relationship graph is built for EVERY score (the
     // admin score map treats a vanilla score as a single-line session), but
     // orchestration is flagged ONLY when the score actually uses session-*
@@ -513,12 +602,26 @@ class BMSession {
       // orchestrating on it; the fresh graph above replaces any stale one.
       this.hasSessionLines = false;
       this.reachedTargets = {};
+      this.reachedGranted = [];
       this.latestGroupArrival = null;
     }
 
     // Session Lines: build sub-score frames on demand cache (gated; the file is
     // removed for vanilla scores so build output stays byte-identical).
     await this.buildSubFramesContent(sessionGraph);
+
+    // The fingerprint covers everything a connected score page can navigate:
+    // main frames, sub-score frames, and sound paths. Persisted in toJSON so a
+    // restart can detect edits made while the server was down.
+    contentDigest.update(JSON.stringify(this.soundList || []));
+    for (const score of Object.keys(this.subFrames || {}).sort()) {
+      const sub = this.subFrames[score];
+      contentDigest.update(score);
+      contentDigest.update(JSON.stringify(sub.frameList || []));
+      contentDigest.update(sub.framesHtml || "");
+      contentDigest.update(JSON.stringify(sub.soundList || []));
+    }
+    this.contentHash = contentDigest.digest("hex");
 
     const aboutSvg = await buildAboutSvgAsync(
       `${this.folder}/Documentation`,
@@ -743,6 +846,30 @@ class BMSession {
     }
   }
 
+  runExclusively(work) {
+    const queued = this.#mutations.then(work, work);
+    // A failed operation is reported to its own caller but cannot poison the
+    // mutation lane for everything queued behind it.
+    this.#mutations = queued.then(
+      () => undefined,
+      () => undefined,
+    );
+    return queued;
+  }
+
+  recordRewind({ kind, frame, lineId, emptied }) {
+    const entry = {
+      kind: String(kind || "line"),
+      frame: frame == null ? null : String(frame),
+      at: Date.now(),
+      ...(lineId == null ? {} : { lineId: String(lineId) }),
+      ...(Array.isArray(emptied) && emptied.length > 0 ? { emptied } : {}),
+    };
+    this.rewindLog.unshift(entry);
+    this.rewindLog.splice(REWIND_LOG_MAX);
+    return entry;
+  }
+
   // Versioned persistence allowlist (v2). Serializes session-global fields +
   // lines[] + deviceRegistry, and drops fields buildSVGContent re-derives on
   // load (listFiles*, graph). Timer-nulling / voting-reset happen per-line in
@@ -763,6 +890,10 @@ class BMSession {
       enableAutoplayByDefault: this.enableAutoplayByDefault,
       hasSounds: this.hasSounds,
       soundList: this.soundList,
+      // Lets boot detect that score files changed while the server was down.
+      // Numeric line/snapshot indexes are only meaningful for this exact
+      // content hash; buildSVGContent re-derives and compares it on load.
+      contentHash: this.contentHash,
       isPause: this.isPause,
       isSessionDeleted: this.isSessionDeleted,
       votingDuration: this.votingDuration,
@@ -774,15 +905,17 @@ class BMSession {
       selectedScoreIndex: this.selectedScoreIndex,
       selectedCooldownTimeIndex: this.selectedCooldownTimeIndex,
       selectedHoldTimeIndex: this.selectedHoldTimeIndex,
-      splitEvents: this.splitEvents,
+      splitEvents: compactPersistedEvents(this.splitEvents, "split"),
       nextSplitEventId: this.nextSplitEventId,
       nextSplitGestureId: this.nextSplitGestureId,
-      mergeEvents: this.mergeEvents,
+      mergeEvents: compactPersistedEvents(this.mergeEvents, "merge"),
       nextMergeEventId: this.nextMergeEventId,
+      rewindLog: this.rewindLog,
       nextStructuralSeq: this.nextStructuralSeq,
       deviceRegistry: this.deviceRegistry,
       reachedTargets: this.reachedTargets,
       reachedGeneration: this.reachedGeneration,
+      reachedGranted: this.reachedGranted,
       latestGroupArrival: this.latestGroupArrival,
       lines: this.lines.map((line) => line.toJSON()),
     };
@@ -949,7 +1082,22 @@ class BMSessionTable {
       const newSession = new BMSession();
       // Bring legacy v1 (flat) state up to v2 (lines:[one]) before applying.
       await newSession.patchState(migrateState(state));
+      const storedContentHash = newSession.contentHash;
       await newSession.buildSVGContent();
+
+      const hasStructuralState =
+        (newSession.lines || []).length > 1 ||
+        (newSession.splitEvents || []).length > 0 ||
+        (newSession.mergeEvents || []).length > 0;
+      if (
+        (storedContentHash && storedContentHash !== newSession.contentHash) ||
+        (!storedContentHash && hasStructuralState)
+      ) {
+        // A pre-fingerprint structural state cannot prove that its numeric
+        // positions still describe this score, so expire it once on upgrade.
+        newSession.resetForScoreChange();
+        await newSession.saveSessionStateToFile();
+      }
 
       this.data.push(newSession);
     }

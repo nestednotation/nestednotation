@@ -162,7 +162,7 @@ module.exports = {
 
     // The eject as bin/www performs it: leave the sub, land on the dive's own
     // return frame, and start THAT frame's holding period before the arrival is
-    // recorded (startArrivalHoldForOperatorLanding).
+    // recorded (startArrivalHoldForLanding).
     line.exitSub();
     line.setCurrIdxTo(
       subReturnIndex("Barrier.svg", session.listFilesInLowerCase),
@@ -182,9 +182,9 @@ module.exports = {
 
     // recordArrival's rule: a landing whose hold is still running is "arrived",
     // never "done". That is what keeps a barrier AT the landing closed
-    // (bin/www holdPendingAtFrame) instead of releasing in the same tick and —
-    // Barrier.svg carries a single paired rejoin-at — advancing the line
-    // straight off the frame its device was only just told to show.
+    // (bin/www holdPendingAtFrame) instead of releasing in the same tick as the
+    // arrival — opening the rendezvous before the frame its device was only
+    // just told to show has been held at all.
     const reg = {};
     markReached(reg, landing, !line.isHolding);
     assert.strictEqual(reg[landing.toLowerCase()], "arrived");
@@ -197,6 +197,80 @@ module.exports = {
     assert.deepStrictEqual([...registryCoveredTargets(reg, [landing])], [
       landing,
     ]);
+  },
+
+  "runtime: a sub-end is ARRIVED on arrival, whatever its holding says": async () => {
+    const session = await buildSessionLinesFixture({ id: "__sub_end_pass__" });
+
+    // The shape that breaks it, pinned: the sub-end is a marker no device ever
+    // displays, so the fixture authors it `holding="false"` — the honest value,
+    // and the one the guide tells authors to write. Barrier, the return
+    // landing, waits on that very frame and carries a single paired rejoin-at.
+    const echo = session.subFrames.Tetra.graph.byFrame["Echo.svg"];
+    assert.strictEqual(echo.holding, "false");
+    assert.strictEqual(session.subFrames.Tetra.graph.subEnd["Echo.svg"], "Tetra");
+    assert.ok(
+      session.graph.holdUntilTargets["Barrier.svg"].includes("Tetra/Echo.svg"),
+      "Barrier must wait on the sub-end for this test to mean anything",
+    );
+    assert.deepStrictEqual(session.graph.rejoinTargets["Barrier.svg"], [
+      "DONE.svg",
+    ]);
+
+    const line = new BMLine(session, "L1");
+    session.lines.push(line);
+    line.enterSub("Tetra", "Barrier.svg");
+    line.setCurrIdxTo(session.subFrames.Tetra.frameList.indexOf("Echo.svg"));
+
+    // `holding="false"` ⇒ the landing gate says no hold, so `isHolding` is
+    // false here and cannot be what keeps the frame open. It used to be: the
+    // ordinary advance set the flag on any non-zero session default, whatever
+    // the frame said, and the sub-end rode along on that.
+    line.isHolding = false;
+
+    // recordArrival's rule. A sub-end is passing THROUGH — handleSubTransitions
+    // pops the line two statements later — so it is "arrived" here and
+    // completed by that departure, exactly like any other frame a line leaves.
+    const isSubEnd = true; // bin/www isSubEndFrame(session, line)
+    const passingThrough = line.isHolding || isSubEnd;
+    const reg = {};
+    markReached(reg, "Tetra/Echo.svg", !passingThrough);
+    assert.strictEqual(reg["tetra/echo.svg"], "arrived");
+
+    // …so Barrier's wait is still shut while the line stands on the sub-end.
+    // Marked `done` here instead, it opens one frame short of where the release
+    // expects to find the line — before the return landing has started its own
+    // holding period — so the parked lines are freed by a rendezvous that has
+    // not happened. That is the skipped target after a sub-score exit.
+    markReached(reg, "Left.svg", true); // the wait's other target, met
+    assert.deepStrictEqual(
+      [
+        ...registryCoveredTargets(
+          reg,
+          session.graph.holdUntilTargets["Barrier.svg"],
+        ),
+      ],
+      ["Left.svg"],
+      "the sub-end must NOT count as met while the line is still inside the sub",
+    );
+
+    // The departure completes it — and by then the line is standing on the
+    // return landing with that frame's own hold running (exitSubSession:
+    // clearLinePhase → startArrivalHoldForLanding → afterLineArrived).
+    line.exitSub();
+    line.setCurrIdxTo(
+      subReturnIndex("Barrier.svg", session.listFilesInLowerCase),
+    );
+    assert.strictEqual(markReached(reg, "Tetra/Echo.svg", true), true);
+    assert.deepStrictEqual(
+      [
+        ...registryCoveredTargets(
+          reg,
+          session.graph.holdUntilTargets["Barrier.svg"],
+        ),
+      ].sort(),
+      ["Left.svg", "Tetra/Echo.svg"],
+    );
   },
 
   "runtime: a rollback puts a line back on the frame it dived from": async () => {
@@ -275,5 +349,65 @@ module.exports = {
       ["START.svg"],
     );
     assert.ok(!line.history.includes("Right.svg"));
+  },
+
+  "runtime: a dive holds by the frame LANDED on, not the one the tap named": async () => {
+    const session = await buildSessionLinesFixture({ id: "__sub_hold_src__" });
+    const sub = session.subFrames.Tetra;
+
+    // A tap carries the `holding` of the frame its LINK names, read off the
+    // device's active frame list (voting.js getFrameHoldingDur). Neither end of
+    // a dive lands on that frame:
+    //   · diving, the link is Right.svg's session-sub-start <a> and its href is
+    //     the RETURN landing, so the tap speaks for Barrier.svg while the line
+    //     lands on the sub's START;
+    //   · exiting, the link named the sub-end frame Echo.svg, so the tap speaks
+    //     for Echo while the line lands — one hop later, popped back to the
+    //     main flow — on Barrier.svg.
+    // The fixture gives all three frames different values so a landing timed by
+    // the wrong one is visible.
+    assert.strictEqual(sub.graph.byFrame["START.svg"].holding, "7");
+    assert.strictEqual(sub.graph.byFrame["Echo.svg"].holding, "false");
+    assert.strictEqual(session.graph.byFrame["Barrier.svg"].holding, "19");
+
+    // So both landings read their own frame's value off the graph instead
+    // (bin/www landingHoldSeconds → startArrivalHoldForLanding): the SUB's
+    // graph while dived, the main graph once popped.
+    const holdingAttrForLine = (l) => {
+      const top = l.subStack[l.subStack.length - 1];
+      const info = top ? session.subFrames[top.score] : null;
+      const graph = info ? info.graph : session.graph;
+      const list = info ? info.frameList : session.listFiles;
+      return (graph.byFrame[list[l.currentIndex]] || {}).holding || null;
+    };
+
+    const line = new BMLine(session, "L1");
+    session.lines.push(line);
+    line.setCurrIdxTo(session.listFilesInLowerCase.indexOf("right.svg"));
+
+    line.enterSub("Tetra", "Barrier.svg");
+    line.setCurrIdxTo(sub.frameList.indexOf("START.svg"));
+    assert.strictEqual(
+      holdingAttrForLine(line),
+      "7",
+      "the dive holds by the sub START, not by the return landing its link names",
+    );
+
+    line.setCurrIdxTo(sub.frameList.indexOf("Echo.svg"));
+    line.exitSub();
+    line.setCurrIdxTo(
+      subReturnIndex("Barrier.svg", session.listFilesInLowerCase),
+    );
+    assert.strictEqual(
+      holdingAttrForLine(line),
+      "19",
+      "the exit holds by the return landing, not by the sub-end frame it taps",
+    );
+
+    // The sub-end deliberately carries `holding="false"` — the one value that
+    // starts no hold at all (parseCustomDur). A return landing that took the
+    // tap's value would land phase-less and be registered done on the spot,
+    // releasing the hold-until parked on Barrier.svg in the same tick as the
+    // arrival: the eject's defect, reached by the score's own route.
   },
 };

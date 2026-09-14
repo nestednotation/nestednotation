@@ -125,7 +125,7 @@ module.exports = {
     assert.strictEqual(smallestLineId(lines, withAdmin, "s1"), "L0");
   },
 
-  // ── Spectators (owner, 2026-09-04) ────────────────────────────────────────
+  // ── Spectators (owner) ────────────────────────────────────────
   // A rider (a session page opened with no password, isStaff === false) is
   // audience: it can never affect the session, and it only ever watches an
   // ACTIVE line.

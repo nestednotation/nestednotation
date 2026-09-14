@@ -128,8 +128,8 @@ module.exports = {
 
   "rejoin-at target that is not one of the frame's own links is an error": () => {
     // C announces a merge at D, but its only link goes to X — the merge frame
-    // is not reachable in one step (owner rule 2026-07-08: rejoin-at = "this
-    // line merges at the target on its NEXT step").
+    // is not reachable in one step (owner rule: rejoin-at = "this line merges
+    // at the target on its NEXT step").
     const frames = [
       frame("START.svg", {}, ["C.svg"]),
       frame("C.svg", { "session-rejoin-at": "D.svg" }, ["X.svg"]),
@@ -157,9 +157,9 @@ module.exports = {
   },
 
   "rejoin-at coexists with split on the same frame (no pairing rule)": () => {
-    // Owner-clarified 2026-07-08: the attributes are independent — a frame may
-    // split while also announcing a merge among its next steps (e.g. staged
-    // merges, 3 lines → 2 → 1). No count relationship is enforced.
+    // Owner-clarified: the attributes are independent — a frame may split
+    // while also announcing a merge among its next steps (e.g. staged merges,
+    // 3 lines → 2 → 1). No count relationship is enforced.
     const frames = [
       frame(
         "START.svg",
@@ -404,8 +404,8 @@ module.exports = {
   },
 
   "hold-until targeting a frame of the SAME track group is an error": () => {
-    // Decided 2026-07-16: B already waits for C via the group's arrival
-    // barrier — a hold-until on C is redundant and rejected.
+    // Decided: B already waits for C via the group's arrival barrier — a
+    // hold-until on C is redundant and rejected.
     const frames = [
       frame("START.svg", { "session-split": "2" }, ["B.svg", "C.svg"]),
       frame(

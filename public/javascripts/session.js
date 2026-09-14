@@ -274,6 +274,7 @@ function parseMessage(data) {
   // (cached per sub), swap the active frame list, then show the sub frame.
   if (msg === MSG_SUB_ENTER) {
     const { sub, showIdx } = data;
+    resetCountdownsForSubTransition();
     // showIdx now indexes the SUB frame list. Keep window.currentIndex in sync
     // (as MSG_SHOW does) — outgoing taps send it as `cid`, and the server
     // rejects a tap whose cid !== line.currentIndex. Skipping this leaves cid on
@@ -288,6 +289,7 @@ function parseMessage(data) {
   // Session Lines: the sub ended — pop back to the main flow landing frame.
   if (msg === MSG_SUB_EXIT) {
     const { showIdx } = data;
+    resetCountdownsForSubTransition();
     // Back on the main frame list — resync window.currentIndex (see MSG_SUB_ENTER).
     window.currentIndex = showIdx;
     exitSubSessionView();
@@ -298,6 +300,31 @@ function parseMessage(data) {
 
 // ── Sub-session view (Session Lines) ─────────────────────────────────────────
 window.__subCache = window.__subCache || {};
+
+// Voting resolves on the server one second before its advertised client end
+// time. Ordinary travel spends that second in standby, but a sub transition
+// displays its landing and starts that frame's hold immediately. Retire the
+// old frame's browser timers at the view boundary or its final voting tick and
+// the new holding tick both repaint the shared countdown dots (the visible
+// entry/exit flicker). The same cleanup covers an operator move or reconnect
+// crossing the boundary while an old hold callback is still present.
+function resetCountdownsForSubTransition() {
+  if (cooldownTimer != null) {
+    clearInterval(cooldownTimer);
+    cooldownTimer = null;
+  }
+  isCooldowning = false;
+
+  if (holdingTimer != null) {
+    clearInterval(holdingTimer);
+    holdingTimer = null;
+  }
+  window.isHolding = false;
+
+  hideAllCooldownCircles();
+  setIndicatorCooldown(false);
+  setIndicatorHold(false);
+}
 
 // #SubSessionContent is a constant child of #MainContent (session.jade), hidden
 // by the stylesheet. Shown as display:contents so injected sub frames lay out
@@ -356,16 +383,16 @@ function exitSubSessionView() {
 // (MSG_BARRIER_RELEASED):
 //   parked    — this line is held (hold-until barrier, or a group's arrival
 //               barrier) until the others converge;
-//   straggler — the opposite seat: a group is held open waiting for THIS line,
-//               which until 2026-08-16 was told nothing at all.
+// straggler — the opposite seat: a group is held open waiting for THIS line,
+// which was told nothing at all until this banner.
 const BARRIER_BANNER_TEXT = {
   parked: "waiting for other lines…",
   straggler: "Your move, proceed when ready…",
 };
 
-// Both banners are GUIDE-MODE ONLY (owner, 2026-08-16): they are navigation
-// messages, and in play mode they only sat over the frame the performer was
-// sounding. Visibility is left entirely to the stylesheet (`.guide-mode
+// Both banners are GUIDE-MODE ONLY (owner): they are navigation messages, and
+// in play mode they only sat over the frame the performer was sounding.
+// Visibility is left entirely to the stylesheet (`.guide-mode
 // #barrier-waiting-indicator[data-role]`) rather than an inline display —
 // switching modes never comes back through here, so a JS test would go stale
 // the moment the performer guided their device.
@@ -407,11 +434,11 @@ function updateSelectHistory(historyData, selectedIdx, available) {
   select.innerHTML = content;
   select.selectedIndex = selectedIdx;
 
-  // Session Lines: the implicit bound-line rewind is retired (2026-07-19) —
-  // the server always sends available:false, so the dropdown is a read-only
-  // display of this line's trail; rewinding (the whole room by track-group
-  // checkpoint, or one targeted line) happens from the score map. `undefined`
-  // (vanilla scores / no session lines) leaves it enabled, exactly as today.
+  // Session Lines: the implicit bound-line rewind is retired — the server
+  // always sends available:false, so the dropdown is a read-only display of
+  // this line's trail; rewinding (the whole room by track-group checkpoint, or
+  // one targeted line) happens from the score map. `undefined` (vanilla scores
+  // / no session lines) leaves it enabled, exactly as today.
   const disabled = available === false;
   select.disabled = disabled;
   const wrap = document.getElementById("divhistory");

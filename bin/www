@@ -15,9 +15,9 @@ const { MESSAGES } = require("../constants.js");
 // Session Lines: pure connection routing (line selection / late-join policy).
 // Two filtered views, and the difference matters: POPULATION is who can act on
 // a line — every count, tally, wait and membership decision runs over that, so
-// it excludes both map-view tabs and riders (spectators, owner 2026-09-04) —
-// while `performerLineConnections` keeps riders and exists for the display
-// counts the operator reads.
+// it excludes both map-view tabs and riders (spectators, owner) — while
+// `performerLineConnections` keeps riders and exists for the display counts
+// the operator reads.
 const {
   performerLineConnections,
   populationLineConnections,
@@ -30,6 +30,11 @@ const {
 // this is inert unless session.hasSessionLines.
 const { createOrchestrator } = require("../lib/session-lines/orchestrator");
 const { BMLine } = require("../lib/session-lines/line");
+const {
+  structuralEventSummaries,
+  structuralProjectionKey,
+  structuralProjectionVersion,
+} = require("../lib/session-lines/map-payload");
 
 let prefixDir = ".";
 const testPrefixFile = prefixDir + "/account/admin.dat";
@@ -181,33 +186,57 @@ wsServer.on("request", function (request) {
     if (session) {
       // Session Lines: a line that just lost its last device goes dormant and
       // releases any barrier waiting on it (#11). No-op for vanilla scores.
-      handleConnectionClose(session, connection).catch((e) =>
-        console.error("handleConnectionClose error", e),
-      );
-      updateNumberOfConnectionForSession(session);
+      session
+        .runExclusively(async () => {
+          await handleConnectionClose(session, connection);
+          updateNumberOfConnectionForSession(session);
+        })
+        .catch((e) => console.error("handleConnectionClose error", e));
     }
   });
 });
 
 //time = 0 => immediately
 function sendToClient(conn, time, payload) {
-  const obj = {
+  conn.sendUTF(
+    JSON.stringify({
+      t: time,
+      ...payload,
+    }),
+  );
+}
+
+// Encode a broadcast once. Structural map updates can be large, and encoding
+// the same object independently for every open admin tab multiplied the CPU
+// cost by the number of operators watching the room.
+function sendToConnections(connections, time, payload) {
+  if (!connections.length) return;
+  const encoded = JSON.stringify({
     t: time,
     ...payload,
-  };
-  conn.sendUTF(JSON.stringify(obj));
+  });
+  for (const conn of connections) conn.sendUTF(encoded);
 }
 
 function sendToAllClients(session, time, payload) {
-  const obj = {
-    t: time,
-    ...payload,
-  };
-  wsServer.connections.forEach(function each(conn) {
+  sendToConnections(
+    wsServer.connections.filter((conn) => conn.sessionId === session.id),
+    time,
+    payload,
+  );
+}
+
+// A score replacement collapses the room to its fresh L0 line. The durable
+// registry is intentionally cleared by BMSession.resetForScoreChange; live
+// sockets also need their transient address cleared immediately so a tap sent
+// before their reload/re-PING is counted on L0 rather than an obsolete line.
+function resetSessionConnections(session) {
+  for (const conn of wsServer.connections) {
     if (conn.sessionId === session.id) {
-      conn.sendUTF(JSON.stringify(obj));
+      conn.lineId = session.lines[0].id;
+      conn.currentVoteTo = -1;
     }
-  });
+  }
 }
 
 function sendToAllClientsWithDelay(session, timeDelay, payload) {
@@ -216,15 +245,13 @@ function sendToAllClientsWithDelay(session, timeDelay, payload) {
 }
 
 function sendToAllAdmins(session, time, payload) {
-  const obj = {
-    t: time,
-    ...payload,
-  };
-  wsServer.connections.forEach(function each(conn) {
-    if (conn.sessionId === session.id && conn.isAdmin) {
-      conn.sendUTF(JSON.stringify(obj));
-    }
-  });
+  sendToConnections(
+    wsServer.connections.filter(
+      (conn) => conn.sessionId === session.id && conn.isAdmin,
+    ),
+    time,
+    payload,
+  );
 }
 
 // ── Session Lines: per-line messaging ────────────────────────────────────────
@@ -284,7 +311,7 @@ function lineForConn(session, conn) {
 // Bind a connection to its line + device id. Restores a known device's line via
 // deviceRegistry; otherwise assigns the smallest live-or-dormant line (#13).
 // With one line this always resolves to lines[0].
-function ensureLineAssignment(session, conn, deviceId) {
+async function ensureLineAssignment(session, conn, deviceId) {
   if (deviceId) {
     conn.deviceId = deviceId;
   }
@@ -303,11 +330,11 @@ function ensureLineAssignment(session, conn, deviceId) {
   if (line && line.status === "retired") {
     line = null;
   }
-  // …and a spectator is never bound to a line that is not ACTIVE (owner,
-  // 2026-09-04). It cannot tap, so a dormant line it landed on would never
-  // wake up under it: "a spectator should only be able to view active
-  // lines/nodes". The same rule re-homes it if the line it is watching goes
-  // dormant later (finalizeAttrition).
+  // …and a spectator is never bound to a line that is not ACTIVE (owner). It
+  // cannot tap, so a dormant line it landed on would never wake up under it:
+  // "a spectator should only be able to view active lines/nodes". The same
+  // rule re-homes it if the line it is watching goes dormant later
+  // (finalizeAttrition).
   if (spectator && line && line.status !== "active") {
     line = null;
   }
@@ -364,10 +391,10 @@ function ensureLineAssignment(session, conn, deviceId) {
     ).length > 0;
   // Joining a dormant line revives it (Phase 3 resumes its lifecycle) — and
   // fast-forwards it to the latest track-group frame the room has reached
-  // (decision #13 revision, 2026-07-18): the frozen position is stale, so the
-  // joiner lands where the action is instead of resurrecting an abandoned
-  // path. Reviving in place remains the fallback (no grouped landing yet, or
-  // the line froze inside that same group).
+  // (decision #13 revision): the frozen position is stale, so the joiner lands
+  // where the action is instead of resurrecting an abandoned path. Reviving in
+  // place remains the fallback (no grouped landing yet, or the line froze
+  // inside that same group).
   if (line.status === "dormant") {
     line.status = "active";
     // Persisted here rather than left to the fast-forward: a revival that
@@ -377,18 +404,15 @@ function ensureLineAssignment(session, conn, deviceId) {
     // unrelated write. It self-heals across a restart — the reconnecting
     // device revives it again — but an operator reading saved state should not
     // have to know that.
-    fastForwardRevivedLine(session, line)
-      .then(() => session.saveSessionStateToFile())
-      .catch((e) => console.error("revival fast-forward error", e));
+    await fastForwardRevivedLine(session, line);
+    await session.saveSessionStateToFile();
   }
   // First device on a line (a revival, or the adoption of an empty split
   // child): if its frame's track group is still waiting on arrivals, the line
   // must park too — otherwise its taps would open a solo, unsynchronized
   // window mid-wait (the line only now became waitable; empty lines are not).
   if (!hadDevices && session.hasSessionLines && line.subStack.length === 0) {
-    maybeParkAtGroup(session, line, frameNameForLine(session, line)).catch(
-      (e) => console.error("group park on line adoption error", e),
-    );
+    await maybeParkAtGroup(session, line, frameNameForLine(session, line));
   }
   return line;
 }
@@ -407,8 +431,8 @@ function frameOccupancyExcluding(session, frameName, exclude) {
   }).length;
 }
 
-// Decision #13 revision (2026-07-18): a dormant line being revived abandons its
-// frozen position and lands on the room's latest track group — on that group's
+// Decision #13 revision: a dormant line being revived abandons its frozen
+// position and lands on the room's latest track group — on that group's
 // least-occupied frame, so revivals fill missing track slots rather than
 // doubling covered ones. All playhead mutation is synchronous (callers rely on
 // line.currentIndex being final when this returns its promise); only the
@@ -444,6 +468,13 @@ async function fastForwardRevivedLine(session, line) {
   // at the NEW frame is re-evaluated by the caller's maybeParkAtGroup.)
   line.isGroupWaiting = false;
   orch.unparkLine(session, line);
+
+  // The landing plays its own holding period, before the arrival is recorded:
+  // the revived performer has just been handed a frame and should get the beat
+  // the score gives it, and the group it lands in waits on that hold like any
+  // other occupant's. No tap carried a duration here either — the line was
+  // dormant.
+  await startArrivalHoldForLanding(session, line);
 
   // Registry: normal departure/landing semantics — leaving the frozen frame
   // completes it, which may release barriers parked elsewhere.
@@ -495,13 +526,11 @@ function navigationForLine(session, line) {
   };
 }
 
-// The `holding` attribute of the line's CURRENT frame, in the form a tap would
-// have carried it (`nextFrameHoldingDur`: "12", "200%", "false", or null when
-// the frame takes the session default). A performer's tap reads it off the
-// destination frame client-side and sends it along; an operator move has no tap
-// behind it, so the server reads it back off the graph the parser already
-// built — sub-aware, like navigationForLine.
-function frameHoldingAttrForLine(session, line) {
+// The parser's entry for the line's CURRENT frame — sub-aware, like
+// navigationForLine. Null only when the graph cannot speak for the frame at
+// all (no graph built yet, a name that does not resolve); an entry it DOES
+// hold is authoritative.
+function frameGraphEntryForLine(session, line) {
   const sub = line.subStack && line.subStack[line.subStack.length - 1];
   const graph =
     sub && session.subFrames && session.subFrames[sub.score]
@@ -511,7 +540,55 @@ function frameHoldingAttrForLine(session, line) {
   if (!graph || !graph.byFrame || !frameName) {
     return null;
   }
-  return (graph.byFrame[frameName] || {}).holding || null;
+  return graph.byFrame[frameName] || null;
+}
+
+// How long the line's CURRENT frame asks to be held, in seconds — the single
+// answer every hold start uses.
+//
+// The GRAPH is the authority here, not the tap. A tap reports the `holding` of
+// the frame its link NAMES (voting.js `getFrameHoldingDur`), which is the frame
+// the line lands on for an ordinary move and is NOT for any of the others: a
+// dive lands on the sub's START while the link names the return landing, a sub
+// exit lands on the return landing while the tap named the sub-end marker, a
+// split divides ONE line across several destinations so no single tap can
+// speak for them, and an operator move has no tap behind it at all. Reading
+// the landing's own value off the graph makes every one of them right by
+// construction instead of right by coincidence.
+//
+// The graph is built for EVERY score, vanilla included, and carries every
+// frame, so `nextFrameHoldingDur` survives only as the fallback for a frame
+// the graph cannot answer for. A frame it knows answers even when nothing was
+// authored: `holding: null` there means "take the session default", which is
+// an answer and not a gap — hence `Object.hasOwn` rather than a truth test.
+function landingHoldSeconds(session, line) {
+  const entry = frameGraphEntryForLine(session, line);
+  const authored =
+    entry && Object.hasOwn(entry, "holding")
+      ? entry.holding
+      : line.nextFrameHoldingDur;
+  return parseCustomDur(session.holdDuration, authored);
+}
+
+// …and WHETHER it is held at all — the same question, of the same frame.
+//
+// The gate and the duration used to be asked of different things: the duration
+// came from the landing while the gate read `session.holdDuration`, the room's
+// default, which is 0 unless an operator sets it. So a frame authored
+// `holding="12"` was ignored outright on the ordinary voted or grouped advance
+// while every other landing played it — the same frame reached one way held
+// and reached another did not, which is exactly the split `landingHoldSeconds`
+// exists to close. The default also made it the common case rather than an
+// edge one, and the consequence is not only timing: a landing with no hold is
+// registered `done` on arrival (`recordArrival` reads `isHolding`), so a
+// `hold-until` there whose targets were already met releases in the same tick,
+// freeing a line the moment its device was told to show the frame (and, back
+// when a release still auto-advanced, taking it straight off again).
+//
+// Ask it AFTER the playhead has moved: the answer is about the frame the line
+// is standing on, not the one it came from.
+function holdsAtLanding(session, line) {
+  return landingHoldSeconds(session, line) > 0;
 }
 
 function defaultOutgoingVoteIdForLine(session, line) {
@@ -536,7 +613,7 @@ function outgoingVoteIdsForLine(session, line) {
   );
 }
 
-// ── Rendezvous reached-registry (#6, decided 2026-07-04) ────────────────────
+// ── Rendezvous reached-registry (#6) ─────────────────────────────────────────
 // Every playhead landing is recorded in session.reachedTargets ("arrived") and
 // upgraded to "done" once the frame's own holding period there has ended —
 // hold-until barriers release on "done" targets no matter where the reaching
@@ -579,10 +656,30 @@ function recordArrival(session, line) {
     );
   }
   line._lastReachedRef = ref;
-  // No holding running for this landing (holdDuration 0, a split-seeded
-  // child, a sub entry…) ⇒ the frame's holding period is already over.
+  // No holding running for this landing (holdDuration 0, a frame authored
+  // `holding="false"`…) ⇒ the frame's holding period is already over.
+  //
+  // A SUB-END is the exception, and it is not about holding at all: reaching
+  // one pops the line in the same tick (`handleSubTransitions`, two statements
+  // after this call), so the line is passing THROUGH rather than resting, and
+  // the frame is completed by that departure like any other. Marking it done
+  // here instead releases a `hold-until` waiting on it while the line is still
+  // inside the sub — one frame short of the return landing the release expects
+  // to find it on, and before that landing has started its own hold, so the
+  // rendezvous the score wrote opens on a line that has not actually arrived
+  // (and, back when a release still auto-advanced, the parked lines were taken
+  // straight off the frame). That is the "skipped target after exiting a
+  // sub-score" defect (§9), reached from the registry rather than the clock.
+  //
+  // It used to be held shut by `isHolding` — the ordinary advance set that flag
+  // on any non-zero session default, so a sub-end was "arrived" whether or not
+  // the frame asked to be held. Once the gate started reading the FRAME (§7.1),
+  // a sub-end authored `holding="false"` — which is the honest thing to write
+  // on a marker no device displays — stopped being covered. The rule is stated
+  // rather than inherited now.
+  const passingThrough = line.isHolding || isSubEndFrame(session, line);
   return (
-    orch.markReached(session.reachedTargets, ref, !line.isHolding) || becameDone
+    orch.markReached(session.reachedTargets, ref, !passingThrough) || becameDone
   );
 }
 
@@ -797,7 +894,17 @@ async function resolveSplit(session, line, gestureId = null) {
   // split just waits for taps — split paths are never sub links, the validator
   // forbids it). Run arrival hooks before scheduling any plain SHOW so
   // redirected/merged lines do not receive stale frame updates.
+  //
+  // Each child first starts ITS OWN landing's holding period. One window
+  // closed here but the line divided, so the children stand on different
+  // frames and no single tap speaks for them — the split is the third landing
+  // the tap cannot answer for, alongside the two ends of a dive. Without it a
+  // child landed phase-less: `recordArrival` marked its frame done on the
+  // spot, so an authored `holding` on a split destination was ignored outright
+  // and a child landing on an already-satisfied hold-until was advanced off
+  // the frame in the same tick it was told to show it.
   for (const child of children) {
+    await startArrivalHoldForLanding(session, child);
     await showLineAfterArrivalIfNeeded(session, child);
   }
 
@@ -846,11 +953,29 @@ async function afterLineArrivedInner(session, line) {
   const graph = session.graph || {};
   const frameName = frameNameForLine(session, line);
 
-  // Rendezvous registry: record the landing; a target becoming "done" may
-  // release barriers parked anywhere else in the session.
-  if (recordArrival(session, line)) {
-    await tryReleaseBarriers(session);
-  }
+  // Rendezvous registry: record the landing. A target that BECAME done may
+  // release barriers parked anywhere in the session — but the release is held
+  // back until this line has had its chance to JOIN the barrier at its own
+  // landing frame, below.
+  //
+  // Releasing here instead frees the room in two instalments.
+  // `tryReleaseBarriers` asks `parkedLines.some(holdPendingAtFrame)` — the set
+  // `enterBarrier` fills — so a line arriving AT a barrier frame and completing
+  // that barrier's last target in the same breath is not in it yet: the wait
+  // opens for everyone already parked while the line that completed it is left
+  // to serve out its own holding period parked alone, told to wait for a target
+  // it is standing on. They leave the barrier together now, which is what the
+  // score asked for. (It cost more when a release still auto-advanced: the
+  // parked lines were moved off and merged without it, so the rendezvous the
+  // score wrote was unmakeable — see releaseBarrier.)
+  //
+  // It shows up most sharply coming out of a sub-score, because that is where
+  // the two roles land on one line: the wait names a frame inside the sub
+  // (`hold-until="Tetra1/End.svg"`), and the line that completes it is the one
+  // the sub returns to the barrier frame. Nothing about it is particular to
+  // sub-scores though — any line whose arrival completes the wait it is
+  // arriving at loses the same way.
+  const becameDone = recordArrival(session, line);
 
   // Sub-session exit: reaching a session-sub-end frame pops back to the main
   // flow (MSG_SUB_EXIT drives the display). Dives are NOT arrival-triggered —
@@ -860,15 +985,17 @@ async function afterLineArrivedInner(session, line) {
     return true;
   }
 
-  // v1 sub-sessions are plain: no split / barrier / rejoin inside a sub.
+  // v1 sub-sessions are plain: no split / barrier / rejoin inside a sub, so
+  // there is no barrier here for this line to join and the release is due now.
   if (line.subStack.length > 0) {
+    if (becameDone) await tryReleaseBarriers(session);
     return false;
   }
 
-  // Decision #13 revision (2026-07-18): remember the newest MAIN-FLOW grouped
-  // landing — dormant-line revivals fast-forward to this group instead of
-  // resuming their frozen position. Recorded before the barrier/rejoin
-  // branches below: parking or merging on the frame is still "reaching" it.
+  // Decision #13 revision: remember the newest MAIN-FLOW grouped landing —
+  // dormant-line revivals fast-forward to this group instead of resuming their
+  // frozen position. Recorded before the barrier/rejoin branches below:
+  // parking or merging on the frame is still "reaching" it.
   if (orch.groupOfFrame(graph, frameName)) {
     session.latestGroupArrival = { frame: frameName, at: Date.now() };
   }
@@ -877,8 +1004,17 @@ async function afterLineArrivedInner(session, line) {
   // line parks here and the caller still shows the barrier frame (+ banner).
   const holdTargets = (graph.holdUntilTargets || {})[frameName];
   if (holdTargets && holdTargets.length > 0) {
+    // This is the join the release above was waiting for: `enterBarrier` parks
+    // the line — so its own holding period counts toward `holdPending` — and
+    // then runs the release check itself, which subsumes `becameDone`.
     await enterBarrier(session, line, frameName, holdTargets);
     return false;
+  }
+
+  // Not a barrier frame, so there was nothing for this line to join: whatever
+  // its arrival completed can be acted on now.
+  if (becameDone) {
+    await tryReleaseBarriers(session);
   }
 
   // Bare rejoin-at: a frame that is some line's rejoin TARGET. When 2+ active
@@ -894,10 +1030,10 @@ async function afterLineArrivedInner(session, line) {
     }
   }
 
-  // Track-group ARRIVAL barrier (decided 2026-07-16): a line landing on a
-  // grouped frame parks until every populated line that can still reach the
-  // group has arrived (empty lines excluded). The matching release check runs
-  // in afterLineArrived's finally (tryReleaseGroupWaits).
+  // Track-group ARRIVAL barrier: a line landing on a grouped frame parks until
+  // every populated line that can still reach the group has arrived (empty
+  // lines excluded). The matching release check runs in afterLineArrived's
+  // finally (tryReleaseGroupWaits).
   await maybeParkAtGroup(session, line, frameName);
 
   return false;
@@ -940,12 +1076,14 @@ async function enterSubSession(session, line, subLink) {
   line.enterSub(score, returnHref);
   const startIdx = subStartIndex(subInfo.frameList);
   line.setCurrIdxTo(startIdx); // indexes the sub list now (activeFrameList)
-  // The sub START is a landing afterLineArrived never sees (the dive happens
-  // inside it) — record it here so sub refs feed the rendezvous registry.
-  if (recordArrival(session, line)) {
-    await tryReleaseBarriers(session);
-  }
-  await session.saveSessionStateToFile();
+
+  // The mirror of exitSubSession, and the same root cause: the tap that dove
+  // named a session-sub-start LINK, whose href is the return landing back in
+  // the main flow — so the `holding` it carried belongs to a frame the line
+  // will not stand on until it comes back out, while the frame it lands on now
+  // is the sub's START. Both ends of a dive move the line somewhere other than
+  // the frame the tap named, so both take their hold from the graph instead.
+  await clearLinePhase(session, line);
 
   // Client fetches + injects the sub frames, swaps its frame list, then shows
   // the sub START.
@@ -954,6 +1092,18 @@ async function enterSubSession(session, line, subLink) {
     sub: score,
     showIdx: startIdx,
   });
+
+  // Display first, hold second — ejectLineFromSub's order — and both ahead of
+  // the arrival, so a START whose frame holds is recorded "arrived" and not
+  // "done" (recordArrival reads isHolding).
+  await startArrivalHoldForLanding(session, line);
+
+  // The sub START is a landing afterLineArrived never sees (the dive happens
+  // inside it) — record it here so sub refs feed the rendezvous registry.
+  if (recordArrival(session, line)) {
+    await tryReleaseBarriers(session);
+  }
+  await session.saveSessionStateToFile();
   emitHistoryToAdmins(session, line);
 }
 
@@ -967,6 +1117,26 @@ async function exitSubSession(session, line) {
   if (returnIdx >= 0) {
     line.setCurrIdxTo(returnIdx); // back on the main list
   }
+
+  // The hold running here belongs to the SUB-END frame, and the line is no
+  // longer standing on it. A tap reads `holding` off the frame it NAMES,
+  // resolved in the ACTIVE frame list (voting.js getFrameHoldingDur), so the
+  // tap out of a sub carries the sub-end's value — while the frame the line
+  // actually lands on, one hop later and back in the main flow, is the return
+  // landing, whose own authored `holding` was never consulted at all. The
+  // sub-end frame is a marker no device ever displays, so that hold was
+  // governing a frame nobody sees: a return landing marked `holding="20"`
+  // played whatever the sub end said (or the session default), and one marked
+  // `holding="false"` landed phase-less and was registered done on the spot —
+  // a hold-until there whose targets were already met then released in the
+  // same tick and its paired rejoin-at advanced the line straight off the
+  // frame, the eject's defect reached by the score's own route.
+  //
+  // So: drop the sub-end's phase and give the landing its own, exactly as the
+  // eject does. `clearLinePhase` also cancels the standby gap the window close
+  // opened, whose callback would otherwise start the sub-end's hold a second
+  // later, on top of this one.
+  await clearLinePhase(session, line);
   await session.saveSessionStateToFile();
 
   sendToLine(session, line.id, 0, {
@@ -975,17 +1145,40 @@ async function exitSubSession(session, line) {
   });
   emitHistoryToAdmins(session, line);
 
+  // Before afterLineArrived, so the landing is recorded as still holding and
+  // a barrier at it cannot release in the same tick (holdPendingAtFrame).
+  await startArrivalHoldForLanding(session, line);
+
   // The main landing frame may itself be a barrier / rejoin / sub-start.
   await afterLineArrived(session, line);
 }
 
 // ── Hold-until barrier + rejoin ──────────────────────────────────────────────
 // session._barrier is transient (never persisted): { byFrame: { <frame>: {
-//   frame, targets[], rejoinAt, rejoinAll[], parked:Set<lineId> } } }.
+//   frame, targets[], parked:Set<lineId> } } }.
 // Satisfaction is rendezvous-based: targets are checked against the persisted
 // session.reachedTargets registry, not the parked lines' own histories.
 
+// Which of a barrier's targets the registry can still make good on. The latch
+// says the frame was played out; the CLAIMANTS say the room can still account
+// for having been there (`orch.registryClaimants` — the lines' trails, the
+// snapshots a split or merge took a trail into, and the rewind-landing grants).
+// Both halves are required, because only a ROOM rewind restarts the latch: the
+// per-line rewind, the dive rollback and the structural undos leave it alone on
+// purpose ("the ROOM did not rewind", §8.2/§8.3/§8.4), so without the second
+// question a REPLAYED passage meets its own barriers already satisfied — the
+// owner's "hold-until not working, it reached but did not wait for other lines".
+function coveredHoldTargets(session, targets) {
+  return orch.registryCoveredTargets(
+    session.reachedTargets,
+    targets,
+    orch.registryClaimants(session),
+    holdRefStates(session),
+  );
+}
+
 function ensureBarrier(session) {
+
   if (!session._barrier) {
     session._barrier = { byFrame: {} };
   }
@@ -1032,15 +1225,12 @@ function rehydrateBarriers(session) {
       line.pendingHoldUntil = [];
       continue;
     }
-    const rejoinList = (graph.rejoinTargets || {})[frameName] || [];
     const barrier = ensureBarrier(session);
     const entry =
       barrier.byFrame[frameName] ||
       (barrier.byFrame[frameName] = {
         frame: frameName,
         targets: targets.slice(),
-        rejoinAt: rejoinList[0] || null,
-        rejoinAll: rejoinList.slice(),
         parked: new Set(),
       });
     entry.parked.add(line.id);
@@ -1053,18 +1243,17 @@ function activeLines(session) {
   return session.lines.filter((l) => l.status === "active");
 }
 
-// L3 DECIDED by owner 2026-07-18: an admin is a PLAYER with extra session
-// controls — admin/SM connections count as line population exactly like
-// player connections (they can tap/vote, so their line can arrive). A line
-// occupied only by an idle admin therefore IS waited for, like any idle
-// player's line; the remedies are the admin's own tools (tap the line
-// forward, SM force-release, or close the tab so attrition dissolves the
-// wait). EXCEPTION (owner, same day): the standalone /map page's connection
-// has no way to tap or vote — it is a pure observation tool, never population
-// (populationLineConnections), and a RIDER (a passwordless session page) is the
-// same thing with a score on it (owner 2026-09-04), so a line holding only
-// spectators empties out and
-// goes dormant like any abandoned line.
+// L3 DECIDED by owner: an admin is a PLAYER with extra session controls —
+// admin/SM connections count as line population exactly like player
+// connections (they can tap/vote, so their line can arrive). A line occupied
+// only by an idle admin therefore IS waited for, like any idle player's line;
+// the remedies are the admin's own tools (tap the line forward, SM
+// force-release, or close the tab so attrition dissolves the wait). EXCEPTION
+// (owner, same day): the standalone /map page's connection has no way to tap
+// or vote — it is a pure observation tool, never population
+// (populationLineConnections), and a RIDER (a passwordless session page) is
+// the same thing with a score on it (owner), so a line holding only spectators
+// empties out and goes dormant like any abandoned line.
 function activeGuardCandidates(session, exceptParkedIds = new Set()) {
   return activeLines(session).filter(
     (l) =>
@@ -1084,7 +1273,7 @@ function activeGuardCandidates(session, exceptParkedIds = new Set()) {
 // force-released every OTHER line waiting for the target; where the released
 // frame carried a single paired `rejoin-at`, the line was auto-advanced off it
 // in the same tick as its arrival, so a sub return landing was never rendered
-// ("ending subs skips target", 2026-08-28).
+// ("ending subs skips target").
 function canKeepHoldTargetOpen(session, line, target) {
   const ref = reachedRefForLine(session, line);
   if (ref && ref.toLowerCase() === String(target || "").toLowerCase()) {
@@ -1101,8 +1290,70 @@ function canKeepHoldTargetOpen(session, line, target) {
 // (`standbyTimer` — the gap between an advance and
 // startHoldingForSessionWithDelay). Both edges call back into
 // tryReleaseBarriers when they end.
+// Has the line's holding period at the frame it is STANDING on run its course?
+//
+// The `isHolding` flag is not the answer, because it is a state and not a clock
+// (owner: "based on the target intrinsic holding period instead of general
+// holding state, to prevent holding block between hold-until notes"). It is set
+// room-wide by the SM hold toggle, with no timer behind it; it survives a state
+// file saved mid-hold, again with no timer (§16); and either way nothing is ever
+// going to clear it. A gate that reads the flag alone then waits for an edge that
+// cannot come — and since a hold-until is exactly such a gate, two frames naming
+// each other stall the room between them.
+//
+// So the question is asked of the FRAME and the clock: the frame's authored
+// `holding` value decided the period (`landingHoldSeconds`, recorded in
+// `currentEndHoldTimeStamp` when it began), and `Date.now()` says whether it is
+// over. Only the two states that mean "not begun / still running" hold it open:
+// the 1 s standby gap ahead of the hold, and a live holding timer.
+function landingHoldElapsed(line) {
+  if (!line) return true;
+  if (line.isStandby || line.standbyTimer != null) return false; // not begun
+  if (line.holdingTimer != null) return false; // running, it will end itself
+  if (!line.isHolding) return true; // nothing is holding this line
+  const end = Number(line.currentEndHoldTimeStamp) || 0;
+  return end > 0 && Date.now() >= end; // flagged, but the period is spent
+}
+
 function holdPendingAtFrame(line) {
-  return !!line.isHolding || line.standbyTimer != null;
+  return !landingHoldElapsed(line);
+}
+
+// The clock half of `coveredHoldTargets`, read off the frames the room is
+// standing on: which refs have nothing left to play (`playedOut`) and which are
+// being played right now (`holdingNow`). `registryCoveredTargets` has the full
+// reasoning; in short, `playedOut` lets an `arrived` mark count when no event
+// will ever complete it, and `holdingNow` stops a `done` mark counting while a
+// line is standing there with the frame's own holding period still to run —
+// which is what a stale `done` looks like the moment a rewound line steps back
+// onto the frame.
+//
+// Only an ACTIVE line can hold a target open: a dormant one has nobody on it, so
+// it is no more "playing" the frame than an empty line is coming to it (#11).
+function holdRefStates(session) {
+  const playedOut = new Set();
+  const holdingNow = new Set();
+  if (!session.hasSessionLines) {
+    return { playedOut, holdingNow };
+  }
+  for (const line of session.lines) {
+    if (line.status === "retired") continue;
+    const ref = reachedRefForLine(session, line);
+    if (!ref) continue;
+    const key = ref.toLowerCase();
+    if (landingHoldElapsed(line)) {
+      playedOut.add(key);
+    } else if (line.status === "active") {
+      holdingNow.add(key);
+    }
+  }
+  // A frame two lines stand on, one of them still playing it, is not played out
+  // — the LAST occupant's holding period is what ends the wait, the same rule
+  // the track group's hold sync follows.
+  for (const key of holdingNow) {
+    playedOut.delete(key);
+  }
+  return { playedOut, holdingNow };
 }
 
 function resolveSubScoreName(session, score) {
@@ -1195,26 +1446,19 @@ function rejoinTargetSet(graph) {
 }
 
 async function enterBarrier(session, line, frameName, targets) {
-  const graph = session.graph || {};
-  const rejoinList = (graph.rejoinTargets || {})[frameName] || [];
   const barrier = ensureBarrier(session);
   const entry =
     barrier.byFrame[frameName] ||
     (barrier.byFrame[frameName] = {
       frame: frameName,
       targets: targets.slice(),
-      rejoinAt: rejoinList[0] || null,
-      rejoinAll: rejoinList.slice(),
       parked: new Set(),
     });
   entry.parked.add(line.id);
 
   // Park the line: it holds here, ignoring taps, until the barrier releases.
   line.isBarrierWaiting = true;
-  const covered = orch.registryCoveredTargets(
-    session.reachedTargets,
-    entry.targets,
-  );
+  const covered = coveredHoldTargets(session, entry.targets);
   line.pendingHoldUntil = entry.targets.filter((t) => !covered.has(t));
 
   sendToLine(session, line.id, 0, {
@@ -1248,10 +1492,7 @@ async function tryReleaseBarriers(session) {
     // Rendezvous (#6): coverage comes from the session-global reached
     // registry — any line reaching a target anywhere (and ending that frame's
     // hold) satisfies it; the parked lines never have to converge here.
-    const covered = orch.registryCoveredTargets(
-      session.reachedTargets,
-      entry.targets,
-    );
+    const covered = coveredHoldTargets(session, entry.targets);
     const satisfied = orch.holdUntilSatisfied(entry.targets, covered);
 
     // Deadlock guard / attrition (#11): release rather than wait forever when
@@ -1275,11 +1516,13 @@ async function tryReleaseBarriers(session) {
     // holding" on arrival, the release "releases the hold") — it EXTENDS the
     // frame's own hold and must never cut it short. A parked line whose hold
     // has not finished keeps the entry closed, the same hold-sync rule the
-    // track-group arrival barrier got on 2026-07-20 ("the group unlocks on the
-    // last occupant's hold release"). Without it a line landing on an ALREADY
-    // satisfied barrier was released in the same tick as its arrival and, with
-    // a single paired rejoin-at, auto-advanced off the frame before the device
-    // ever rendered it.
+    // track-group arrival barrier has ("the group unlocks on the last
+    // occupant's hold release"). Without it a line landing on an ALREADY
+    // satisfied barrier was released in the same tick as its arrival — and back
+    // when a release still auto-advanced, that took the line off the frame
+    // before its device had rendered it. The advance is gone (releaseBarrier)
+    // and the gate stays: a release ends a holding period, so it must not end
+    // one that has not run.
     const holdPending = parkedLines.some(holdPendingAtFrame);
 
     if ((satisfied || forceRelease) && !holdPending) {
@@ -1299,31 +1542,41 @@ async function releaseBarrier(session, entry, parkedLines) {
     });
   }
 
-  // Paired rejoin: a SINGLE target auto-advances the released lines there and
-  // merges them (the Barrier→DONE pattern). MULTIPLE targets (e.g.
-  // rejoin-at="H,I") cannot be auto-advanced — the released line stays put and
-  // votes its route; the merge then happens on arrival at the chosen target
-  // (bare rejoin in afterLineArrived). No target behaves the same.
-  const rejoinList =
-    entry.rejoinAll || (entry.rejoinAt ? [entry.rejoinAt] : []);
-  if (rejoinList.length === 1 && parkedLines.length > 0) {
-    await runRejoin(session, parkedLines, rejoinList[0]);
-  } else {
-    // Composition with the group ARRIVAL barrier: a freed line on a grouped
-    // frame may still owe the group a wait (out-of-group hold-until targets
-    // are valid and stack) — and clearing this blocker may itself open the
-    // group for the lines already parked there.
-    for (const l of parkedLines) {
-      await maybeParkAtGroup(session, l, entry.frame);
-    }
-    await tryReleaseGroupWaits(session);
-    await session.saveSessionStateToFile();
+  // A release FREES the line; it never moves it (owner: "rejoin-at should be an
+  // announcement that that note will be merged with another note or line in the
+  // next step — it should not automatically merge anything"). A paired
+  // `rejoin-at` used to auto-advance a SINGLE target and merge the released
+  // lines there (the Barrier→DONE pattern), which turned the barrier frame into
+  // a place the room passed THROUGH: the performers watched their landing for
+  // one holding period and the server then took the step for them. That is the
+  // "skipped target" the sub exits kept reporting (§9), arriving by the one
+  // route the earlier fixes left open — the hold gate in tryReleaseBarriers
+  // only delayed the advance by a holding period, it never stopped it.
+  //
+  // Every rejoin is a co-presence rejoin now (`afterLineArrived`), one target
+  // or many: the freed line stays on its frame, its next window votes its own
+  // route, and the lines merge when they walk onto the frame the announcement
+  // named.
+  //
+  // Composition with the group ARRIVAL barrier: a freed line on a grouped frame
+  // may still owe the group a wait (out-of-group hold-until targets are valid
+  // and stack) — and clearing this blocker may itself open the group for the
+  // lines already parked there.
+  for (const l of parkedLines) {
+    await maybeParkAtGroup(session, l, entry.frame);
   }
+  await tryReleaseGroupWaits(session);
+  await session.saveSessionStateToFile();
   notifyAdminsBarriers(session);
 }
 
 // Merge converging lines into the lowest-id survivor, reassign their devices,
-// hard-retire the absorbed lines, then advance the survivor to the rejoin frame.
+// hard-retire the absorbed lines, then put the survivor on the rejoin frame. Its
+// one caller is the co-presence branch of `afterLineArrived`, which finds every
+// line already standing there — so `survivorTravels` below is false in practice
+// and the arrival keeps the holding period it is already playing. The travel
+// branch stays for a caller that merges lines from elsewhere; the barrier
+// release was that caller, until a rejoin became an announcement (§7.3).
 async function runRejoin(session, lines, rejoinFrameName) {
   const lineIds = lines.map((l) => l.id);
   const { survivor, absorbed } = orch.applyRecombine({
@@ -1348,7 +1601,11 @@ async function runRejoin(session, lines, rejoinFrameName) {
   const targetIdx = session.listFilesInLowerCase.indexOf(
     String(rejoinFrameName).toLowerCase(),
   );
-  if (targetIdx >= 0 && targetIdx !== survivor.currentIndex) {
+  // A co-presence merge finds the survivor already standing on the rejoin
+  // frame: it does not travel, and must keep the holding period it is already
+  // playing there rather than have one restarted under it.
+  const survivorTravels = targetIdx >= 0 && targetIdx !== survivor.currentIndex;
+  if (survivorTravels) {
     survivor.setCurrIdxTo(targetIdx);
   }
 
@@ -1376,6 +1633,21 @@ async function runRejoin(session, lines, rejoinFrameName) {
     });
   }
   emitHistoryToAdmins(session, survivor);
+
+  // A survivor that TRAVELLED here plays the rejoin frame's own holding period,
+  // like any other arrival. The merge is the score's routing, not an operator
+  // valve ending a wait, so the landing is ordinary travel — and a frame it
+  // reached phase-less was marked done on the spot, which skipped an authored
+  // `holding` on the rejoin target outright and, where that target is a track
+  // group, silently voided the group's "wait for the last occupant's holding
+  // period" rule (the group had no hold of this line's to wait for). The phase
+  // clear first because a FORCED release can advance a survivor whose own hold
+  // is still running, and its timer would otherwise outlive the frame it
+  // belongs to.
+  if (survivorTravels) {
+    await clearLinePhase(session, survivor);
+    await startArrivalHoldForLanding(session, survivor);
+  }
 
   // The rejoin frame may itself be an orchestration frame.
   await showLineAfterArrivalIfNeeded(session, survivor);
@@ -1432,15 +1704,21 @@ async function handleConnectionClose(session, conn) {
   if (line._attritionTimer) {
     return; // grace window already running
   }
-  line._attritionTimer = setTimeout(() => {
-    line._attritionTimer = null;
-    finalizeAttrition(session, line).catch((e) =>
-      console.error("finalizeAttrition error", e),
-    );
+  const attritionTimer = setTimeout(() => {
+    session
+      .runExclusively(async () => {
+        // A reconnect or score reset may have cancelled/replaced this timer
+        // while its callback waited behind a structural rewind.
+        if (line._attritionTimer !== attritionTimer) return;
+        line._attritionTimer = null;
+        await finalizeAttrition(session, line);
+      })
+      .catch((e) => console.error("finalizeAttrition error", e));
   }, ATTRITION_GRACE_MS);
+  line._attritionTimer = attritionTimer;
 }
 
-// Move the RIDERS watching `line` onto a live one (owner, 2026-09-04). A rider
+// Move the RIDERS watching `line` onto a live one (owner). A rider
 // is bound to a line only so the server has somewhere to send it a frame from;
 // when that line stops being active the binding has nothing left to show, and a
 // spectator cannot tap its way out. Map tabs are deliberately NOT re-homed:
@@ -1601,7 +1879,7 @@ function rewindLineSnapshot(line) {
     trail: mainTrailForLine(line),
     // The forks this line is downstream of, so a room rewind can place it by
     // the route it actually took when its own trail was truncated past the
-    // checkpoint (`orch.ancestorGroupOccurrence`, 2026-09-12).
+    // checkpoint (`orch.ancestorGroupOccurrence`).
     splitAncestors: line.splitAncestors || [],
   };
 }
@@ -1618,11 +1896,11 @@ function populatedRewindCheckpointLines(session, lines) {
 }
 
 // Push every admin their OWN line's history. Always available:false — the
-// implicit bound-line rewind is retired in session-lines rooms (2026-07-19),
-// so the SM dropdown is a read-only trail display; rewinds live in the score
-// map (room-wide {group} checkpoint rewind + explicit {lineId} line rewind).
-// Only called for session-lines scores (emitHistoryToAdmins branches; vanilla
-// sends no `available` field at all).
+// implicit bound-line rewind is retired in session-lines rooms, so the SM
+// dropdown is a read-only trail display; rewinds live in the score map
+// (room-wide {group} checkpoint rewind + explicit {lineId} line rewind). Only
+// called for session-lines scores (emitHistoryToAdmins branches; vanilla sends
+// no `available` field at all).
 function pushAdminHistory(session) {
   wsServer.connections.forEach((conn) => {
     if (conn.sessionId === session.id && conn.isAdmin) {
@@ -1668,12 +1946,12 @@ function notifyAdminsBarriers(session) {
   const barriers = session._barrier
     ? Object.keys(session._barrier.byFrame).map((frame) => {
         const entry = session._barrier.byFrame[frame];
-        // Hold-until entries have stragglers of their own (2026-08-28): the
-        // lines that can still reach a target nobody has reached — exactly who
-        // this barrier is held open FOR. `advanceTargets` names the frame each
-        // would be sent to, so the map can label the command with its
-        // destination and offer nothing for a line it cannot land (a target
-        // inside a sub-score).
+        // Hold-until entries have stragglers of their own: the lines that can
+        // still reach a target nobody has reached — exactly who this barrier
+        // is held open FOR. `advanceTargets` names the frame each would be
+        // sent to, so the map can label the command with its destination and
+        // offer nothing for a line it cannot land (a target inside a
+        // sub-score).
         const stragglers = holdUntilStragglerTargets(session, entry);
         return {
           frame,
@@ -1740,8 +2018,10 @@ function stragglerBanner(session, line) {
 
 // Admin force-release (defensive valve). Releases a chosen barrier (by frame) or
 // every waiting barrier when no frame is given, reusing the Chunk J release path
-// (MSG_BARRIER_RELEASED + any paired rejoin). Ignores the "someone still coming"
-// guard — this is the operator's manual override for a stuck / rider-only line.
+// (MSG_BARRIER_RELEASED). Like any other release it FREES the parked lines where
+// they stand and moves nobody — the operator's move-them valve is the straggler
+// advance. Ignores the "someone still coming" guard — this is the manual
+// override for a stuck / rider-only line.
 async function forceReleaseBarrier(session, frameName) {
   if (!session.hasSessionLines) {
     return;
@@ -1780,7 +2060,7 @@ async function forceReleaseBarrier(session, frameName) {
   updateNumberOfConnectionForSession(session);
 }
 
-// ── Track-group ARRIVAL barrier (decided 2026-07-16) ─────────────────────────
+// ── Track-group ARRIVAL barrier ──────────────────────────────────────────────
 // Grouped frames don't just vote together — they WAIT for each other. A line
 // landing on a track-grouped frame parks (frame shown, taps ignored — same
 // client banner protocol as a hold-until park) until every populated line that
@@ -1791,9 +2071,9 @@ async function forceReleaseBarrier(session, frameName) {
 // the group's synchronized windows exactly as before (openCoGroupWindows). A
 // LATE arrival (e.g. a line revived mid-round) is not parked once the group
 // stopped waiting — it joins the running round and is truncated at the group
-// close (owner-decided 2026-07-16: lowest-complexity option). SM jumps never
-// park at the landing (authoritative override, like the landing-barrier
-// carve-out), and the admin panel's force-release valve covers group waits.
+// close (owner-decided: lowest-complexity option). SM jumps never park at the
+// landing (authoritative override, like the landing-barrier carve-out), and
+// the admin panel's force-release valve covers group waits.
 
 // The line's position projected onto the MAIN flow: its current frame, or —
 // inside a sub — the sub-start return landing it will pop back to (where its
@@ -1838,16 +2118,20 @@ function groupWaitState(session, group) {
       populationLineConnections(wsServer.connections, session.id, l.id).length,
     inSub: (l) => l.subStack.length > 0,
     isBlocked: (l) => !!l.isBarrierWaiting,
-    // Hold sync (2026-07-20): an occupant still in its holding period keeps the
-    // group parked so everyone leaves the held frame together — the group
-    // unlocks on the last node's hold release. Gated ≥2 occupants in
-    // groupArrivalState, so a lone grouped line never self-parks while holding.
-    isHolding: (l) => !!l.isHolding,
-    // Passed ⇒ arrived (owner, 2026-07-19, with the targeted line rewind): a
-    // line whose main trail already went through this group is never counted
-    // as incoming again — so a line rewound behind the group replays through
-    // it without waiting for the lines ahead. Trail truncation on rewind is
-    // what revokes this for the rewound line itself.
+    // Hold sync: an occupant still in its holding period keeps the group
+    // parked so everyone leaves the held frame together — the group unlocks on
+    // the last node's hold release. Gated ≥2 occupants in groupArrivalState,
+    // so a lone grouped line never self-parks while holding.
+    // Read off the FRAME's intrinsic period, not the `isHolding` flag, for the
+    // reason landingHoldElapsed gives: a flag with no timer behind it (SM hold
+    // toggle, a state file restored mid-hold) would keep the group parked for
+    // ever.
+    isHolding: (l) => !landingHoldElapsed(l),
+    // Passed ⇒ arrived (owner, with the targeted line rewind): a line whose
+    // main trail already went through this group is never counted as incoming
+    // again — so a line rewound behind the group replays through it without
+    // waiting for the lines ahead. Trail truncation on rewind is what revokes
+    // this for the rewound line itself.
     hasPassed: (l) =>
       mainTrailForLine(l).some((f) => groupSet.has(f.toLowerCase())),
     canReach: (l) =>
@@ -1938,7 +2222,7 @@ async function tryReleaseGroupWaits(session) {
   notifyAdminsBarriers(session);
 }
 
-// ── Stragglers (owner, 2026-08-16) ───────────────────────────────────────────
+// ── Stragglers (owner) ───────────────────────────────────────────────────────
 // The lines a track group's arrival barrier is still waiting on from OUTSIDE
 // the group. The parked lines see "waiting for other lines…"; until now the
 // lines being waited FOR saw nothing at all, so nobody in the room knew whose
@@ -1963,9 +2247,9 @@ function groupStragglerLines(session, group) {
 }
 
 // The lines a HOLD-UNTIL barrier is waiting on, each paired with the frame a
-// forced advance would send it to (2026-08-28). A track group waits for lines
-// to ARRIVE on it; a hold-until waits for some line to REACH a named target, so
-// its stragglers are the lines that can still get there — the same set the
+// forced advance would send it to. A track group waits for lines to ARRIVE on
+// it; a hold-until waits for some line to REACH a named target, so its
+// stragglers are the lines that can still get there — the same set the
 // deadlock guard in tryReleaseBarriers consults to decide the wait is still
 // viable, read the other way round.
 //
@@ -2049,10 +2333,7 @@ function subAdvanceLanding(session, line, ref) {
 }
 
 function holdUntilStragglerTargets(session, entry) {
-  const covered = orch.registryCoveredTargets(
-    session.reachedTargets,
-    entry.targets,
-  );
+  const covered = coveredHoldTargets(session, entry.targets);
   const candidates = activeGuardCandidates(session, entry.parked);
   const state = orch.holdUntilReachabilityState(
     entry.targets,
@@ -2065,8 +2346,8 @@ function holdUntilStragglerTargets(session, entry) {
     canReachTarget: (l, target) => canKeepHoldTargetOpen(session, l, target),
     // A landing is either a main-flow frame or, for a qualified
     // "Score/Frame.svg" target, a frame inside a sub-score the line can be
-    // dropped into (2026-08-30 — see subAdvanceLanding). Anything else leaves
-    // the line a straggler with no destination.
+    // dropped into (see subAdvanceLanding). Anything else leaves the line a
+    // straggler with no destination.
     canLandOn: (target, l) =>
       session.listFilesInLowerCase.indexOf(String(target).toLowerCase()) >= 0 ||
       subAdvanceLanding(session, l, target) != null,
@@ -2094,11 +2375,11 @@ function refreshStragglerNotices(session) {
       }
     }
   }
-  // Hold-until barriers wait on lines too (2026-08-28) — on whoever can still
-  // reach a target nobody has reached — so their stragglers get the same "your
-  // move" prompt, and the same per-line advance valve. A group wait wins the
-  // flag when a line is the straggler of both: it is the wait the line can do
-  // least about, since it has to travel to the group either way.
+  // Hold-until barriers wait on lines too — on whoever can still reach a
+  // target nobody has reached — so their stragglers get the same "your move"
+  // prompt, and the same per-line advance valve. A group wait wins the flag
+  // when a line is the straggler of both: it is the wait the line can do least
+  // about, since it has to travel to the group either way.
   const barrier = session._barrier;
   for (const frame of barrier ? Object.keys(barrier.byFrame) : []) {
     const entry = barrier.byFrame[frame];
@@ -2154,7 +2435,7 @@ function refreshStragglerNotices(session) {
 //     (the same landing rule a dormant-line revival uses, decision #13
 //     revision, so forced arrivals fill empty track slots instead of doubling
 //     covered ones). The group then fills and releases down the ordinary path.
-//   - a HOLD-UNTIL's straggler (2026-08-28) teleports onto the target the
+//   - a HOLD-UNTIL's straggler teleports onto the target the
 //     barrier is still missing, so the wait ends the way the score meant it to
 //     — the target genuinely reached — rather than being waived. A straggler
 //     already standing on the target owes only its holding period, so there the
@@ -2305,13 +2586,13 @@ async function forceAdvanceStragglers(session, frameName, lineIds) {
   }
 }
 
-// Operator "eject this line from its sub-score" (2026-09-01). A dive is a
-// session of its own, and until now the only ways out of one were the authored
-// sub-end frame and the room-wide checkpoint rewind — which frees one stuck line
-// by discarding every OTHER line's progress too. This is the narrow valve: one
-// line, forward, onto the landing the score itself would have given it when the
-// sub ended (`subStack[0].returnHref`, the OUTERMOST dive's return frame, so a
-// nested dive is popped along with it).
+// Operator "eject this line from its sub-score". A dive is a session of its
+// own, and until now the only ways out of one were the authored sub-end frame
+// and the room-wide checkpoint rewind — which frees one stuck line by
+// discarding every OTHER line's progress too. This is the narrow valve: one
+// line, forward, onto the landing the score itself would have given it when
+// the sub ended (`subStack[0].returnHref`, the OUTERMOST dive's return frame,
+// so a nested dive is popped along with it).
 //
 // It is the twin of `exitSubSession` — the same exit, taken early — as
 // `advanceLineIntoSub` is the twin of `enterSubSession`, and the landing runs
@@ -2360,7 +2641,7 @@ async function ejectLineFromSub(session, lineId, sub) {
     return;
   }
 
-  await clearLinePhaseForRoomRewind(session, line);
+  await clearLinePhase(session, line);
   while (line.subStack.length > 0) {
     line.exitSub(); // each pop restores the main-flow history it saved on entry
   }
@@ -2394,7 +2675,7 @@ async function ejectLineFromSub(session, lineId, sub) {
   // arrival registers as done on the spot and a hold-until at the landing whose
   // targets are already met releases in the same tick, bouncing the line onward
   // before its device has rendered the frame.
-  await startArrivalHoldForOperatorLanding(session, line);
+  await startArrivalHoldForLanding(session, line);
 
   await afterLineArrived(session, line);
   notifyAdminsBarriers(session);
@@ -2420,10 +2701,10 @@ async function advanceLineToGroup(session, line, anchorFrame) {
 }
 
 // Advance one straggler of a HOLD-UNTIL barrier: send it to the target the
-// barrier is still missing (2026-08-28). Returns "moved" when the line
-// travelled (its devices need a fresh frame), "held" when it was already
-// standing on the target and only its holding period was cut short, and null
-// when there was nothing to do.
+// barrier is still missing. Returns "moved" when the line travelled (its
+// devices need a fresh frame), "held" when it was already standing on the
+// target and only its holding period was cut short, and null when there was
+// nothing to do.
 async function advanceLineToHoldTarget(session, line, target) {
   const idx = session.listFilesInLowerCase.indexOf(
     String(target).toLowerCase(),
@@ -2450,19 +2731,19 @@ async function advanceLineToHoldTarget(session, line, target) {
     : null;
 }
 
-// Drop `line` onto a frame INSIDE a sub-score (2026-08-30) — the sub half of
+// Drop `line` onto a frame INSIDE a sub-score — the sub half of
 // teleportLineForAdvance, and the same sequence: clear the phase it is being
-// moved out from under, take the dive, land, record the arrival. A line already
-// in that sub keeps its dive (so the sub history and return landing it built on
-// the way down survive); any OTHER sub it was in is left first, exactly as a
-// main-flow advance leaves it.
+// moved out from under, take the dive, land, record the arrival. A line
+// already in that sub keeps its dive (so the sub history and return landing it
+// built on the way down survive); any OTHER sub it was in is left first,
+// exactly as a main-flow advance leaves it.
 //
 // It lands on the target frame rather than the sub's START on purpose: this is
 // a valve, and the barrier is waiting on that frame specifically — a drop at
 // START would leave the room stalled until the line happened to travel there,
 // and a branching sub might never route it through at all.
 async function advanceLineIntoSub(session, line, landing) {
-  await clearLinePhaseForRoomRewind(session, line);
+  await clearLinePhase(session, line);
   if (!landing.alreadyInside) {
     while (line.subStack.length > 0) {
       line.exitSub();
@@ -2492,14 +2773,14 @@ async function teleportLineForAdvance(session, line, targetFrame) {
     return false;
   }
 
-  // clearLinePhaseForRoomRewind, not the bare timer cancels this used to do:
+  // clearLinePhase, not the bare timer cancels this used to do:
   // cancelHoldingTimer stops the TIMER but leaves `isHolding` set, and a line
   // that lands still "holding" with no timer to end it never marks its landing
   // frame done (recordArrival gates on !isHolding) — a hold-until waiting on
   // that frame, or a track group syncing on its occupants' holds, would then
   // wait for an edge that can never come. It also clears the stale per-device
   // `currentVoteTo`, so the line's next window starts from a clean tally.
-  await clearLinePhaseForRoomRewind(session, line);
+  await clearLinePhase(session, line);
 
   while (line.subStack.length > 0) {
     line.exitSub();
@@ -2545,31 +2826,40 @@ async function endHoldForAdvance(session, line) {
   await tryReleaseGroupWaits(session);
 }
 
-// The opposite end of endHoldForAdvance: BEGIN the landing's own holding period
-// for an operator move that joins the score again (the sub eject).
+// The opposite end of endHoldForAdvance: BEGIN the landing's OWN holding
+// period, for the two landings no tap speaks for — the sub eject and the
+// natural sub exit.
 //
-// A natural arrival always carries one — stopVotingForSession sets `isHolding`
+// An ordinary arrival carries one — stopVotingForSession sets `isHolding`
 // before the line even moves and starts the frame's hold behind it — and that
 // is what `holdPendingAtFrame` reads to stop a satisfied barrier releasing in
 // the same tick as the arrival (§5/#6: a barrier EXTENDS the frame's own hold
-// and never cuts it short). An operator move clears the phase it pulls the line
-// out from under (clearLinePhaseForRoomRewind), so without this the ejected
-// line landed phase-less: `recordArrival` marked its landing done on the spot,
-// the hold gate read false, and a hold-until whose targets were already met
+// and never cuts it short). An operator move clears the phase it pulls the
+// line out from under (clearLinePhase), so without this the ejected line
+// landed phase-less: `recordArrival` marked its landing done on the spot, the
+// hold gate read false, and a hold-until whose targets were already met
 // released immediately — with a single paired rejoin-at that advanced the line
 // off the frame 14 ms after its device had been told to show it (measured in a
-// browser; the same defect the NATURAL path was fixed for, Appendix A).
+// browser). A sub EXIT reaches that same landing by the score's own route, and
+// it carried the WRONG frame's hold rather than none — see exitSubSession.
+//
+// The duration is the landing frame's authored `holding` value
+// (`landingHoldSeconds`, off the graph the parser built), and the tap's
+// `nextFrameHoldingDur` is dropped on the way past: it was read off the frame
+// that tap NAMED, not the frame the line ends up standing on.
 //
 // The barrier ADVANCES deliberately do not get this: they exist to END a wait,
 // so a fresh hold at the landing would be the opposite of the command — the
 // same reason endHoldForAdvance cuts a straggler's hold short rather than
 // extending it — and they never join the landing's barrier in the first place.
-async function startArrivalHoldForOperatorLanding(session, line) {
-  const holdingAttr = frameHoldingAttrForLine(session, line);
-  if (!(parseCustomDur(session.holdDuration, holdingAttr) > 0)) {
+async function startArrivalHoldForLanding(session, line) {
+  // Dropped before the read, not after: no tap speaks for this landing, and
+  // landingHoldSeconds would otherwise fall back to the tap's value for a
+  // frame the graph cannot answer for.
+  line.nextFrameHoldingDur = null;
+  if (!holdsAtLanding(session, line)) {
     return; // holding="false" on the frame, or a room that holds nowhere
   }
-  line.nextFrameHoldingDur = holdingAttr;
   await startHoldingForSessionWithDelay(session, line, 0);
 }
 
@@ -2780,35 +3070,36 @@ async function startVotingForSessionWithDelay(
   //start voting data timer
   line.votingTimeStamp = 0;
   line.didSendStopVoting = false;
-  line.votingTimer = setInterval(
-    async (session, line) => {
-      line.votingTimeStamp += session.synTimeInterval * 1000;
+  const votingTimer = setInterval(() => {
+    session
+      .runExclusively(async () => {
+        if (line.votingTimer !== votingTimer) return;
+        line.votingTimeStamp += session.synTimeInterval * 1000;
 
-      if (line.didSendStopVoting) {
-        clearInterval(line.votingTimer);
-        line.votingTimer = null;
-        return;
-      }
+        if (line.didSendStopVoting) {
+          clearInterval(votingTimer);
+          line.votingTimer = null;
+          return;
+        }
 
-      sendVotingUpdateToLine(session, line, countVoteForLine(session, line));
+        sendVotingUpdateToLine(session, line, countVoteForLine(session, line));
 
-      if (
-        !line.didSendStopVoting &&
-        line.votingTimeStamp >= (line.currentVotingDuration - 1) * 1000
-      ) {
-        await stopVotingForSession(session, line);
-        line.didSendStopVoting = true;
-      }
+        if (
+          !line.didSendStopVoting &&
+          line.votingTimeStamp >= (line.currentVotingDuration - 1) * 1000
+        ) {
+          await stopVotingForSession(session, line);
+          line.didSendStopVoting = true;
+        }
 
-      if (line.votingTimeStamp >= line.currentVotingDuration * 1000) {
-        clearInterval(line.votingTimer);
-        line.votingTimer = null;
-      }
-    },
-    session.synTimeInterval * 1000,
-    session,
-    line,
-  );
+        if (line.votingTimeStamp >= line.currentVotingDuration * 1000) {
+          clearInterval(votingTimer);
+          line.votingTimer = null;
+        }
+      })
+      .catch((e) => console.error("voting timer error", e));
+  }, session.synTimeInterval * 1000);
+  line.votingTimer = votingTimer;
 
   await session.saveSessionStateToFile();
 
@@ -2944,27 +3235,25 @@ async function resolveGroupVoting(session, line) {
   });
   const { isStay } = orch.resolveGroupStay(tallies, () => Math.random());
 
-  // One id for however many forks this release makes (2026-09-12), so the map
-  // can offer the release as ONE undo instead of one per line — allocated
-  // lazily, because most releases fork nothing and an unused id would still
-  // be persisted.
+  // One id for however many forks this release makes, so the map can offer the
+  // release as ONE undo instead of one per line — allocated lazily, because
+  // most releases fork nothing and an unused id would still be persisted.
   let gestureId = null;
 
   for (const l of groupLines) {
-    // A grouped SPLIT frame still divides its line when the group advances
-    // (decided 2026-07-17): delegate to resolveSplit — choosers land on their
-    // tapped child, stragglers are balanced across the children — instead of
-    // moving the whole line to a single link winner. A global STAY brakes the
-    // split like any other grouped line (falls through to the stay handling
-    // below). Must run before this line's votes are cleared: resolveSplit
-    // reads conn.currentVoteTo for the choices.
-    // …but only when there is somebody on it to divide (2026-09-12). A
-    // grouped window opens for EVERY line in the group, empty ones included,
-    // so an unpopulated line parked on a grouped split frame used to divide
-    // nobody into two empty lines on every release — the room's line count
-    // doubling each time the group let go. Falling through instead treats it
-    // like any other unpopulated grouped line: it advances whole, on its
-    // default link, and stays one line.
+    // A grouped SPLIT frame still divides its line when the group advances :
+    // delegate to resolveSplit — choosers land on their tapped child,
+    // stragglers are balanced across the children — instead of moving the
+    // whole line to a single link winner. A global STAY brakes the split like
+    // any other grouped line (falls through to the stay handling below). Must
+    // run before this line's votes are cleared: resolveSplit reads
+    // conn.currentVoteTo for the choices. …but only when there is somebody on
+    // it to divide. A grouped window opens for EVERY line in the group, empty
+    // ones included, so an unpopulated line parked on a grouped split frame
+    // used to divide nobody into two empty lines on every release — the room's
+    // line count doubling each time the group let go. Falling through instead
+    // treats it like any other unpopulated grouped line: it advances whole, on
+    // its default link, and stays one line.
     if (!isStay && isSplitFrame(session, l) && lineHasPopulation(session, l)) {
       if (!gestureId) gestureId = orch.allocSplitGestureId(session);
       await resolveSplit(session, l, gestureId);
@@ -2972,9 +3261,6 @@ async function resolveGroupVoting(session, line) {
     }
 
     l.isStandby = true;
-    if (session.holdDuration > 0) {
-      l.isHolding = true;
-    }
 
     // The tally computed above, BEFORE clearing votes (resetting first would
     // wipe the link winner, so groupLinkWinner returns null and every grouped
@@ -3026,24 +3312,36 @@ async function resolveGroupVoting(session, line) {
       l.setCurrIdxTo(targetIdx);
     }
 
-    l.standbyTimer = setTimeout(
-      async (session, l) => {
-        l.isStandby = false;
-        if (session.holdDuration > 0) {
-          await startHoldingForSessionWithDelay(session, l, 0);
-        }
-        l.standbyTimer = null;
-        await session.saveSessionStateToFile();
-        // The standby gap is over (holdPendingAtFrame): with no holding to
-        // run, this is the edge a barrier parked on this line waits for.
-        if (session.hasSessionLines) {
-          await tryReleaseBarriers(session);
-        }
-      },
-      1000,
-      session,
-      l,
-    );
+    // Asked of the frame this line is NOW on (`holdsAtLanding`) — a STAY's
+    // landing is the frame it never left. A dive is excluded: it has not moved
+    // yet and lands on the sub's START, whose hold `enterSubSession` starts.
+    // `isHolding` is set synchronously because `recordArrival`, moments later,
+    // reads it to tell an "arrived" landing from a "done" one; the timer below
+    // reuses the same answer so the two can never disagree.
+    const holds = !subLink && holdsAtLanding(session, l);
+    if (holds) {
+      l.isHolding = true;
+    }
+
+    const standbyTimer = setTimeout(() => {
+      session
+        .runExclusively(async () => {
+          if (l.standbyTimer !== standbyTimer) return;
+          l.isStandby = false;
+          if (holds) {
+            await startHoldingForSessionWithDelay(session, l, 0);
+          }
+          l.standbyTimer = null;
+          await session.saveSessionStateToFile();
+          // The standby gap is over (holdPendingAtFrame): with no holding to
+          // run, this is the edge a barrier parked on this line waits for.
+          if (session.hasSessionLines) {
+            await tryReleaseBarriers(session);
+          }
+        })
+        .catch((e) => console.error("group standby timer error", e));
+    }, 1000);
+    l.standbyTimer = standbyTimer;
 
     emitHistoryToAdmins(session, l);
 
@@ -3092,9 +3390,6 @@ async function stopVotingForSession(session, line) {
   }
 
   line.isStandby = true;
-  if (session.holdDuration > 0) {
-    line.isHolding = true;
-  }
 
   //stand by signal
   const votingData = countVoteForLine(session, line);
@@ -3121,25 +3416,32 @@ async function stopVotingForSession(session, line) {
   if (!subLink) {
     line.setCurrIdxTo(mostVoteRingId);
   }
+
+  // Asked of the frame the line is NOW on — see the twin in resolveGroupVoting.
+  const holds = !subLink && holdsAtLanding(session, line);
+  if (holds) {
+    line.isHolding = true;
+  }
   //unlock
-  line.standbyTimer = setTimeout(
-    async (session, line) => {
-      line.isStandby = false;
-      if (session.holdDuration > 0) {
-        await startHoldingForSessionWithDelay(session, line, 0);
-      }
-      line.standbyTimer = null;
-      await session.saveSessionStateToFile();
-      // See the twin in resolveGroupVoting: the end of the standby gap is a
-      // barrier re-check edge when no holding period follows it.
-      if (session.hasSessionLines) {
-        await tryReleaseBarriers(session);
-      }
-    },
-    1000,
-    session,
-    line,
-  );
+  const standbyTimer = setTimeout(() => {
+    session
+      .runExclusively(async () => {
+        if (line.standbyTimer !== standbyTimer) return;
+        line.isStandby = false;
+        if (holds) {
+          await startHoldingForSessionWithDelay(session, line, 0);
+        }
+        line.standbyTimer = null;
+        await session.saveSessionStateToFile();
+        // See the twin in resolveGroupVoting: the end of the standby gap is a
+        // barrier re-check edge when no holding period follows it.
+        if (session.hasSessionLines) {
+          await tryReleaseBarriers(session);
+        }
+      })
+      .catch((e) => console.error("standby timer error", e));
+  }, 1000);
+  line.standbyTimer = standbyTimer;
   await session.saveSessionStateToFile();
 
   emitHistoryToAdmins(session, line);
@@ -3154,45 +3456,44 @@ async function stopVotingForSession(session, line) {
 async function startHoldingForSessionWithDelay(session, line, delay) {
   line.isHolding = true;
   //holding cooldown
-  line.currentHoldingDuration = line.nextFrameHoldingDur
-    ? parseCustomDur(session.holdDuration, line.nextFrameHoldingDur)
-    : session.holdDuration;
+  line.currentHoldingDuration = landingHoldSeconds(session, line);
   line.nextFrameHoldingDur = null;
   line.currentBeginHoldTimeStamp = new Date().getTime() + delay;
   line.currentEndHoldTimeStamp =
     line.currentBeginHoldTimeStamp + line.currentHoldingDuration * 1000;
 
   //unlock
-  line.holdingTimer = setTimeout(
-    async (session, line) => {
-      line.isHolding = false;
-      sendToAllAdmins(session, 0, {
-        m: MESSAGES.MSG_CHECK_HOLD,
-        isHold: line.isHolding,
-      });
-      line.holdingTimer = null;
-      // Rendezvous (#6): the frame's own holding period just ended — its
-      // targets are now fully satisfied; re-check open barriers. UNconditional
-      // (it used to run only on the "became done" edge): a barrier held open
-      // solely because THIS line was still holding at it needs the re-check
-      // even when the ref was already done in the registry from an earlier
-      // pass, or it would wait for an edge that never comes.
-      recordHoldEnded(session, line);
-      await tryReleaseBarriers(session);
-      // Track-group hold sync (2026-07-20): a group parked on this occupant's
-      // hold releases only now that it ended — the hold-end edge where the
-      // group's blocked set shrinks. Releases when the LAST occupant unholds.
-      await tryReleaseGroupWaits(session);
-      await session.saveSessionStateToFile();
-      // Admin map: hold ended between landings — refresh the holding flags.
-      if (session.hasSessionLines) {
-        updateNumberOfConnectionForSession(session);
-      }
-    },
-    line.currentHoldingDuration * 1000,
-    session,
-    line,
-  );
+  const holdingTimer = setTimeout(() => {
+    session
+      .runExclusively(async () => {
+        if (line.holdingTimer !== holdingTimer) return;
+        line.isHolding = false;
+        sendToAllAdmins(session, 0, {
+          m: MESSAGES.MSG_CHECK_HOLD,
+          isHold: line.isHolding,
+        });
+        line.holdingTimer = null;
+        // Rendezvous (#6): the frame's own holding period just ended — its
+        // targets are now fully satisfied; re-check open barriers. UNconditional
+        // (it used to run only on the "became done" edge): a barrier held open
+        // solely because THIS line was still holding at it needs the re-check
+        // even when the ref was already done in the registry from an earlier
+        // pass, or it would wait for an edge that never comes.
+        recordHoldEnded(session, line);
+        await tryReleaseBarriers(session);
+        // Track-group hold sync: a group parked on this occupant's hold releases
+        // only now that it ended — the hold-end edge where the group's blocked
+        // set shrinks. Releases when the LAST occupant unholds.
+        await tryReleaseGroupWaits(session);
+        await session.saveSessionStateToFile();
+        // Admin map: hold ended between landings — refresh the holding flags.
+        if (session.hasSessionLines) {
+          updateNumberOfConnectionForSession(session);
+        }
+      })
+      .catch((e) => console.error("holding timer error", e));
+  }, line.currentHoldingDuration * 1000);
+  line.holdingTimer = holdingTimer;
   await session.saveSessionStateToFile();
 
   sendToAllAdmins(session, 0, {
@@ -3206,7 +3507,24 @@ async function startHoldingForSessionWithDelay(session, line, delay) {
   });
 }
 
-async function clearLinePhaseForRoomRewind(session, line) {
+/**
+ * Take a line out from under whatever phase it is in — holding, standby,
+ * voting — and clear the per-device votes that belonged to it.
+ *
+ * The flags go with the timers. Cancelling the timers alone leaves a line
+ * "holding" with nothing left to end it, and such a line never marks its
+ * landing frame done (`recordArrival` gates on `!isHolding`), so a hold-until
+ * waiting on that frame — or a track group syncing on its occupants' holds —
+ * waits for an edge that can never come.
+ *
+ * It was named for the room rewind, which is where it started, and it is no
+ * longer only that: both ends of a dive, a rejoin the survivor travelled to,
+ * and the two operator valves all reach it, because every one of them moves a
+ * line somewhere the phase it is carrying does not belong to. Some of those
+ * then start the LANDING's own phase (`startArrivalHoldForLanding`); the
+ * rewinds and advances deliberately do not.
+ */
+async function clearLinePhase(session, line) {
   if (line.isHolding || line.holdingTimer != null) {
     if (line.holdingTimer != null) {
       await cancelHoldingTimer(session, line, 1);
@@ -3288,23 +3606,22 @@ async function roomRewind(session, group) {
     return { refusal: "not-a-checkpoint", moved: false };
   }
 
-  // The rejoins the room made SINCE this checkpoint come off first (owner,
-  // 2026-09-11: rewinding the ROOM from a merged node back to an older barrier
-  // arrived with two lines where the room had crossed that barrier with three).
+  // The rejoins the room made SINCE this checkpoint come off first (owner:
+  // rewinding the ROOM from a merged node back to an older barrier arrived
+  // with two lines where the room had crossed that barrier with three).
   // Repositioning across a rejoin without undoing it is the room-scale version
-  // of the walk `lineRewind` has refused to make since 2026-09-05: the barrier
-  // being returned to is a moment those lines were still separate, so landing
-  // there with one of them swallowed is a room the score never produced.
+  // of the walk `lineRewind` refuses to make: the barrier being returned to is
+  // a moment those lines were still separate, so landing there with one of
+  // them swallowed is a room the score never produced.
   // `mergesBehindRoomRewind` measures SINCE in each survivor's own trail,
-  // against the frame this rewind is landing it on.
-  // …and the FORKS, for the mirror reason (2026-09-12). Undoing only the
-  // rejoins got half the rule: the room could still come back with MORE lines
-  // than it crossed the checkpoint with, because every split made since was
-  // left standing. When the checkpoint frame is itself a split frame — one
-  // carrying both `session-track-group` and `session-split` — that is not
-  // cosmetic: the rewind lands all of those extra lines back on it and the next
-  // group release forks every one of them, so each rewind-and-replay multiplied
-  // the room instead of restoring it.
+  // against the frame this rewind is landing it on. …and the FORKS, for the
+  // mirror reason. Undoing only the rejoins got half the rule: the room could
+  // still come back with MORE lines than it crossed the checkpoint with,
+  // because every split made since was left standing. When the checkpoint
+  // frame is itself a split frame — one carrying both `session-track-group`
+  // and `session-split` — that is not cosmetic: the rewind lands all of those
+  // extra lines back on it and the next group release forks every one of them,
+  // so each rewind-and-replay multiplied the room instead of restoring it.
   const behind = [
     ...orch
       .mergesBehindRoomRewind({
@@ -3321,9 +3638,12 @@ async function roomRewind(session, group) {
       .map((event) => ({ kind: "split", event })),
   ]
     // One order for the whole room across BOTH kinds: a fork built on a rejoin
-    // has to come off before it. `seq` is the session-wide structural counter
-    // that exists for exactly this (`structuralEvents`).
-    .sort((a, b) => structuralOrder(b.event) - structuralOrder(a.event));
+    // has to come off before it. `orch.compareStructural` is the ordering
+    // every chain walk uses, read newest-first — this list used to have a
+    // comparator of its own, which is one rule too many for one question.
+    // Exact ties fall to this array's own order (a stable sort), which puts
+    // the rejoins ahead of the forks exactly as `structuralEvents` would.
+    .sort((a, b) => orch.compareStructural(b, a));
   // Asked before anything moves, so a step that cannot come off costs the room
   // nothing — this rewind's own rule is that the whole plan resolves first.
   // Only a legacy `expired` event can answer no now that a room rewind expires
@@ -3429,7 +3749,7 @@ async function roomRewind(session, group) {
           ? frameNameForLine(session, line)
           : null,
       );
-      await clearLinePhaseForRoomRewind(session, line);
+      await clearLinePhase(session, line);
       // Popping subStack here only fixes the SERVER's idea of where the line
       // is; the devices are still in sub view, and the one display drive at the
       // end is what takes them out of it — it compares the view each was in
@@ -3483,11 +3803,11 @@ async function roomRewind(session, group) {
   }
 }
 
-// Structural split rewind (2026-07-19): collapse every current descendant of
-// one split instance back into its original parent at the split frame. Nested
-// descendant splits collapse recursively through splitAncestors. A split event
-// crossed by a later outside merge is refused by splitRewindPlan — that merged
-// population cannot be separated safely without per-device ancestry.
+// Structural split rewind: collapse every current descendant of one split
+// instance back into its original parent at the split frame. Nested descendant
+// splits collapse recursively through splitAncestors. A split event crossed by
+// a later outside merge is refused by splitRewindPlan — that merged population
+// cannot be separated safely without per-device ancestry.
 //
 // Unlike a room-checkpoint rewind, this is a SUBTREE rewind: unrelated lines do
 // not move, so the room's reached registry + latestGroupArrival stay intact.
@@ -3512,14 +3832,14 @@ async function splitRewind(session, eventId, expectedFrame) {
   // still moved the room, and the devices standing in it must be told where.
   const hold = openDisplayHold(session);
   try {
-    // ONE RELEASE, ONE GESTURE (2026-09-12) — the fork counterpart of the
-    // convergence rule above. A track group's release forks every populated
-    // line standing on a split frame, so one thing the operator watched is
-    // several events; undoing one of them left the room in a shape no single
-    // gesture had produced. Newest-first like every other walk, each member
-    // with its own cascade taken off first. Sibling forks divide DIFFERENT
-    // lines, so none of them is in another's chain and the order between them
-    // carries no constraint of its own.
+    // ONE RELEASE, ONE GESTURE — the fork counterpart of the convergence rule
+    // above. A track group's release forks every populated line standing on a
+    // split frame, so one thing the operator watched is several events;
+    // undoing one of them left the room in a shape no single gesture had
+    // produced. Newest-first like every other walk, each member with its own
+    // cascade taken off first. Sibling forks divide DIFFERENT lines, so none
+    // of them is in another's chain and the order between them carries no
+    // constraint of its own.
     //
     // The race guard is this event's frame; the siblings are guarded by their
     // own recorded frames, which is all they were ever offered under.
@@ -3658,8 +3978,8 @@ async function splitRewindOne(session, eventId, expectedFrame) {
 }
 
 // Everything the room built on top of ONE structural event, walked off first —
-// newest first (owner, 2026-09-06: "able to rewind back to multiple merge
-// points later still possible, not losing the route path").
+// newest first (owner: "able to rewind back to multiple merge points later
+// still possible, not losing the route path").
 //
 // A merge used to stop being undoable the moment the merged line took its next
 // structural step, so on a score like FORK → MERGE1 → FORK2 → MERGE2 only the
@@ -3709,12 +4029,12 @@ async function undoStructuralChain(session, kind, eventId) {
   return { ok: true, moved };
 }
 
-// Structural merge rewind (2026-09-05): undo one rejoin. Every line the merge
-// absorbed comes back at the frame it was standing on when it ran, carrying the
-// devices it had then, and the merged line goes back to its own pre-merge frame
-// — the mirror of the split undo, for the one structural event that DESTROYS
-// lines. Devices whose first sight of the room was after the merge have no
-// pre-merge line and stay with the survivor.
+// Structural merge rewind: undo one rejoin. Every line the merge absorbed
+// comes back at the frame it was standing on when it ran, carrying the devices
+// it had then, and the merged line goes back to its own pre-merge frame — the
+// mirror of the split undo, for the one structural event that DESTROYS lines.
+// Devices whose first sight of the room was after the merge have no pre-merge
+// line and stay with the survivor.
 //
 // Like the split undo this is a SUBTREE rewind: the reached registry and
 // latestGroupArrival stay as they are, and the restored lines land un-parked and
@@ -3722,11 +4042,11 @@ async function undoStructuralChain(session, kind, eventId) {
 // ordinary one, so a route that leads back to the rejoin frame merges them
 // again — this replays the passage rather than unmaking it.
 //
-// ONE CONVERGENCE, ONE GESTURE (owner, 2026-09-05): lines arriving on a rejoin
-// frame apart merge in PAIRS, so "everyone met at MERGE1" can be two or three
-// events. The operator watched one thing happen and asked for one undo of it,
-// so this walks the whole passage (orch.mergeConvergenceEvents) newest-first —
-// the only order §8.4 allows — and every line that met there comes back on the
+// ONE CONVERGENCE, ONE GESTURE (owner): lines arriving on a rejoin frame apart
+// merge in PAIRS, so "everyone met at MERGE1" can be two or three events. The
+// operator watched one thing happen and asked for one undo of it, so this
+// walks the whole passage (orch.mergeConvergenceEvents) newest-first — the
+// only order §8.4 allows — and every line that met there comes back on the
 // node it came from. Undoing the newest frees the next, so each step is an
 // ordinary, fully validated undo; the pairing is left as the record of how the
 // room got there rather than a queue of clicks.
@@ -3749,8 +4069,8 @@ async function mergeRewind(session, eventId, expectedFrame) {
   const hold = openDisplayHold(session);
   try {
     // Whatever the room built on this population since — later splits, later
-    // merges — comes off first (2026-09-06), so a merge point stays reachable
-    // for the rest of the session instead of only until the next fork.
+    // merges — comes off first, so a merge point stays reachable for the rest
+    // of the session instead of only until the next fork.
     const chain = await undoStructuralChain(session, "merge", eventId);
     if (!chain.ok) {
       return { ok: false, moved: chain.moved };
@@ -3770,14 +4090,6 @@ async function mergeRewind(session, eventId, expectedFrame) {
   } finally {
     flushDisplayHold(hold);
   }
-}
-
-/** One ordering across splits and merges — the session-wide `seq`, with the
- * same fallbacks `structuralEvents` uses for records written before it. */
-function structuralOrder(event) {
-  if (!event) return 0;
-  if (event.seq != null) return event.seq;
-  return (event.createdAt || 0) / 1e13;
 }
 
 /**
@@ -3836,10 +4148,10 @@ function cascadeSignature(steps) {
 /** What one structural undo would take off on the way, right now — the same
  * list, folded the same way, that the map's entry published. */
 function structuralCascadeNow(session, kind, eventId) {
-  // A split undo takes its whole GESTURE off (2026-09-12), so what it discards
-  // is the union of the members' chains — the same union `splitRewindOptions`
-  // published, deduped the same way. A gesture of one reduces to the single
-  // chain it always was.
+  // A split undo takes its whole GESTURE off, so what it discards is the union
+  // of the members' chains — the same union `splitRewindOptions` published,
+  // deduped the same way. A gesture of one reduces to the single chain it
+  // always was.
   const targets =
     kind === "split"
       ? orch
@@ -3991,10 +4303,10 @@ async function mergeRewindConvergence(session, eventId, expectedFrame) {
   }
   // Balance the latecomers over the WHOLE passage, not step by step. A
   // convergence merges in pairs, so an earlier step could only see part of the
-  // room coming back and spent them against a shorter list of destinations
-  // (2026-09-09) — three over three lines came out 2/1/3 while the confirm
-  // promised "evenly". Re-seeded from the snapshot devices and re-assigned from
-  // scratch, this is the same computation for a one-event merge.
+  // room coming back and spent them against a shorter list of destinations —
+  // three over three lines came out 2/1/3 while the confirm promised "evenly".
+  // Re-seeded from the snapshot devices and re-assigned from scratch, this is
+  // the same computation for a one-event merge.
   if (undone > 0) {
     orch.spreadMergeLatecomers({
       session,
@@ -4034,19 +4346,19 @@ async function mergeRewindConvergence(session, eventId, expectedFrame) {
  * renders, and they are addressed to line ids that only that step still knows.
  *
  * This is the rule `mergeRewindConvergence` already followed inside one
- * convergence (2026-09-09: "no device is told about a line the next step is
- * about to move it off"), read across the whole walk.
+ * convergence ("no device is told about a line the next step is about to move
+ * it off"), read across the whole walk.
  */
-// Per SESSION, on the session object, like `__gestureQueue` and
-// `__structuralProjection` beside it — and never persisted (`toJSON` names
-// its fields explicitly). It was a module global until 2026-09-12, which made
-// the fix above only half a fix: `runExclusively` serializes one ROOM's
-// gestures, so two rooms rewinding at the same moment still collided on this
-// one variable. The second room's `openDisplayHold` found it taken and
-// returned null, its `holdLineDisplay` saw a session that was not its own and
-// drove each step's displays immediately, and its devices flashed through the
-// frames the walk was in the middle of discarding — the exact stranding this
-// hold exists to prevent, reached by a different route.
+// Per SESSION, on the session object, like the mutation queue and
+// `__structuralProjection` beside it — and never persisted (`toJSON` names its
+// fields explicitly). It was a module global, which made the fix above only
+// half a fix: the session mutation lane serializes one ROOM, so two rooms
+// rewinding at the same moment still collided on this one variable. The second
+// room's `openDisplayHold` found it taken and returned null, its
+// `holdLineDisplay` saw a session that was not its own and drove each step's
+// displays immediately, and its devices flashed through the frames the walk
+// was in the middle of discarding — the exact stranding this hold exists to
+// prevent, reached by a different route.
 
 /**
  * Open the hold for one gesture, or return null when one is already open (a
@@ -4297,7 +4609,7 @@ async function jumpScoreForSession(session, line, value) {
   line.historyIndex = value;
   line.setCurrIdxTo(index);
 
-  // Session Lines (open-item decisions, 2026-07-07): an SM jump is a REWIND.
+  // Session Lines (open-item decisions): an SM jump is a REWIND.
   if (session.hasSessionLines) {
     // R4: a jumped line must not stay parked at the barrier it left — un-park
     // it and drop it from every barrier entry (deleting emptied entries). The
@@ -4328,7 +4640,7 @@ async function jumpScoreForSession(session, line, value) {
     recordArrival(session, line);
     // The rewind landing is the room's newest position of record — a grouped
     // landing re-arms the revival fast-forward target beginReachedGeneration
-    // just cleared (decision #13 revision, 2026-07-18).
+    // just cleared (decision #13 revision).
     if (orch.groupOfFrame(session.graph, landedFrame)) {
       session.latestGroupArrival = { frame: landedFrame, at: Date.now() };
     }
@@ -4413,13 +4725,22 @@ function mergeRefusalReason(session, eventId, frame) {
 // walk that stops half-way cannot be rolled back (each step is a validated
 // snapshot restore of its own). Reporting both as "Nothing moved" left the
 // operator trusting a map that had already changed under them.
-function reportRewindRefusal(conn, session, kind, reason, frame, moved) {
+function reportRewindRefusal(
+  conn,
+  session,
+  kind,
+  reason,
+  frame,
+  moved,
+  operationId,
+) {
   sendToClient(conn, 0, {
     m: MESSAGES.MSG_REWIND_REFUSED,
     kind,
     reason: reason || "unavailable",
     frame: frame || null,
     moved: !!moved,
+    operationId: operationId || null,
   });
   updateNumberOfConnectionForSession(session);
 }
@@ -4428,28 +4749,41 @@ function reportRewindRefusal(conn, session, kind, reason, frame, moved) {
 // it did NOT happen; a successful one — three lines re-created, every device
 // moved onto a different line, everything the room played since discarded —
 // said nothing at all, leaving the operator to infer from a redrawn canvas that
-// the confirm they had answered was acted on. Deliberately just `kind` and
-// `frame`: the map is holding the description it promised in that confirm, and
-// showing THAT back is what closes the loop. No lines push rides with it — the
-// rewind itself has already sent several.
-function reportRewindDone(session, kind, frame, emptied) {
-  // To EVERY operator tab (2026-09-12), not only the one that clicked. A
-  // structural undo re-creates lines and moves devices between them, and a
-  // second map open on the same room simply watched its canvas rearrange with
-  // no account of why — the one thing the receipt exists to prevent, for
-  // whichever operator was not holding the mouse. The clicking tab still shows
-  // the sentence its own confirm promised; the others compose a plainer one
-  // from `kind` + `frame`, which is why both still ride along.
+// the confirm they had answered was acted on. Kind + frame describe the event;
+// operationId uniquely identifies whose confirm it answers. No lines push rides
+// with it — the rewind itself has already sent several.
+async function reportRewindDone(
+  session,
+  kind,
+  frame,
+  emptied,
+  operationId,
+  lineId,
+) {
+  // Commit the receipt to the same atomic session snapshot as the rest of the
+  // room. The broadcast carries that exact entry so live tabs and a freshly
+  // reloaded tab render one shared audit trail.
+  const rewindEntry = session.recordRewind({ kind, frame, lineId, emptied });
+  await session.saveSessionStateToFile();
+  // To EVERY operator tab, not only the one that clicked. A structural undo
+  // re-creates lines and moves devices between them, and a second map open on
+  // the same room simply watched its canvas rearrange with no account of why —
+  // the one thing the receipt exists to prevent, for whichever operator was
+  // not holding the mouse. The clicking tab still shows the sentence its own
+  // confirm promised; the others compose a plainer one from `kind` + `frame`,
+  // which is why both still ride along.
   sendToAllAdmins(session, 0, {
     m: MESSAGES.MSG_REWIND_DONE,
     kind,
     frame: frame || null,
-    // The lines it left with NOBODY on them (2026-09-09), each with the frame
-    // it is standing on (2026-09-12). A merge undo can hand a route back to a
-    // performer who has since gone home: the line comes back DORMANT, and the
-    // operator — who answered a confirm promising "N lines go back, and every
-    // device goes back to the line it was on" — was left to notice `L2·0p` on
-    // the canvas for themselves, or not to.
+    operationId: operationId || null,
+    rewindEntry,
+    // The lines it left with NOBODY on them, each with the frame it is
+    // standing on. A merge undo can hand a route back to a performer who has
+    // since gone home: the line comes back DORMANT, and the operator — who
+    // answered a confirm promising "N lines go back, and every device goes
+    // back to the line it was on" — was left to notice `L2·0p` on the canvas
+    // for themselves, or not to.
     //
     // The FRAME is here because the numbers on the two ends of this gesture are
     // not read on the same basis. The confirm names the numbers the REJOIN
@@ -4508,11 +4842,11 @@ function linesLeftEmpty(session, before) {
     });
 }
 
-// Targeted per-line rewind (owner, 2026-07-19): move ONE named line to an
-// earlier entry of its own ACTIVE trail — main flow, or within its current sub
-// dive (a sub is its own session: `history` holds the sub trail while diving,
-// so the same undo semantics apply, resolved against the sub's frame list).
-// Undo, not teleport: the target must be in the trail.
+// Targeted per-line rewind (owner): move ONE named line to an earlier entry of
+// its own ACTIVE trail — main flow, or within its current sub dive (a sub is
+// its own session: `history` holds the sub trail while diving, so the same
+// undo semantics apply, resolved against the sub's frame list). Undo, not
+// teleport: the target must be in the trail.
 //
 // Returns a refusal reason, or null when the request was satisfied (which
 // includes "the merge undo alone already landed it there" — nothing further to
@@ -4574,16 +4908,15 @@ async function lineRewindWalk(
   let line = (session.lines || []).find(
     (l) => l && l.id === lineId && l.status !== "retired",
   );
-  // A merge-ABSORBED line (owner, 2026-09-05). The map offers its route too —
-  // as a ghost, since the line itself is gone — so the operator can reach for
-  // the line they watched walk there instead of the survivor that swallowed
-  // it. It has to come BACK before it can be rewound, so the merge undo runs
-  // first, and whole (mergeRewind folds the convergence, and takes off
-  // anything the room has built on top since): every line that met at the
-  // rejoin frame lands on the node it came from, and only then does this one
-  // carry on to the clicked frame. That is §8.2's rule read from the other
-  // side, and it lands the same room state as rewinding the survivor past the
-  // same merge.
+  // A merge-ABSORBED line (owner). The map offers its route too — as a ghost,
+  // since the line itself is gone — so the operator can reach for the line
+  // they watched walk there instead of the survivor that swallowed it. It has
+  // to come BACK before it can be rewound, so the merge undo runs first, and
+  // whole (mergeRewind folds the convergence, and takes off anything the room
+  // has built on top since): every line that met at the rejoin frame lands on
+  // the node it came from, and only then does this one carry on to the clicked
+  // frame. That is §8.2's rule read from the other side, and it lands the same
+  // room state as rewinding the survivor past the same merge.
   if (!line) {
     if (!session.hasSessionLines) {
       return "unknown-line";
@@ -4648,15 +4981,15 @@ async function lineRewindWalk(
     return "stale-frame";
   }
 
-  // Reaching behind a merge undoes it on the way (owner, 2026-09-05). The
-  // survivor keeps its pre-merge trail, so the map legitimately offers entries
-  // from before the rejoin — but walking the merged line back there whole would
-  // stand devices that arrived by another route on a frame that route never
-  // touched. Undo newest-first (mergeRewind refuses any other order), then
-  // re-resolve: each undo lands the lines on the node they came from and
-  // TRUNCATES this trail, so the clicked index no longer means what it did.
-  // Only main-flow rewinds qualify — inside a dive the active trail is the
-  // sub's, while a merge point indexes the main one.
+  // Reaching behind a merge undoes it on the way (owner). The survivor keeps
+  // its pre-merge trail, so the map legitimately offers entries from before
+  // the rejoin — but walking the merged line back there whole would stand
+  // devices that arrived by another route on a frame that route never touched.
+  // Undo newest-first (mergeRewind refuses any other order), then re-resolve:
+  // each undo lands the lines on the node they came from and TRUNCATES this
+  // trail, so the clicked index no longer means what it did. Only main-flow
+  // rewinds qualify — inside a dive the active trail is the sub's, while a
+  // merge point indexes the main one.
   if (session.hasSessionLines && line.subStack.length === 0) {
     const behind = orch.mergesBehindLine({
       mergeEvents: session.mergeEvents,
@@ -4780,13 +5113,13 @@ async function lineRewindWalk(
   return null;
 }
 
-// Operator "roll this line back out of its dive" (2026-09-02) — the REWIND
-// counterpart of ejectLineFromSub, and the sub-crossing rewind §8.2 had ruled out
-// of scope. The destination is ANY frame the line has already visited on the main
-// flow: `mainHistoryStateForLine` is its main trail exactly as the dive left it,
-// and `selectedIdx` picks an entry of that trail. Omitted, it defaults to the
-// trail's own current entry — the frame the line dived FROM — so "undo this dive"
-// is simply this command's default case rather than a second command.
+// Operator "roll this line back out of its dive" — the REWIND counterpart of
+// ejectLineFromSub, and the sub-crossing rewind §8.2 had ruled out of scope.
+// The destination is ANY frame the line has already visited on the main flow:
+// `mainHistoryStateForLine` is its main trail exactly as the dive left it, and
+// `selectedIdx` picks an entry of that trail. Omitted, it defaults to the
+// trail's own current entry — the frame the line dived FROM — so "undo this
+// dive" is simply this command's default case rather than a second command.
 //
 // The two sub valves are opposites and land by opposite rules:
 //
@@ -4866,7 +5199,7 @@ async function rewindLineOutOfSub(
   // "holding" with no timer to end it never marks its landing frame done.
   const wasParked = !!(line.isBarrierWaiting || line.isGroupWaiting);
   const parkedAtFrame = wasParked ? frameNameForLine(session, line) : null;
-  await clearLinePhaseForRoomRewind(session, line);
+  await clearLinePhase(session, line);
 
   while (line.subStack.length > 0) {
     line.exitSub(); // restores the main-flow history saved at each dive
@@ -4948,18 +5281,33 @@ function updateNumberOfConnectionForSession(session) {
   const countPlayer = performers.filter((conn) => conn.isStaff).length;
   const countRider = performers.filter((conn) => !conn.isStaff).length;
 
-  const payload = {
+  const basePayload = {
     m: MESSAGES.MSG_SHOW_NUMBER_CONNECTION,
     playerCount: countPlayer,
     riderCount: countRider,
   };
+  const ordinaryAdmins = wsServer.connections.filter(
+    (conn) => conn.sessionId === session.id && conn.isAdmin && !conn.isMapView,
+  );
+  const mapAdmins = wsServer.connections.filter(
+    (conn) => conn.sessionId === session.id && conn.isAdmin && conn.isMapView,
+  );
+  // Map-only operational history. It is small and capped, but ordinary admin
+  // session tabs do not render it, so keep it off their frequent count push.
+  let mapPayload =
+    mapAdmins.length > 0
+      ? { ...basePayload, rewindLog: session.rewindLog || [] }
+      : basePayload;
 
   // Session Lines (Chunk M): per-line device distribution so the operator sees
   // the room's split across lines and can spot stalled ones (dormant, or parked
-  // at a barrier). Omitted for vanilla scores → message byte-identical to today.
-  if (session.hasSessionLines) {
-    const structural = structuralProjection(session);
-    // Which track groups the room can be rewound to, decided HERE (2026-09-12).
+  // at a barrier). Ordinary admin/session tabs use `lines` for their compact
+  // status panel, but none of the structural projection below.
+  if (
+    session.hasSessionLines &&
+    ordinaryAdmins.length + mapAdmins.length > 0
+  ) {
+    // Which track groups the room can be rewound to, decided HERE.
     // The map used to re-derive this from `lines[]` with its own copy of
     // `commonCheckpoints`, and the two answers could not agree: the copy counted
     // riders as population (a spectator is never population — decision #12) so a
@@ -4970,32 +5318,27 @@ function updateNumberOfConnectionForSession(session) {
     // it like everything else on that canvas. Outside the memoized projection
     // because it turns on who is CONNECTED, which changes with every join and
     // leave; `session.graph.groups` is small and the trails are already in hand.
-    payload.roomCheckpoints = roomCheckpointOptions(session);
-    payload.splitRewinds = structural.splitRewinds;
-    payload.mergeRewinds = structural.mergeRewinds.map((entry) => {
-      // Only where an undo could still run. An expired entry is a note on a
-      // node — a frame and a reason — and counting a redistribution that can
-      // never happen walked every connection and the whole device registry per
-      // expired event, on every push, for the life of the session.
-      if (!entry.available) {
-        return entry;
-      }
-      // How many performers this undo would have to SPREAD, because they were
-      // not in the room when the merge ran. Recounted on every push (the
-      // projection above is memoized, but this changes with every join and
-      // leave), and counted at all so the confirm can stop telling every
-      // operator about a redistribution that most of the time involves nobody.
-      // `latecomersHere` is the connected subset, so the confirm can name the
-      // devices the operator can actually SEE apart from the ones that
-      // registered and left.
-      const counted = mergeLatecomerCount(session, entry);
-      return {
-        ...entry,
-        latecomers: counted.total,
-        latecomersHere: counted.live,
-      };
-    });
-    payload.lines = session.lines
+    if (mapAdmins.length > 0) {
+      const structural = structuralProjection(session);
+      mapPayload.roomCheckpoints = roomCheckpointOptions(session);
+      mapPayload.structuralVersion = structural.version;
+      mapPayload.structuralEvents = structuralEventSummaries(structural).map(
+        (summary) => {
+          if (summary.kind !== "merge" || !summary.available) return summary;
+          const entry = structural.mergeRewinds.find(
+            (candidate) => candidate.eventId === summary.eventId,
+          );
+          if (!entry) return summary;
+          const counted = mergeLatecomerCount(session, entry);
+          return {
+            ...summary,
+            latecomers: counted.total,
+            latecomersHere: counted.live,
+          };
+        },
+      );
+    }
+    const fullLines = session.lines
       .filter((l) => l.status !== "retired")
       .map((l) => {
         // DISPLAY counts, so riders are kept here (and only here): the operator
@@ -5071,10 +5414,53 @@ function updateNumberOfConnectionForSession(session) {
       // Sorted in the payload rather than in `session.lines`: the runtime's
       // own order is nobody's business but its own.
       .sort((a, b) => lineIdNum(a.id) - lineIdNum(b.id));
-    payload.absorbedLines = structural.absorbedLines;
+    // The session tab renders only the line-status strip. Histories, durable
+    // identities and rewind landings are map-only and can be as large as the
+    // performance, so do not make every ordinary admin parse them.
+    basePayload.lines = fullLines.map((line) => ({
+      id: line.id,
+      status: line.status,
+      players: line.players,
+      riders: line.riders,
+      quietSince: line.quietSince,
+      frame: line.frame,
+      inSub: line.inSub,
+      sub: line.sub,
+      waiting: line.waiting,
+      straggler: line.straggler,
+      voting: line.voting,
+      holding: line.holding,
+    }));
+    if (mapAdmins.length > 0) mapPayload.lines = fullLines;
   }
 
-  sendToAllAdmins(session, 0, payload);
+  sendToConnections(ordinaryAdmins, 0, basePayload);
+  sendToConnections(mapAdmins, 0, mapPayload);
+}
+
+// Full cascades, restored identities, landings and ghost trails are sizeable
+// and change only with structural topology. A map asks for them once after a
+// compact update announces a new version; ordinary movement/count pushes never
+// serialize or transmit them.
+function sendStructuralDetailsToMap(session, conn) {
+  const structural = structuralProjection(session);
+  const mergeRewinds = structural.mergeRewinds.map((entry) => {
+    if (!entry.available) return entry;
+    const counted = mergeLatecomerCount(session, entry);
+    return {
+      ...entry,
+      latecomers: counted.total,
+      latecomersHere: counted.live,
+    };
+  });
+  sendToClient(conn, 0, {
+    m: MESSAGES.MSG_SHOW_NUMBER_CONNECTION,
+    structuralDetails: true,
+    structuralVersion: structural.version,
+    splitRewinds: structural.splitRewinds,
+    mergeRewinds,
+    absorbedLines: structural.absorbedLines,
+  });
 }
 
 /**
@@ -5085,55 +5471,41 @@ function updateNumberOfConnectionForSession(session) {
  * per event, `splitRewindOptions` the same, `absorbedLineSnapshots` another
  * plan per event — and `updateNumberOfConnectionForSession` fires on every
  * arrival, join, leave and rewind. Since nothing expires any more (a merge
- * point stays reachable for the whole session, 2026-09-06) the event list only
- * grows, so a long piece was paying that on every push: measured on the real
- * orchestrator, 100 fork/merge passages cost ~37 ms and 1.4 MB per push.
+ * point stays reachable for the whole session) the event list only grows, so a
+ * long piece was paying that on every push: measured on the real orchestrator,
+ * 100 fork/merge passages cost ~37 ms and 1.4 MB per push.
  *
  * The answer depends on exactly two things — the structural events and the
  * lines' identities/status — so the cache key is built from those, in O(events
  * + lines), rather than from a bump the twenty-odd mutation sites would each
- * have to remember. A key that reads the same means an identical answer, so
- * the cached arrays are re-sent verbatim. Everything that changes per push
- * (positions, counts, `latecomers`) is computed outside this.
+ * have to remember. A key that reads the same means an identical answer. Live
+ * pushes send only summaries of these cached arrays; the arrays themselves are
+ * sent to a map once per key. Positions, counts and `latecomers` stay outside
+ * the cache because they change without a structural mutation.
  */
 function structuralProjection(session) {
   // The score itself is part of the key: `absorbedLineSnapshots` resolves its
   // ghost trails against `listFiles`, and a session outlives a folder swap
   // (MSG_CHANGE_FOLDER rebuilds the score in place), so a cache keyed on the
   // topology alone would hand the new score the old score's frames.
-  let key = `${session.contentHash || ""}:${(session.listFiles || []).length}|`;
-  for (const event of session.splitEvents || []) {
-    if (!event) continue;
-    key += `S${event.id}:${event.status}:${event.blockedByMerge ? 1 : 0}|`;
-  }
-  for (const event of session.mergeEvents || []) {
-    if (!event) continue;
-    key += `M${event.id}:${event.status}|`;
-  }
-  // Lines matter because the plans resolve snapshots against them: a line going
-  // dormant, retiring, or coming back on a recycled number changes what is
-  // offerable even with the event list untouched.
-  for (const line of session.lines || []) {
-    if (!line) continue;
-    key += `L${line.id}:${line.uid || ""}:${line.status}|`;
-  }
+  const key = structuralProjectionKey(session);
   const cached = session.__structuralProjection;
   if (cached && cached.key === key) {
     return cached.value;
   }
   // Built BEFORE the ghosts and handed to them: a route is drawn for exactly
   // the passages these entries offer an undo for, which is one question with
-  // one answer (2026-09-12 — see `absorbedLineSnapshots`).
+  // one answer (see `absorbedLineSnapshots`).
   const mergeRewinds = orch
     .mergeRewindOptions({
       mergeEvents: session.mergeEvents,
       splitEvents: session.splitEvents,
       lines: session.lines,
     })
-    // The SURVIVOR's route into the rejoin, on the same terms as the routes
-    // of the lines it swallowed — so the map can draw all of them alike
-    // (owner, 2026-09-07). Only on the entry that carries the passage; the
-    // folded older halves would publish the same route twice.
+    // The SURVIVOR's route into the rejoin, on the same terms as the routes of
+    // the lines it swallowed — so the map can draw all of them alike (owner).
+    // Only on the entry that carries the passage; the folded older halves
+    // would publish the same route twice.
     .map((entry) =>
       !entry.available
         ? entry
@@ -5150,6 +5522,7 @@ function structuralProjection(session) {
           },
     );
   const value = {
+    version: structuralProjectionVersion(key),
     splitRewinds: orch.splitRewindOptions({
       splitEvents: session.splitEvents,
       // A split undo cascades through the merges standing on its subtree
@@ -5167,7 +5540,7 @@ function structuralProjection(session) {
 
 /**
  * The track groups the room can be rewound to, and what each rewind would take
- * off on the way (2026-09-12).
+ * off on the way.
  *
  * Both halves are answered HERE because both need inputs the map does not have.
  * Legality needs the split records — a line whose own trail a fork truncated
@@ -5216,9 +5589,9 @@ function roomCheckpointOptions(session) {
               })
               .map((event) => event.id)
           : [],
-        // …and the FORKS it takes off (2026-09-12). Not derived from `plan` —
-        // a fork is measured against the checkpoint in the PARENT's recorded
-        // trail, which is the only place it survives its children's truncation
+        // …and the FORKS it takes off. Not derived from `plan` — a fork is
+        // measured against the checkpoint in the PARENT's recorded trail,
+        // which is the only place it survives its children's truncation
         // (`splitsBehindRoomRewind`).
         undoesSplits: orch
           .splitsBehindRoomRewind({
@@ -5311,10 +5684,10 @@ function mergeRestoreLandings(session, entry) {
 }
 
 /**
- * The SURVIVOR's route into one rejoin — the same thing `absorbedLineSnapshots`
- * publishes for the lines that merge swallowed, for the line that swallowed
- * them (owner, 2026-09-07: "all lines should be equal … the map has no main
- * line, it only lines").
+ * The SURVIVOR's route into one rejoin — the same thing
+ * `absorbedLineSnapshots` publishes for the lines that merge swallowed, for
+ * the line that swallowed them (owner: "all lines should be equal … the map
+ * has no main line, it only lines").
  *
  * Without it the map drew one of the routes feeding a rejoin as live green
  * history and the rest as ghosts, and which one got the green was decided by
@@ -5343,13 +5716,13 @@ function survivorGhostRoute(session, entry) {
     return {};
   }
   // The SAME gate `absorbedLineSnapshots` applies — the entry's own
-  // `available`, and nothing else (2026-09-12). This used to re-run
-  // `mergeRewindPlan`, which asks something NARROWER: a plan refuses a merge
-  // with anything built on top of it (`superseded`), while the entry beside it
-  // reads available because the undo walks that cascade off first. So the
-  // survivor's route lost its ghost as soon as the room rejoined anywhere
-  // else — in step with the routes it swallowed, which is the only reason the
-  // lopsidedness this ghost exists to remove did not come straight back.
+  // `available`, and nothing else. This used to re-run `mergeRewindPlan`,
+  // which asks something NARROWER: a plan refuses a merge with anything built
+  // on top of it (`superseded`), while the entry beside it reads available
+  // because the undo walks that cascade off first. So the survivor's route
+  // lost its ghost as soon as the room rejoined anywhere else — in step with
+  // the routes it swallowed, which is the only reason the lopsidedness this
+  // ghost exists to remove did not come straight back.
   if (!entry.available) {
     return {};
   }
@@ -5380,12 +5753,12 @@ function survivorGhostRoute(session, entry) {
  * about to be redistributed. Riders are excluded in both places — a spectator
  * is never population (decision #12).
  *
- * Reported as BOTH numbers (2026-09-09), because the operator checks the one
- * they are shown against the room in front of them. A device that registered
- * and left really is about to be reassigned, so it belongs in the total — but
- * counting it silently made the confirm promise to spread four devices to an
- * operator who could see three performers, and a number that does not match
- * the room is a reason to distrust the whole gesture, mid-piece.
+ * Reported as BOTH numbers, because the operator checks the one they are shown
+ * against the room in front of them. A device that registered and left really
+ * is about to be reassigned, so it belongs in the total — but counting it
+ * silently made the confirm promise to spread four devices to an operator who
+ * could see three performers, and a number that does not match the room is a
+ * reason to distrust the whole gesture, mid-piece.
  *
  * @returns {{total:number, live:number}} everything the undo reassigns, and
  *   the subset that is connected right now.
@@ -5436,8 +5809,8 @@ function mergeLatecomerCount(session, entry) {
 }
 
 /**
- * The lines a merge swallowed that its undo can still bring back (owner,
- * 2026-09-05): "we should have the option to unmerge on those lines too".
+ * The lines a merge swallowed that its undo can still bring back (owner): "we
+ * should have the option to unmerge on those lines too".
  *
  * They are hard-retired, so they are in no count, no line panel and no
  * `lines[]` entry — and until now the map had nothing to hang an entry on
@@ -5464,7 +5837,7 @@ function absorbedLineSnapshots(session, mergeRewinds) {
   const out = [];
   // A route is ghosted for exactly the passages the map OFFERS an undo for —
   // the `mergeRewinds` entries, which have already answered that question for
-  // the whole convergence AND for whatever cascade stands on it (2026-09-12).
+  // the whole convergence AND for whatever cascade stands on it.
   //
   // This used to ask `mergeRewindPlan` again, which is a NARROWER question: a
   // plan refuses a merge with anything built on top of it (`superseded`), while
@@ -5599,27 +5972,59 @@ function absorbedSnapshotFor(session, lineId, eventId) {
 }
 
 /**
- * Run one room-changing gesture at a time, per session.
- *
- * Returns a promise for THIS gesture's result; the queue itself never rejects,
- * so one failing gesture cannot wedge the room's rewinds for the rest of the
- * session. Kept on the session object (like `__structuralProjection`) and never
- * persisted — `toJSON` names its fields explicitly.
+ * Which rewind a payload names — the same shape `dispatchRewind` is told apart
+ * by, read once so a gesture that THREW can still be answered in its own terms.
  */
-function runExclusively(session, work) {
-  const queued = (session.__gestureQueue || Promise.resolve()).then(work, work);
-  session.__gestureQueue = queued.then(
-    () => undefined,
-    () => undefined,
-  );
-  return queued;
+function rewindKindOf(messageData) {
+  if (messageData.splitEventId) return "split";
+  if (messageData.mergeEventId) return "merge";
+  if (messageData.group) return "room";
+  if (messageData.exitSub) return "sub";
+  return "line";
+}
+
+function rewindOperationIdOf(messageData) {
+  const operationId = messageData && messageData.operationId;
+  return typeof operationId === "string" && operationId.length <= 128
+    ? operationId
+    : null;
 }
 
 /**
- * The five rewinds, told apart by their payload shape. Serialized by
- * `runExclusively` — see the call site.
+ * Every rewind answers — including the one that fell over.
+ *
+ * `dispatchRewind` reports a refusal or a receipt down every path it takes,
+ * and an exception was the one way past both: the dispatcher's own catch
+ * logged it server-side and the operator was left with silence, which is
+ * precisely the failure mode MSG_REWIND_REFUSED and MSG_REWIND_DONE exist to
+ * remove — and the worst case of it, since a walk commits step by step and a
+ * throw part-way through has almost certainly already moved the room. `moved:
+ * true` says so rather than guessing otherwise, and the refusal clears the
+ * sentence the map has been holding since the click.
  */
 async function handleSelectHistory(conn, session, messageData) {
+  try {
+    await dispatchRewind(conn, session, messageData);
+  } catch (err) {
+    console.error("rewind gesture failed", err);
+    reportRewindRefusal(
+      conn,
+      session,
+      rewindKindOf(messageData),
+      "internal-error",
+      messageData.frame || messageData.group || null,
+      true,
+      rewindOperationIdOf(messageData),
+    );
+  }
+}
+
+/**
+ * The five rewinds, told apart by their payload shape. The WebSocket message
+ * dispatcher serializes this together with every other room mutation.
+ */
+async function dispatchRewind(conn, session, messageData) {
+  const operationId = rewindOperationIdOf(messageData);
   // Taken before any of the five rewinds below runs, so each can report the
   // lines it left with nobody on them (`reportRewindDone`).
   const dormantBefore = session.hasSessionLines
@@ -5640,6 +6045,7 @@ async function handleSelectHistory(conn, session, messageData) {
         "stale-cascade",
         messageData.frame,
         false,
+        operationId,
       );
       return;
     }
@@ -5663,20 +6069,22 @@ async function handleSelectHistory(conn, session, messageData) {
         ),
         messageData.frame,
         done.moved,
+        operationId,
       );
     } else {
-      reportRewindDone(
+      await reportRewindDone(
         session,
         "split",
         messageData.frame,
         linesLeftEmpty(session, dormantBefore),
+        operationId,
       );
     }
     return;
   }
-  // Structural merge undo (2026-09-05): put the lines one rejoin swallowed
-  // back where they stood, with the devices they had. `frame` is the race
-  // guard — the merge frame the menu was built against.
+  // Structural merge undo: put the lines one rejoin swallowed back where they
+  // stood, with the devices they had. `frame` is the race guard — the merge
+  // frame the menu was built against.
   if (messageData.mergeEventId && session.hasSessionLines) {
     if (
       !cascadeAgreed(
@@ -5691,6 +6099,7 @@ async function handleSelectHistory(conn, session, messageData) {
         "stale-cascade",
         messageData.frame,
         false,
+        operationId,
       );
       return;
     }
@@ -5711,13 +6120,15 @@ async function handleSelectHistory(conn, session, messageData) {
         ),
         messageData.frame,
         done.moved,
+        operationId,
       );
     } else {
-      reportRewindDone(
+      await reportRewindDone(
         session,
         "merge",
         messageData.frame,
         linesLeftEmpty(session, dormantBefore),
+        operationId,
       );
     }
     return;
@@ -5726,11 +6137,11 @@ async function handleSelectHistory(conn, session, messageData) {
     // The room rewind refuses as readily as the other three (a checkpoint
     // stops being common the moment a line leaves the group), and used to do
     // it in silence. It validates its whole plan — the rejoins it will walk
-    // back through included — before touching a line, so it still refuses as
-    // a clean no-op; `moved` is for the one case that cannot be clean, a
-    // rejoin that came apart and a later one that would not (2026-09-11).
-    // The rejoins it promised to take off on the way (`restoredMergeClause`),
-    // re-derived — the room can rejoin somewhere else while the confirm is up.
+    // back through included — before touching a line, so it still refuses as a
+    // clean no-op; `moved` is for the one case that cannot be clean, a rejoin
+    // that came apart and a later one that would not. The rejoins it promised
+    // to take off on the way (`restoredMergeClause`), re-derived — the room
+    // can rejoin somewhere else while the confirm is up.
     if (
       messageData.cascade != null &&
       !cascadeAgreed(
@@ -5745,6 +6156,7 @@ async function handleSelectHistory(conn, session, messageData) {
         "stale-cascade",
         messageData.group,
         false,
+        operationId,
       );
       return;
     }
@@ -5757,21 +6169,23 @@ async function handleSelectHistory(conn, session, messageData) {
         outcome.refusal,
         messageData.group,
         outcome.moved,
+        operationId,
       );
     } else {
-      reportRewindDone(
+      await reportRewindDone(
         session,
         "room",
         messageData.group,
         linesLeftEmpty(session, dormantBefore),
+        operationId,
       );
     }
     return;
   }
   // Roll ONE line back out of its dive, onto any main-flow frame it has
-  // already visited (2026-09-02) — payload-distinguished like the three
-  // rewinds around it. `selectedIdx` indexes the line's MAIN trail; omitted,
-  // it means the frame the line dived from. `frame` is the race guard.
+  // already visited — payload-distinguished like the three rewinds around it.
+  // `selectedIdx` indexes the line's MAIN trail; omitted, it means the frame
+  // the line dived from. `frame` is the race guard.
   if (
     messageData.exitSub &&
     messageData.lineId != null &&
@@ -5795,21 +6209,24 @@ async function handleSelectHistory(conn, session, messageData) {
         refusal,
         messageData.frame,
         false,
+        operationId,
       );
     } else {
-      reportRewindDone(
+      await reportRewindDone(
         session,
         "sub",
         messageData.frame,
         linesLeftEmpty(session, dormantBefore),
+        operationId,
+        messageData.lineId,
       );
     }
     return;
   }
-  // Targeted per-line rewind (owner, 2026-07-19): an EXPLICIT, admin-only
-  // jump of one NAMED line within its own active trail (main flow or its
-  // current sub dive). `frame` is the race guard — it must still be the
-  // trail entry at selectedIdx.
+  // Targeted per-line rewind (owner): an EXPLICIT, admin-only jump of one
+  // NAMED line within its own active trail (main flow or its current sub
+  // dive). `frame` is the race guard — it must still be the trail entry at
+  // selectedIdx.
   if (messageData.lineId != null && session.hasSessionLines) {
     // The rejoins this rewind promised to walk back through, re-derived. Only
     // for a line that is still standing: a GHOST entry names a line that is not
@@ -5833,6 +6250,7 @@ async function handleSelectHistory(conn, session, messageData) {
           "stale-cascade",
           messageData.frame,
           false,
+          operationId,
         );
         return;
       }
@@ -5858,19 +6276,22 @@ async function handleSelectHistory(conn, session, messageData) {
         refusal,
         messageData.frame,
         progress.moved,
+        operationId,
       );
     } else {
-      reportRewindDone(
+      await reportRewindDone(
         session,
         "line",
         messageData.frame,
         linesLeftEmpty(session, dormantBefore),
+        operationId,
+        messageData.lineId,
       );
     }
     return;
   }
-  // The IMPLICIT bound-line {selectedIdx} jump stays retired for
-  // session-lines rooms (decided 2026-07-19): rewinds are the room-wide
+  // The IMPLICIT bound-line {selectedIdx} jump stays retired for session-lines
+  // rooms: rewinds are the room-wide
   // {group} checkpoint rewind or the explicit {lineId} rewind above — the
   // clients no longer offer the implicit form, but don't trust them.
   // Vanilla scores keep {selectedIdx}: their single playhead IS the room.
@@ -5889,9 +6310,6 @@ async function messageHandle(conn, message) {
   // proves its network stack is. Read back as quietSince in the lines payload.
   conn.lastSeen = Date.now();
   const sessionId = messageData.sid;
-  const clientIndex = messageData.cid;
-  const password = messageData.sig;
-  const msg = messageData.msg;
   const session = db.sessionTable.getById(sessionId);
 
   if (!session) {
@@ -5901,13 +6319,32 @@ async function messageHandle(conn, message) {
     return;
   }
 
+  return session.runExclusively(() =>
+    messageHandleExclusively(conn, messageData, session),
+  );
+}
+
+// WebSocket callbacks are independent async roots. Once a room has been
+// resolved, run the complete message on its mutation lane so performer taps,
+// reconnect/revival, admin controls, and structural rewinds cannot interleave.
+async function messageHandleExclusively(conn, messageData, session) {
+  if (session.isSessionDeleted) return;
+  const sessionId = messageData.sid;
+  const clientIndex = messageData.cid;
+  const password = messageData.sig;
+  const msg = messageData.msg;
+
   // Session Lines: restore barrier bookkeeping after a restart (once, cheap).
   // Re-evaluate only AFTER the grace window — evaluating now would see zero
   // reconnected devices, so every missing target would appear unreachable.
   if (rehydrateBarriers(session)) {
     setTimeout(() => {
-      tryReleaseBarriers(session)
-        .then(() => tryReleaseGroupWaits(session))
+      session
+        .runExclusively(async () => {
+          if (session.isSessionDeleted) return;
+          await tryReleaseBarriers(session);
+          await tryReleaseGroupWaits(session);
+        })
         .catch((e) => console.error("post-rehydrate barrier check error", e));
     }, ATTRITION_GRACE_MS);
   }
@@ -5924,7 +6361,7 @@ async function messageHandle(conn, message) {
       password === session.playerPassword || password === session.adminPassword;
     // Session Lines: bind this connection to its device id + line (restores the
     // device's line on reconnect; one line ⇒ lines[0]).
-    ensureLineAssignment(session, conn, did);
+    await ensureLineAssignment(session, conn, did);
 
     sendToClient(conn, 0, {
       m: MESSAGES.MSG_PING,
@@ -5934,13 +6371,26 @@ async function messageHandle(conn, message) {
     return;
   }
 
-  // The spectator rule, server side (owner, 2026-09-04): "a rider is a
-  // spectator, and a spectator can't affect the session in any way". A rider's
-  // page only ever sends PING (handled above) and NEED_DISPLAY — its tap
-  // handler returns on `!window.staffCode` and the operator controls are
-  // rendered for admins only — so refusing everything else costs a legitimate
-  // rider nothing, and the rule stops depending on the client to enforce it.
+  // The spectator rule, server side (owner): "a rider is a spectator, and a
+  // spectator can't affect the session in any way". A rider's page only ever
+  // sends PING (handled above) and NEED_DISPLAY — its tap handler returns on
+  // `!window.staffCode` and the operator controls are rendered for admins only
+  // — so refusing everything else costs a legitimate rider nothing, and the
+  // rule stops depending on the client to enforce it.
   if (conn.isStaff === false && msg !== MESSAGES.MSG_NEED_DISPLAY) {
+    return;
+  }
+
+  // The live/count snapshot only announces compact structural summaries. A
+  // validated map connection asks for the heavy cascade/landing/trail detail
+  // once per announced topology version.
+  if (
+    msg === MESSAGES.MSG_NEED_DISPLAY &&
+    messageData.structuralDetails
+  ) {
+    if (isAdmin && conn.isMapView && session.hasSessionLines) {
+      sendStructuralDetailsToMap(session, conn);
+    }
     return;
   }
 
@@ -5972,10 +6422,6 @@ async function messageHandle(conn, message) {
         frameVotingDur === "false" ||
         session.votingDuration === 0)
     ) {
-      const customHoldDur = parseCustomDur(
-        session.holdDuration,
-        nextFrameHoldingDur,
-      );
       // Session Lines: an instant tap on a session-sub-start link dives (same
       // rule as a voted advance — choosing the link IS the dive).
       const subLink = subLinkForAdvanceTarget(
@@ -5984,17 +6430,19 @@ async function messageHandle(conn, message) {
         Number(nextFrameIndex),
       );
       if (subLink) {
+        // No hold started here: the dive lands on the sub's START, and
+        // enterSubSession starts THAT frame's holding period. This tap speaks
+        // for the return landing — the frame the link names, reached only on
+        // the way back out.
         await diveViaSubLink(session, line, subLink);
-        if (customHoldDur > 0) {
-          await startHoldingForSessionWithDelay(session, line, 0);
-        }
         return;
       }
       line.setCurrIdxTo(Number(nextFrameIndex));
       await session.saveSessionStateToFile();
 
       emitHistoryToAdmins(session, line);
-      if (customHoldDur > 0) {
+      // Asked AFTER the move, of the frame the line is now on.
+      if (holdsAtLanding(session, line)) {
         await startHoldingForSessionWithDelay(session, line, 0);
       }
       await showLineAfterArrivalIfNeeded(session, line);
@@ -6041,7 +6489,7 @@ async function messageHandle(conn, message) {
   if (msg === MESSAGES.MSG_NEED_DISPLAY) {
     // Re-bind the device to its line (a reconnect re-pings then needs display;
     // restores membership via deviceRegistry — one line ⇒ lines[0]).
-    const line = ensureLineAssignment(session, conn, messageData.did);
+    const line = await ensureLineAssignment(session, conn, messageData.did);
 
     // This device may have just made its line populated (empty lines are not
     // waited for), which can make it a group's straggler — and changes who the
@@ -6052,15 +6500,15 @@ async function messageHandle(conn, message) {
     // to have reconnected first.)
     notifyAdminsBarriers(session);
 
-    // …and tell the device which line that is (2026-09-09). MSG_LINE_ASSIGNED
-    // was only ever sent when a line CHANGED under a device — a split, a
-    // rejoin, a structural undo, a rider re-home — so a device that simply
-    // joined or reconnected carried `window.lineId === null` for the rest of
-    // the session while the operator panel had it placed correctly. Nothing
-    // functional reads the global, but it is the first thing anyone reaches
-    // for when a live room misbehaves, and a null there sends them hunting a
-    // binding bug that does not exist. Riders included: a spectator is bound
-    // to the line it watches, and its re-home already reports the same way.
+    // …and tell the device which line that is. MSG_LINE_ASSIGNED was only ever
+    // sent when a line CHANGED under a device — a split, a rejoin, a
+    // structural undo, a rider re-home — so a device that simply joined or
+    // reconnected carried `window.lineId === null` for the rest of the session
+    // while the operator panel had it placed correctly. Nothing functional
+    // reads the global, but it is the first thing anyone reaches for when a
+    // live room misbehaves, and a null there sends them hunting a binding bug
+    // that does not exist. Riders included: a spectator is bound to the line
+    // it watches, and its re-home already reports the same way.
     if (session.hasSessionLines) {
       sendToClient(conn, 0, {
         m: MESSAGES.MSG_LINE_ASSIGNED,
@@ -6124,10 +6572,10 @@ async function messageHandle(conn, message) {
         history: line.history,
         selectedIdx: line.historyIndex,
       };
-      // Session Lines: always available:false — the implicit bound-line
-      // rewind is retired (2026-07-19), the dropdown is a read-only trail
-      // display; room-checkpoint, targeted-line, and structural-split rewinds
-      // happen from the score map. Omitted for vanilla scores → message
+      // Session Lines: always available:false — the implicit bound-line rewind
+      // is retired, the dropdown is a read-only trail display;
+      // room-checkpoint, targeted-line, and structural-split rewinds happen
+      // from the score map. Omitted for vanilla scores → message
       // byte-identical to today.
       if (session.hasSessionLines) {
         historyPayload.available = false;
@@ -6176,14 +6624,14 @@ async function messageHandle(conn, message) {
     // room still has (pause / global-refresh are already global). A vanilla
     // score has exactly one line, so this reduces to today's behavior.
     //
-    // NON-RETIRED, not merely active (2026-09-12), for the reason MSG_PAUSE
-    // below already gives: a dormant line is one nothing counts as POPULATION
-    // stands on, and it can be revived at any moment (#11). Skipping it here
-    // left it holding `isHolding` from before a global hold-OFF, with no timer
-    // to end it — and the first performer to revive it lands on a line whose
-    // taps MSG_TAP drops in silence, with no way out but another toggle. The
-    // same stale-hold wedge a mid-hold state restore produces, reached without
-    // a restart.
+    // NON-RETIRED, not merely active, for the reason MSG_PAUSE below already
+    // gives: a dormant line is one nothing counts as POPULATION stands on, and
+    // it can be revived at any moment (#11). Skipping it here left it holding
+    // `isHolding` from before a global hold-OFF, with no timer to end it — and
+    // the first performer to revive it lands on a line whose taps MSG_TAP
+    // drops in silence, with no way out but another toggle. The same
+    // stale-hold wedge a mid-hold state restore produces, reached without a
+    // restart.
     const targetLines = session.hasSessionLines
       ? nonRetiredLines(session)
       : session.lines;
@@ -6198,12 +6646,12 @@ async function messageHandle(conn, message) {
       m: MESSAGES.MSG_CHECK_HOLD,
       isHold,
     });
-    // Track-group hold sync (2026-07-20): toggling hold OFF ends occupants'
-    // holding periods, which can release a group that was waiting on them
-    // (tryReleaseGroupWaits only releases, never parks — safe when toggling ON).
-    // A hold-until barrier held open by a parked line's own unfinished hold
-    // takes the same edge — and the SM toggle is the documented remedy for a
-    // line left holding with no timer (state restored mid-hold).
+    // Track-group hold sync: toggling hold OFF ends occupants' holding
+    // periods, which can release a group that was waiting on them
+    // (tryReleaseGroupWaits only releases, never parks — safe when toggling
+    // ON). A hold-until barrier held open by a parked line's own unfinished
+    // hold takes the same edge — and the SM toggle is the documented remedy
+    // for a line left holding with no timer (state restored mid-hold).
     if (session.hasSessionLines) {
       await tryReleaseBarriers(session);
       await tryReleaseGroupWaits(session);
@@ -6230,13 +6678,13 @@ async function messageHandle(conn, message) {
     // Session Lines: pause is global, but each line must resume on ITS own
     // frame — a session-wide showIdx would yank every line to the admin's.
     //
-    // EVERY non-retired line, not just the active ones (2026-09-12): a line is
-    // "dormant" when nothing on it counts as POPULATION (decision #12), which
-    // riders never do — so a merge undo that hands a route back to a performer
-    // who has gone home leaves a line carrying only spectators, and addressing
-    // the active ones alone left those devices on a placeholder through the
-    // next unpause, with no way back until someone joined the line. A dormant
-    // line with nobody on it at all is simply a send to no one.
+    // EVERY non-retired line, not just the active ones: a line is "dormant"
+    // when nothing on it counts as POPULATION (decision #12), which riders
+    // never do — so a merge undo that hands a route back to a performer who
+    // has gone home leaves a line carrying only spectators, and addressing the
+    // active ones alone left those devices on a placeholder through the next
+    // unpause, with no way back until someone joined the line. A dormant line
+    // with nobody on it at all is simply a send to no one.
     if (session.hasSessionLines) {
       for (const l of nonRetiredLines(session)) {
         sendToLine(session, l.id, 0, {
@@ -6268,9 +6716,7 @@ async function messageHandle(conn, message) {
     // instead of ordering. Serialized here rather than inside the hold because
     // the same interleaving also lets one gesture commit between another's
     // validation and its own commit.
-    return runExclusively(session, () =>
-      handleSelectHistory(conn, session, messageData),
-    );
+    return handleSelectHistory(conn, session, messageData);
   }
 
   if (msg === MESSAGES.MSG_GLOBAL_REFRESH) {
@@ -6285,41 +6731,39 @@ async function messageHandle(conn, message) {
   // frame (or none → release all waiting barriers); reuses the Chunk J release
   // path. Inert for vanilla scores (no barriers).
   //
-  // `{advance: true}` is the opposite resolution (2026-08-16): don't let the
-  // barrier go without its stragglers — bring the stragglers to the barrier.
-  // `{lineIds}` narrows that to named lines (2026-08-28), which is what the
-  // map's per-line "advance this line" sends.
+  // `{advance: true}` is the opposite resolution: don't let the barrier go
+  // without its stragglers — bring the stragglers to the barrier. `{lineIds}`
+  // narrows that to named lines, which is what the map's per-line "advance
+  // this line" sends.
   //
-  // `{eject: true, lineId, sub}` (2026-09-01) is not a barrier resolution at
-  // all — it pops ONE line out of a sub-score onto that dive's return landing,
-  // with no barrier involved — but it rides the same admin command, told apart
-  // by its payload shape exactly as MSG_SELECT_HISTORY already carries four
-  // different rewinds.
+  // `{eject: true, lineId, sub}` is not a barrier resolution at all — it pops
+  // ONE line out of a sub-score onto that dive's return landing, with no
+  // barrier involved — but it rides the same admin command, told apart by its
+  // payload shape exactly as MSG_SELECT_HISTORY already carries four different
+  // rewinds.
   if (msg === MESSAGES.MSG_BARRIER_RELEASED) {
     if (session.hasSessionLines) {
-      // On the SAME queue as MSG_SELECT_HISTORY (2026-09-12). Everything below
-      // is what that message already is — an admin gesture that walks the
-      // room's shared state over several `await`s — and the queue was put
-      // there because `connection.on("message")` dispatches without waiting
-      // for the previous message to finish. Serializing only the rewinds left
-      // the other half of the same map's toolbar free to interleave with them:
+      // On the SAME queue as MSG_SELECT_HISTORY. Everything below is what that
+      // message already is — an admin gesture that walks the room's shared
+      // state over several `await`s — and the queue was put there because
+      // `connection.on("message")` dispatches without waiting for the previous
+      // message to finish. Serializing only the rewinds left the other half of
+      // the same map's toolbar free to interleave with them:
       // `forceAdvanceStragglers` can reach `applyRecombine` and record a
       // rejoin on the very population a rewind validated its whole chain
       // against a moment earlier, and an eject can move a line out of a sub
       // between a walk's validation and its commit.
-      return runExclusively(session, async () => {
-        if (messageData.eject) {
-          await ejectLineFromSub(session, messageData.lineId, messageData.sub);
-        } else if (messageData.advance) {
-          await forceAdvanceStragglers(
-            session,
-            messageData.frame,
-            messageData.lineIds,
-          );
-        } else {
-          await forceReleaseBarrier(session, messageData.frame);
-        }
-      });
+      if (messageData.eject) {
+        await ejectLineFromSub(session, messageData.lineId, messageData.sub);
+      } else if (messageData.advance) {
+        await forceAdvanceStragglers(
+          session,
+          messageData.frame,
+          messageData.lineIds,
+        );
+      } else {
+        await forceReleaseBarrier(session, messageData.frame);
+      }
     }
     return;
   }
@@ -6379,3 +6823,4 @@ if (fs.existsSync(configDataFile)) {
 app.set("Database", db);
 app.set("sendToAllClients", sendToAllClients);
 app.set("sendToAllClientsWithDelay", sendToAllClientsWithDelay);
+app.set("resetSessionConnections", resetSessionConnections);

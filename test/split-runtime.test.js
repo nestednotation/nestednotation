@@ -305,12 +305,12 @@ module.exports = {
     });
   },
 
-  // Decided 2026-07-17: a SPLIT frame inside a track group still divides its
-  // line when the group's synchronized window closes — resolveGroupVoting
-  // delegates it to the split path (balanced children) instead of moving the
-  // whole line to one default link. This drives the same decision sequence on
-  // the on-disk "-test- Session lines 2" score: G (1 voter → I) and H
-  // (session-split="2" → J/K, 2 players, nobody voted).
+  // Decided: a SPLIT frame inside a track group still divides its line when
+  // the group's synchronized window closes — resolveGroupVoting delegates it
+  // to the split path (balanced children) instead of moving the whole line to
+  // one default link. This drives the same decision sequence on the on-disk
+  // "-test- Session lines 2" score: G (1 voter → I) and H (session-split="2" →
+  // J/K, 2 players, nobody voted).
   "grouped split: group close divides the no-vote split line balanced across J/K": async () => {
     const session = await buildScore("-test- Session lines 2", {
       id: "__group_split_test__",
@@ -386,9 +386,9 @@ module.exports = {
     assert.strictEqual(parent.status, "active");
   },
 
-  // Structural merge undo (2026-09-05) on real BMLine objects: A splits into
-  // B/C, the two lines walk to D/E, they rejoin at H — and the undo puts each
-  // of them back on the frame it left, with the device it carried.
+  // Structural merge undo on real BMLine objects: A splits into B/C, the two
+  // lines walk to D/E, they rejoin at H — and the undo puts each of them back
+  // on the frame it left, with the device it carried.
   "merge undo: the rejoin at H is put back, devices and all": async () => {
     const session = await buildScore("-test- Session lines 2", {
       id: "__merge_undo_test__",

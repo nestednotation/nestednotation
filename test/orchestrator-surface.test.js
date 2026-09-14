@@ -4,12 +4,12 @@
  * `bin/www` reaches the orchestrator through ONE object — the instance
  * `createOrchestrator` returns — while the module also has a `module.exports`
  * listing the same pure helpers for the unit tests. The two lists are written
- * out by hand, in different places, and nothing connected them: adding a helper
- * to `module.exports` and forgetting the instance produced a module that loads,
- * unit tests that pass, and a `TypeError: orch.X is not a function` thrown at
- * the moment an operator clicks something mid-piece (2026-09-12, `cascadeSteps`
- * — the cascade race guard was dead on arrival and every structural undo it
- * guarded refused in silence).
+ * out by hand, in different places, and nothing connected them: adding a
+ * helper to `module.exports` and forgetting the instance produced a module
+ * that loads, unit tests that pass, and a `TypeError: orch.X is not a
+ * function` thrown at the moment an operator clicks something mid-piece
+ * (`cascadeSteps` — the cascade race guard was dead on arrival and every
+ * structural undo it guarded refused in silence).
  *
  * So the check is made from the call site: every `orch.<name>` that appears in
  * `bin/www` has to exist on a real instance. Cheap, and it fails at the moment

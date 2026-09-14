@@ -962,13 +962,32 @@ body.ipad {
 }
 #session-map-header {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 1em;
   padding: 0.3em 0.8em;
   font-size: 0.85em;
   border-bottom: 1px solid #ddd;
 }
+#session-map-heading {
+  display: flex;
+  flex: 1 1 18em;
+  align-items: center;
+  gap: 1em;
+  min-width: 0;
+}
+#session-map-title,
 #session-map-status {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+#session-map-title {
+  flex: 1 1 auto;
+}
+#session-map-status {
+  flex: 0 1 auto;
   color: #777;
 }
 #session-map-relayout,
@@ -978,7 +997,12 @@ body.ipad {
   border: 1px solid #ccc;
   background: #f4f4f4;
   border-radius: 0.3em;
-  padding: 0.1em 0.6em;
+  padding: 0.45em 0.7em;
+  /* The map is operated from a tablet as often as from a desktop, and these
+     controls sat ~22px high — under half the 44px a finger can be expected to
+     hit. Floors, not sizes: the label still decides the width. */
+  min-width: 44px;
+  min-height: 44px;
   cursor: pointer;
 }
 #session-map-legend-toggle[aria-expanded="true"],
@@ -1071,6 +1095,9 @@ body.ipad {
 }
 #session-map-back {
   margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 0.35em;
 }
 /* Barrier valve strip — the one place the waiting barriers and their valves
    live, shown between the header and the canvas so a stall is resolvable
@@ -1260,7 +1287,11 @@ body.ipad {
 #session-map-menu {
   position: fixed;
   z-index: 1001;
-  min-width: 160px;
+  min-width: min(160px, calc(100vw - 8px));
+  max-width: calc(100vw - 8px);
+  max-height: calc(100vh - 8px);
+  box-sizing: border-box;
+  overflow: auto;
   background: #fff;
   border: 1px solid #999;
   border-radius: 0.3em;
@@ -1290,6 +1321,9 @@ body.ipad {
   text-align: left;
   padding: 0.25em 0.5em;
   border-radius: 0.25em;
+  /* Same finger floor as the header controls. A rewind entry is destructive
+     and stood one line of text high, directly above its neighbour. */
+  min-height: 44px;
   cursor: pointer;
 }
 #session-map-menu button:hover:not(:disabled) {

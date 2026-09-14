@@ -28,17 +28,18 @@ html
   //- manager, and the old score's node positions must not leak into the new one.
   body(class="session-map-page", data-score-folder=scoreTitle)
     div(id="session-map-header")
-      span(id="session-map-title") score map — #{scoreTitle}
-      span(id="session-map-status") loading…
+      div(id="session-map-heading")
+        span(id="session-map-title") score map — #{scoreTitle}
+        span(id="session-map-status") loading…
       button(id="session-map-relayout", type="button", title="discard manual arrangement and re-run automatic layout") re-layout
       //- The canvas carries a dozen encodings (route colours, trail shades,
       //- ghosts, badges) and had nowhere to explain them. Filled and toggled by
       //- session-map.js, which owns the styles they describe.
       button(id="session-map-legend-toggle", type="button", title="what the colours and badges mean") ? legend
-      //- The receipts this map has shown, kept for the session. A rewind is the
-      //- one gesture an operator may have to account for afterwards, and a
-      //- toast that has timed out was the only record there was.
-      button(id="session-map-log-toggle", type="button", title="the rewinds this map has made", disabled) rewind log
+      //- The session's persisted receipts. A rewind is the one gesture an
+      //- operator may have to account for afterwards, long after its toast or
+      //- the map tab that initiated it has gone away.
+      button(id="session-map-log-toggle", type="button", title="the rewinds this session has made", disabled) rewind log
       a(id="session-map-back", href="#") back to session
     div(id="ws-reconnect-indicator")
     div(id="session-map-legend", style="display:none")
