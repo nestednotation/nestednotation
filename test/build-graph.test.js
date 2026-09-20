@@ -3,17 +3,19 @@
  *
  * Drives a session-lines fixture score through the REAL database.js build path
  * (buildSVGContent) and asserts the graph is populated + the session is flagged.
- * The fixture is created under public/data for the build, then torn down.
+ * The fixture is written to a temporary data directory and built into a
+ * temporary state directory, both removed afterwards; public/data and
+ * server_state are never touched.
  *
  * The byte-identical guarantee for vanilla scores is covered by baseline.test.js.
  */
 
 const assert = require("node:assert");
 const fs = require("node:fs");
+const os = require("node:os");
 const path = require("node:path");
 
 const { buildScore } = require("../bin/build-score.js");
-const { DATA_DIR, SERVER_STATE_DIR } = require("../database.js");
 
 const FIXTURE_FOLDER = "__session_lines_fixture__";
 const FIXTURE_ID = "__sl_fixture__";
@@ -32,8 +34,10 @@ ${aTags}
 }
 
 function writeFixture() {
-  const dir = path.join(DATA_DIR, FIXTURE_FOLDER);
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "nn-build-graph-"));
+  const dir = path.join(root, "data", FIXTURE_FOLDER);
   fs.mkdirSync(dir, { recursive: true });
+  fs.mkdirSync(path.join(root, "state"));
   const frames = {
     "START.svg": frameSvg({ "session-split": "2" }, ["B.svg", "C.svg"]),
     "B.svg": frameSvg({ "session-track-group": "g" }, ["D.svg"]),
@@ -44,25 +48,18 @@ function writeFixture() {
   for (const [name, svg] of Object.entries(frames)) {
     fs.writeFileSync(path.join(dir, name), svg);
   }
-  return dir;
-}
-
-function cleanup(dir) {
-  try {
-    fs.rmSync(dir, { recursive: true, force: true });
-  } catch (_) {}
-  for (const ext of [".content.svg", ".html", ".about.svg"]) {
-    try {
-      fs.rmSync(path.join(SERVER_STATE_DIR, `${FIXTURE_ID}${ext}`), { force: true });
-    } catch (_) {}
-  }
+  return root;
 }
 
 module.exports = {
   "session-lines fixture populates session.graph through the real build": async () => {
-    const dir = writeFixture();
+    const root = writeFixture();
     try {
-      const session = await buildScore(FIXTURE_FOLDER, { id: FIXTURE_ID });
+      const session = await buildScore(FIXTURE_FOLDER, {
+        id: FIXTURE_ID,
+        dataDir: path.join(root, "data"),
+        stateDir: path.join(root, "state"),
+      });
 
       assert.strictEqual(session.hasSessionLines, true, "hasSessionLines should be set");
       assert.ok(session.graph, "session.graph should be populated");
@@ -72,7 +69,7 @@ module.exports = {
       assert.deepStrictEqual(session.graph.holdUntilTargets["D.svg"], ["B.svg", "C.svg"]);
       assert.deepStrictEqual(session.graph.rejoinTargets["D.svg"], ["DONE.svg"]);
     } finally {
-      cleanup(dir);
+      fs.rmSync(root, { recursive: true, force: true });
     }
   },
 };

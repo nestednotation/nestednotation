@@ -37,17 +37,14 @@ const {
   holdUntilSatisfied,
 } = require("../lib/session-lines/orchestrator");
 
-const RUNTIME = path.join(__dirname, "..", "bin", "www");
+// The production rule itself, not a copy of it. This file used to mirror
+// `landingHoldElapsed` locally because the runtime is not a module — so every
+// behavioural case below could go on passing while the real clock changed
+// underneath it. It lives in lib/session-lines/line.js now, and bin/www imports
+// the same function.
+const { landingHoldElapsed } = require("../lib/session-lines/line");
 
-/** bin/www `landingHoldElapsed`, mirrored (the runtime is not a module). */
-function landingHoldElapsed(line) {
-  if (!line) return true;
-  if (line.isStandby || line.standbyTimer != null) return false;
-  if (line.holdingTimer != null) return false;
-  if (!line.isHolding) return true;
-  const end = Number(line.currentEndHoldTimeStamp) || 0;
-  return end > 0 && Date.now() >= end;
-}
+const RUNTIME = path.join(__dirname, "..", "bin", "www");
 
 /** bin/www `holdRefStates`, mirrored: one line per frame here. */
 function holdRefStates(lines) {
@@ -254,13 +251,16 @@ module.exports = {
     );
   },
 
-  "the runtime's gate is the clock, not the flag": () => {
+  // The rule itself is exercised above, against the imported function. What
+  // source text can still usefully say is that the RUNTIME reaches for that
+  // function rather than for the `isHolding` flag it used to read — an
+  // architectural check, and named as one.
+  "the runtime wires the barrier and the group to that same clock": () => {
     const src = fs.readFileSync(RUNTIME, "utf8");
-    // holdPendingAtFrame used to read `!!line.isHolding || line.standbyTimer`.
     assert.match(
       src,
-      /function holdPendingAtFrame\(line\) \{\s*return !landingHoldElapsed\(line\);/,
-      "the barrier's own hold gate must go through landingHoldElapsed",
+      /landingHoldElapsed,\s*\n\s*holdPendingAtFrame,\s*\n\} = require\("\.\.\/lib\/session-lines\/line"\);/,
+      "the runtime must import the shared phase clock",
     );
     // …and so must the track group's hold sync, for the same reason.
     assert.match(src, /isHolding: \(l\) => !landingHoldElapsed\(l\),/);

@@ -611,6 +611,36 @@ body.ipad {
   border: 1px solid #ffa400;
 }
 
+/* Session Lines — a sub-score's frames are fetched on the first dive, and that
+   fetch can be slow or fail. Unlike the barrier banner this is NOT a navigation
+   message: it reports the page's own state and, on failure, carries the only
+   action that clears it — so it shows in play mode too. Hidden entirely until
+   session.js stamps a state on it. */
+#sub-load-indicator {
+  position: fixed;
+  left: 50%;
+  bottom: calc(min(10vh, 60px) + 70px);
+  transform: translateX(-50%);
+  font-size: 18px;
+  color: #9a9a9a;
+  background: rgba(255, 255, 255, 0.9);
+  border-radius: 8px;
+  padding: 6px 10px;
+  width: fit-content;
+  display: none;
+  z-index: 5;
+}
+
+#sub-load-indicator[data-state] {
+  display: block;
+}
+
+#sub-load-indicator[data-state="error"] {
+  color: #d98200;
+  border: 1px solid #ffa400;
+  cursor: pointer;
+}
+
 #loading-sound-indicator::before {
   content: "";
   display: block;
@@ -990,7 +1020,25 @@ body.ipad {
   flex: 0 1 auto;
   color: #777;
 }
+/* Present for assistive technology, not drawn. */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+/* A startup failure is read in full, not cut to one ellipsised line. */
+#session-map-status.startup-error {
+  white-space: normal;
+  color: #b3261e;
+}
 #session-map-relayout,
+#session-map-retry,
 #session-map-legend-toggle,
 #session-map-log-toggle,
 #session-map-zoom button {

@@ -6,13 +6,6 @@ const fs = require("fs");
 
 const { cache, SESSION_CACHE_KEY } = require("../utils/sessionCache");
 
-let prefixDir = ".";
-const testPrefixFile = prefixDir + "/account/admin.dat";
-if (!fs.existsSync(testPrefixFile)) {
-  prefixDir = "..";
-}
-const SERVER_STATE_DIR = `${prefixDir}/server_state`;
-
 router.get(
   "/:sessionId/svgcontent.html",
   cache("30 minutes"),
@@ -28,11 +21,27 @@ router.get(
       return;
     }
 
+    if (session.scoreUnavailable) {
+      res.status(503).type("text/plain").send("Score unavailable");
+      return;
+    }
+
     res.header("data-session-folder", session.folder);
 
-    const stream = fs.createReadStream(
-      `${SERVER_STATE_DIR}/${sessionId}.content.svg`,
-    );
+    // The revision the live score describes (database.js publishScoreBundle).
+    const stream = fs.createReadStream(session.bundleFile("content.svg"));
+    // A missing or unreadable file (a score that never built, a session being
+    // deleted) is answered here; unhandled, the stream error crashes the server.
+    stream.on("error", (err) => {
+      if (res.headersSent) {
+        res.destroy(err);
+        return;
+      }
+      res
+        .status(err.code === "ENOENT" ? 404 : 500)
+        .type("text/plain")
+        .send(err.code === "ENOENT" ? "Score content not built" : "Score content unreadable");
+    });
     stream.pipe(res);
   },
 );
@@ -228,7 +237,14 @@ router.get("/*", cache("30 minutes"), async function (req, res) {
     return;
   }
 
-  const data = fs.readFileSync(`${SERVER_STATE_DIR}/${sessionId}.html`, {
+  // No score found for this session (database.js #publishBundle): an older
+  // baked page on disk would show frames the session no longer has.
+  if (session.scoreUnavailable) {
+    res.status(503).type("text/plain").send("Score unavailable");
+    return;
+  }
+
+  const data = fs.readFileSync(session.bundleFile("html"), {
     encoding: "utf-8",
   });
   res.send(data);

@@ -14,6 +14,7 @@ const {
   readDirSorted,
   readDirSortedSync,
   clearDirCache,
+  clearDirCacheUnder,
 } = require("../utils/readDir");
 
 // Stub both readdir flavours to return `entries` verbatim, run `fn`, restore.
@@ -170,6 +171,36 @@ module.exports = {
       clearDirCache("/fake/cached");
       readDirSortedSync("/fake/cached");
       assert.strictEqual(reads, 2, "clearDirCache did not evict the entry");
+    } finally {
+      fs.readdirSync = realSync;
+      clearDirCache();
+    }
+  },
+
+  "clearDirCacheUnder evicts a folder and everything below it, nothing else": async () => {
+    const reads = {};
+    const realSync = fs.readdirSync;
+    fs.readdirSync = (dir) => {
+      reads[dir] = (reads[dir] || 0) + 1;
+      return FRAMES.slice();
+    };
+    const dirs = [
+      "/data/Score",
+      "/data/Score/Frames",
+      "C:\\data\\Score/Sounds",
+      "/data/Score2/Frames",
+      "/data/Other",
+    ];
+    try {
+      dirs.forEach((d) => readDirSortedSync(d));
+      clearDirCacheUnder("/data/Score/");
+      clearDirCacheUnder("C:\\data\\Score");
+      dirs.forEach((d) => readDirSortedSync(d));
+      assert.deepStrictEqual(
+        dirs.map((d) => reads[d]),
+        [2, 2, 2, 1, 1],
+        "only /data/Score and its subfolders are re-read",
+      );
     } finally {
       fs.readdirSync = realSync;
       clearDirCache();

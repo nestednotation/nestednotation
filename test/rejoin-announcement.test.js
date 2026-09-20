@@ -40,7 +40,7 @@ function runtimeFunction(src, name, nextName) {
 module.exports = {
   "a barrier release frees the parked lines and moves none of them": () => {
     const src = fs.readFileSync(RUNTIME, "utf8");
-    const fn = runtimeFunction(src, "releaseBarrier", "runRejoin");
+    const fn = runtimeFunction(src, "releaseBarrier", "settleCoLocatedLines");
 
     // It un-parks and tells the devices so…
     assert.match(fn, /l\.isBarrierWaiting = false;/);
@@ -82,23 +82,33 @@ module.exports = {
     );
   },
 
-  "co-presence is the only thing that merges lines": () => {
+  "co-presence is the only thing that merges lines — on EVERY node": () => {
+    // One line per node (owner): two lines standing on the same node merge,
+    // whether or not a rejoin-at announced that frame. Exactly two callers —
+    // the arrival itself, and the settle pass for the landings that do not
+    // arrive (rewinds, operator valves, a revival).
     const src = fs.readFileSync(RUNTIME, "utf8");
     const calls = src.match(/await runRejoin\(/g) || [];
-    assert.strictEqual(
-      calls.length,
-      1,
-      "runRejoin must have exactly one caller: the co-presence branch",
-    );
+    assert.strictEqual(calls.length, 2, "runRejoin: arrival + settle only");
 
-    // …and that caller is the one in afterLineArrivedInner, gated on 2+ lines
-    // standing on the rejoin target frame.
     const arrival = runtimeFunction(
       src,
       "afterLineArrivedInner",
       "handleSubTransitions",
     );
-    assert.match(arrival, /converging\.length >= 2/);
-    assert.match(arrival, /await runRejoin\(session, converging, frameName\)/);
+    assert.match(arrival, /const coLocated = coLocatedLines\(session, line\);/);
+    assert.match(
+      arrival,
+      /await runRejoin\(session, \[line, \.\.\.coLocated\], frameName, \{ inPlace: true \}\)/,
+    );
+    // …checked before the barrier and the track group, and never gated on the
+    // frame being somebody's rejoin target.
+    assert.ok(
+      arrival.indexOf("coLocatedLines(") < arrival.indexOf("enterBarrier("),
+    );
+    assert.doesNotMatch(arrival, /rejoinTarget/);
+
+    const settle = runtimeFunction(src, "settleCoLocatedLines", "runRejoin");
+    assert.match(settle, /arrive: false/, "a settle never re-runs an arrival");
   },
 };

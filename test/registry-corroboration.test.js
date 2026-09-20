@@ -26,6 +26,7 @@ const {
   markReached,
   registryCoveredTargets,
   registryClaimants,
+  roomWalkedRefs,
   beginReachedGeneration,
   holdUntilSatisfied,
 } = require("../lib/session-lines/orchestrator");
@@ -185,5 +186,31 @@ module.exports = {
     beginReachedGeneration(s, []);
     assert.deepStrictEqual(s.reachedGranted, []);
     assert.deepStrictEqual(s.reachedTargets, {});
+  },
+
+  "the map's walked set is the claimants without the granted carve-out": () => {
+    const s = ownersRoom();
+    s.reachedGranted = ["F.svg"];
+    assert.ok(registryClaimants(s).has("f.svg"), "granted still corroborates a barrier");
+    const walked = roomWalkedRefs(s);
+    assert.ok(!walked.has("f.svg"), "but nobody stood on it, so it is not walked");
+    // Before the fork, a line's main route while it dives, and the qualified
+    // sub frames all count as walked.
+    for (const ref of ["start.svg", "a.svg", "c.svg", "d.svg", "tetra2/start.svg"]) {
+      assert.ok(walked.has(ref), `${ref} was walked`);
+    }
+  },
+
+  "an empty branch's seed frame is not walked, but still counts for barriers": () => {
+    const s = ownersRoom();
+    // A one-device split: L3 was seeded on C.svg and nobody ever joined it.
+    s.lines.push(line("L3", { status: "dormant", history: ["C2.svg"], historyIndex: 0 }));
+    assert.ok(!roomWalkedRefs(s).has("c2.svg"), "no device stood on the seed frame");
+    assert.ok(registryClaimants(s).has("c2.svg"), "barrier corroboration is unchanged");
+    // A line that walked and THEN went dormant keeps the frames behind it.
+    s.lines[3] = line("L3", { status: "dormant", history: ["C2.svg", "D2.svg"], historyIndex: 1 });
+    const walked = roomWalkedRefs(s);
+    assert.ok(walked.has("c2.svg"));
+    assert.ok(!walked.has("d2.svg"), "its position is the dormant marker's, not green");
   },
 };

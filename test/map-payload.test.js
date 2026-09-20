@@ -1,8 +1,6 @@
 /** Compact structural map transport and terminal-history persistence. */
 
 const assert = require("node:assert");
-const fs = require("node:fs");
-const path = require("node:path");
 
 const {
   compactPersistedEvents,
@@ -11,7 +9,6 @@ const {
   structuralProjectionVersion,
 } = require("../lib/session-lines/map-payload");
 
-const ROOT = path.join(__dirname, "..");
 
 function largeProjection(count) {
   const trail = Array.from({ length: 80 }, (_, i) => `frame-${i}.svg`);
@@ -71,12 +68,14 @@ module.exports = {
     );
   },
 
-  "100, 200 and 500 event broadcasts stay compact": () => {
+  // Sizes only, of the summary step alone. The real snapshot path (projection,
+  // latecomers, trails, serialization, fan-out) is measured by
+  // bin/bench-map-payload.js and bounded by the handler cases in
+  // map-snapshot.test.js; a wall-clock budget here measured the host.
+  "structural event summaries stay compact at 100, 200 and 500 events": () => {
     for (const count of [100, 200, 500]) {
       const projection = largeProjection(count);
-      const started = process.hrtime.bigint();
       const summaries = structuralEventSummaries(projection);
-      const elapsedMs = Number(process.hrtime.bigint() - started) / 1e6;
       const compactBytes = Buffer.byteLength(JSON.stringify(summaries));
       const fullBytes = Buffer.byteLength(JSON.stringify(projection));
       assert.strictEqual(summaries.length, count * 2);
@@ -89,10 +88,6 @@ module.exports = {
         `${count} events did not materially reduce the broadcast`,
       );
       assert.ok(summaries.every((entry) => entry.cascade === undefined));
-      assert.ok(
-        elapsedMs < 250,
-        `${count} events took ${elapsedMs.toFixed(1)} ms to summarize`,
-      );
     }
   },
 
@@ -133,30 +128,80 @@ module.exports = {
     assert.strictEqual(compact[0].oversizedUnusedField, undefined);
   },
 
-  "runtime separates map details and rejects unauthorized map pages": () => {
-    const runtime = fs.readFileSync(path.join(ROOT, "bin", "www"), "utf8");
-    const client = fs.readFileSync(
-      path.join(ROOT, "public", "javascripts", "session-map.js"),
-      "utf8",
-    );
-    const route = fs.readFileSync(
-      path.join(ROOT, "routes", "session.js"),
-      "utf8",
-    );
-    const database = fs.readFileSync(
-      path.join(ROOT, "database.js"),
-      "utf8",
-    );
+  "the map page refuses anyone without the admin password": () => {
+    const router = require("../routes/session.js");
+    const handler = router.stack.find(
+      (l) => l.route && l.route.path === "/:sessionId/map",
+    ).route.stack[0].handle;
+    const session = {
+      id: "S1",
+      folder: "Score",
+      adminPassword: "admin-pw",
+      playerPassword: "player-pw",
+    };
+    const request = (query, found = session) => {
+      const out = { status: 200, rendered: null, body: null };
+      const res = {
+        status(code) {
+          out.status = code;
+          return this;
+        },
+        type() {
+          return this;
+        },
+        send(body) {
+          out.body = body;
+        },
+        render(view, locals) {
+          out.rendered = { view, locals };
+        },
+      };
+      handler(
+        {
+          params: { sessionId: "S1" },
+          query,
+          app: { get: () => ({ sessionTable: { getById: () => found } }) },
+        },
+        res,
+      );
+      return out;
+    };
 
-    assert.match(runtime, /ordinaryAdmins[\s\S]*mapAdmins/);
-    assert.match(runtime, /structuralDetails:\s*true/);
-    assert.match(
-      client,
-      /requestStructuralDetails[\s\S]*structuralDetails:\s*true/,
+    for (const query of [{}, { p: "" }, { p: "player-pw" }, { p: "ADMIN-PW" }]) {
+      const out = request(query);
+      assert.strictEqual(out.status, 403, JSON.stringify(query));
+      assert.strictEqual(out.rendered, null, "a refused request rendered the map");
+      assert.match(out.body, /Admin password invalid or expired/);
+    }
+    assert.strictEqual(request({ p: "admin-pw" }, null).status, 404);
+
+    const ok = request({ p: "admin-pw" });
+    assert.strictEqual(ok.status, 200);
+    assert.strictEqual(ok.rendered.view, "session-map");
+    assert.strictEqual(ok.rendered.locals.sessionId, "S1");
+  },
+
+  "persisted structural events are compacted by the real toJSON": () => {
+    const { BMSession } = require("../database.js");
+    const session = new BMSession();
+    const heavy = {
+      id: 1,
+      status: "undone",
+      frame: "J.svg",
+      participants: [{ lineId: "L1", history: ["A.svg"], deviceIds: ["d1"] }],
+      oversizedUnusedField: "x".repeat(1000),
+    };
+    session.splitEvents = [{ ...heavy }];
+    session.mergeEvents = [{ ...heavy }];
+    const saved = JSON.parse(JSON.stringify(session.toJSON()));
+    assert.deepStrictEqual(
+      saved.splitEvents,
+      JSON.parse(JSON.stringify(compactPersistedEvents([heavy], "split"))),
     );
-    assert.match(route, /req\.query\.p !== session\.adminPassword/);
-    assert.match(route, /status\(403\)[\s\S]*Admin password invalid or expired/);
-    assert.match(database, /splitEvents:\s*compactPersistedEvents/);
-    assert.match(database, /mergeEvents:\s*compactPersistedEvents/);
+    assert.deepStrictEqual(
+      saved.mergeEvents,
+      JSON.parse(JSON.stringify(compactPersistedEvents([heavy], "merge"))),
+    );
+    assert.ok(!JSON.stringify(saved).includes("x".repeat(100)), "a dead field was persisted");
   },
 };

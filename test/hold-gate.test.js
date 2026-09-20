@@ -13,14 +13,20 @@
  * freeing the line the moment its device was told to show the frame.
  *
  * So `session.holdDuration` is the DEFAULT VALUE and nothing else: every gate
- * goes through `holdsAtLanding`. This pins that at the source, because bin/www
- * is a server entry point rather than a module and the rule cannot be asserted
- * by calling it — the same reason `orchestrator-surface.test.js` reads the file.
+ * goes through `holdsAtLanding`. The middle cases land real lines through the
+ * production handlers (test/www-harness.js) and read the hold each landing got.
+ * The remaining source checks are single-statement rules the handlers cannot
+ * expose on their own: that no other read of the default exists, and that the
+ * sub-end rule is stated rather than inherited from the hold flag.
  */
 
 const assert = require("node:assert");
 const fs = require("node:fs");
 const path = require("node:path");
+
+const { loadWww, removeBuildOutputs } = require("./www-harness");
+const { buildSessionLinesFixture } = require("./session-lines-fixture");
+const { MESSAGES: M } = require("../constants");
 
 const RUNTIME = path.join(__dirname, "..", "bin", "www");
 
@@ -64,29 +70,64 @@ module.exports = {
     );
   },
 
-  "every hold start is gated on the landing, and asked after the move": () => {
-    const lines = codeLines();
-    const starts = lines.filter((l) =>
-      l.text.includes("startHoldingForSessionWithDelay("),
-    );
-    // Its own declaration, plus the call sites.
-    assert.ok(starts.length >= 4, `expected the hold starts, got ${starts.length}`);
-    const calls = starts.filter((l) => !l.text.includes("async function"));
-    assert.ok(calls.length >= 3, `expected call sites, got ${calls.length}`);
-    // Each call site sits under a gate derived from the landing: either the
-    // `holds` the standby paths capture after `setCurrIdxTo`, or a direct
-    // `holdsAtLanding` test.
-    for (const call of calls) {
-      const window = lines
-        .slice(Math.max(0, call.n - 6), call.n)
-        .map((l) => l.text)
-        .join("\n");
-      assert.ok(
-        /\bholds\b|holdsAtLanding\(/.test(window),
-        `bin/www:${call.n} starts a hold with no landing gate above it`,
-      );
-    }
-  },
+  // The neighbourhood check this replaces looked for `holds` within six lines
+  // above each hold start — true of a gate asked BEFORE the move just as much
+  // as after it, and false after a harmless reflow. These land real lines
+  // through the production handlers and read the hold they got.
+
+  "a landing holds for its own frame's value, asked after the move": () =>
+    withDemoRoom("__hold_gate_after_move__", async (h, session) => {
+      session.holdDuration = 0;
+      const player = await join(h, session, "p1");
+      const line = session.lines[0];
+
+      // Left authors nothing and the room default is 0: no hold.
+      await walk(h, session, player, "START.svg", "Left.svg");
+      await h.advance(3000);
+      assert.strictEqual(line.isHolding, false, "Left.svg held with nothing authored");
+      assert.strictEqual(line.holdingTimer, null);
+
+      // Barrier authors 19. A gate asked before the move would read Left's 0.
+      await walk(h, session, player, "Left.svg", "Barrier.svg");
+      const hold = await holdStarted(h, line);
+      assert.strictEqual(hold.seconds, 19);
+      assert.strictEqual(hold.endMinusBegin, 19000);
+    }),
+
+  "the room default applies only where the frame is silent": () =>
+    withDemoRoom("__hold_gate_default__", async (h, session) => {
+      session.holdDuration = 4;
+      const player = await join(h, session, "p1");
+      const line = session.lines[0];
+
+      await walk(h, session, player, "START.svg", "Left.svg");
+      const atLeft = await holdStarted(h, line);
+      assert.strictEqual(atLeft.seconds, 4, "Left.svg is silent: the default holds");
+      await h.advance(4000 + 100);
+      assert.strictEqual(line.isHolding, false);
+
+      await walk(h, session, player, "Left.svg", "Barrier.svg");
+      const atBarrier = await holdStarted(h, line);
+      assert.strictEqual(atBarrier.seconds, 19, "an authored value beats the default");
+    }),
+
+  "a sub-score frame holds by its own value too": () =>
+    withDemoRoom("__hold_gate_sub__", async (h, session) => {
+      session.holdDuration = 4;
+      const player = await join(h, session, "p1");
+
+      await walk(h, session, player, "START.svg", "Right.svg");
+      const line = lineOf(session, player);
+      await h.advance(4000 + 3000);
+      // Right's one link dives into Tetra, whose START authors 7.
+      await tapNext(h, session, player, "Right.svg", "Barrier.svg");
+      for (let i = 0; i < 160 && line.subStack.length === 0; i++) {
+        await h.advance(250);
+      }
+      assert.strictEqual(line.subStack.length, 1, "the line never dived");
+      const inSub = await holdStarted(h, line);
+      assert.strictEqual(inSub.seconds, 7);
+    }),
 
   "a sub-end never completes on arrival": () => {
     // The companion rule, and the one that made moving the gate dangerous.
@@ -121,3 +162,67 @@ module.exports = {
     );
   },
 };
+
+// ── Helpers for the handler cases ────────────────────────────────────────────
+
+async function withDemoRoom(id, fn) {
+  const session = await buildSessionLinesFixture({ id });
+  let h = null;
+  try {
+    h = loadWww();
+    h.addSession(session);
+    await fn(h, session);
+  } finally {
+    if (h) h.dispose();
+    removeBuildOutputs(session.id);
+  }
+}
+
+async function join(h, session, did) {
+  const conn = h.connect({ label: did });
+  await h.send(conn, M.MSG_PING, { sid: session.id, sig: "player", did, clientTime: 0 });
+  await h.send(conn, M.MSG_NEED_DISPLAY, { sid: session.id, sig: "player", did });
+  return conn;
+}
+
+function tapNext(h, session, conn, from, to) {
+  const idx = (n) => session.listFilesInLowerCase.indexOf(n.toLowerCase());
+  return h.send(conn, M.MSG_TAP, {
+    sid: session.id,
+    sig: "player",
+    did: conn.label,
+    cid: idx(from),
+    // The link's position on the frame is part of its id.
+    selectedId: `${idx(to)}#${from}#${session.graph.byFrame[from].hrefs.indexOf(to)}`,
+    ctx: "",
+  });
+}
+
+// The line this device is on now — a split can move it to a new one.
+function lineOf(session, conn) {
+  return session.lines.find((l) => l.id === conn.lineId);
+}
+
+async function walk(h, session, conn, from, to) {
+  await tapNext(h, session, conn, from, to);
+  for (
+    let i = 0;
+    i < 160 && session.listFiles[lineOf(session, conn).currentIndex] !== to;
+    i++
+  ) {
+    await h.advance(250);
+  }
+  assert.strictEqual(session.listFiles[lineOf(session, conn).currentIndex], to);
+}
+
+// Wait out the standby gap until the landing's hold begins; report it.
+async function holdStarted(h, line) {
+  for (let i = 0; i < 80 && line.holdingTimer == null; i++) {
+    await h.advance(50);
+  }
+  assert.ok(line.holdingTimer != null, "the landing never began holding");
+  return {
+    seconds: line.currentHoldingDuration,
+    endMinusBegin: line.currentEndHoldTimeStamp - line.currentBeginHoldTimeStamp,
+  };
+}

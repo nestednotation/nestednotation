@@ -15,11 +15,23 @@ const assert = require("node:assert");
 const { buildSessionLinesFixture } = require("./session-lines-fixture");
 const { BMLine } = require("../lib/session-lines/line");
 const { createOrchestrator } = require("../lib/session-lines/orchestrator");
-const { performerLineConnections } = require("../lib/session-lines/routing");
+// POPULATION, which is what production's `groupWaitState` passes as its
+// `deviceCount` — riders excluded, because a spectator cannot act on a line
+// and so must not make a group wait for it. This file used to import
+// `performerLineConnections`, which KEEPS riders: the two differ only on a
+// rider-only line, and no fixture here had one, so the mismatch was invisible.
+const { populationLineConnections } = require("../lib/session-lines/routing");
 const { MESSAGES } = require("../constants");
 
 module.exports = {
-  "barrier releases on rendezvous (targets done anywhere), then rejoins": async () => {
+  // SCOPE: a COMPONENT case. It marks the registry itself and calls
+  // `applyRecombine` directly, so it verifies the rendezvous RULE — a
+  // hold-until is satisfied by `done` targets wherever they were reached,
+  // and the co-located lines then merge to the lowest-id survivor — against
+  // the real score graph and real BMLine objects. It does not run
+  // `afterLineArrived`, `enterBarrier` or `tryReleaseBarriers`, so it would
+  // not notice those ceasing to call each other.
+  "component: a rendezvous is done-anywhere, then rejoins": async () => {
     const session = await buildSessionLinesFixture({
       id: "__barrier_test__",
     });
@@ -216,17 +228,21 @@ module.exports = {
     session.lines.push(l1, l2, l3);
 
     const connections = [
-      { sessionId: session.id, lineId: "L1", isAdmin: false },
-      { sessionId: session.id, lineId: "L2", isAdmin: false },
-      { sessionId: session.id, lineId: "L3", isAdmin: true }, // SM session tab
+      // Every connection states what it is: `isStaff` decides rider vs
+      // performer and is assigned to every socket at MSG_PING, so a fixture
+      // that omits it is not a connection the server could ever hold.
+      { sessionId: session.id, lineId: "L1", isAdmin: false, isStaff: true },
+      { sessionId: session.id, lineId: "L2", isAdmin: false, isStaff: true },
+      // SM session tab: an admin is a player with extra tools (L3).
+      { sessionId: session.id, lineId: "L3", isAdmin: true, isStaff: true },
     ];
-    // Mirrors bin/www groupWaitState: performers count — admins included,
-    // map-view tabs not (see the dedicated map-view test below).
+    // Mirrors bin/www groupWaitState: POPULATION counts — admins included,
+    // map-view tabs and riders not (each has its own case below).
     const frameFor = (l) => session.listFiles[l.currentIndex];
     const opts = {
       frameNameForLine: frameFor,
       deviceCount: (l) =>
-        performerLineConnections(connections, session.id, l.id).length,
+        populationLineConnections(connections, session.id, l.id).length,
       inSub: (l) => l.subStack.length > 0,
       isBlocked: (l) => !!l.isBarrierWaiting,
       canReach: (l) =>
@@ -286,15 +302,21 @@ module.exports = {
     session.lines.push(l1, l2, l3);
 
     const connections = [
-      { sessionId: session.id, lineId: "L1", isAdmin: false },
-      { sessionId: session.id, lineId: "L2", isAdmin: false },
-      { sessionId: session.id, lineId: "L3", isAdmin: true, isMapView: true },
+      { sessionId: session.id, lineId: "L1", isAdmin: false, isStaff: true },
+      { sessionId: session.id, lineId: "L2", isAdmin: false, isStaff: true },
+      {
+        sessionId: session.id,
+        lineId: "L3",
+        isAdmin: true,
+        isStaff: true,
+        isMapView: true,
+      },
     ];
     const frameFor = (l) => session.listFiles[l.currentIndex];
     const state = orch.groupArrivalState(session.lines, groupFrames, {
       frameNameForLine: frameFor,
       deviceCount: (l) =>
-        performerLineConnections(connections, session.id, l.id).length,
+        populationLineConnections(connections, session.id, l.id).length,
       inSub: (l) => l.subStack.length > 0,
       isBlocked: (l) => !!l.isBarrierWaiting,
       canReach: (l) =>
@@ -312,6 +334,86 @@ module.exports = {
     );
     assert.deepStrictEqual(state.incomingIds, []);
   },
+
+  // The branch that told the two connection filters apart. A RIDER is a
+  // spectator: it cannot tap, so a line carrying only riders can never arrive,
+  // and a group that waits for it waits for ever. `performerLineConnections`
+  // counts riders and `populationLineConnections` does not — with no rider in
+  // any fixture, this file could not tell which one it was using.
+  "group wait ignores a rider-only incoming line (spectators are not population)":
+    async () => {
+      const session = await buildSessionLinesFixture({
+        id: "__group_rider_test__",
+      });
+      const idx = (n) => session.listFilesInLowerCase.indexOf(n.toLowerCase());
+
+      const orch = createOrchestrator({
+        MESSAGES,
+        now: () => 0,
+        createLine: (s, id) => new BMLine(s, id),
+        send: () => {},
+      });
+      const groupFrames = orch.groupFramesLower(session.graph, "converge");
+
+      for (const l of session.lines) {
+        l.status = "retired";
+      }
+      const l1 = new BMLine(session, "L1");
+      l1.setCurrIdxTo(idx("Left.svg"));
+      const l2 = new BMLine(session, "L2");
+      l2.setCurrIdxTo(idx("Right.svg"));
+      const l3 = new BMLine(session, "L3");
+      l3.setCurrIdxTo(idx("START.svg"));
+      session.lines.push(l1, l2, l3);
+
+      const frameFor = (l) => session.listFiles[l.currentIndex];
+      const optsFor = (connections) => ({
+        frameNameForLine: frameFor,
+        deviceCount: (l) =>
+          populationLineConnections(connections, session.id, l.id).length,
+        inSub: (l) => l.subStack.length > 0,
+        isBlocked: (l) => !!l.isBarrierWaiting,
+        canReach: (l) =>
+          orch.canReachFrames(
+            session.graph.frameLinks,
+            session.listFiles,
+            frameFor(l),
+            groupFrames,
+          ),
+      });
+
+      // L3 is watched by two riders and nobody else.
+      const riderOnly = [
+        { sessionId: session.id, lineId: "L1", isStaff: true },
+        { sessionId: session.id, lineId: "L2", isStaff: true },
+        { sessionId: session.id, lineId: "L3", isStaff: false },
+        { sessionId: session.id, lineId: "L3", isStaff: false },
+      ];
+      const state = orch.groupArrivalState(
+        session.lines,
+        groupFrames,
+        optsFor(riderOnly),
+      );
+      assert.strictEqual(
+        state.waiting,
+        false,
+        "a rider-only line can never arrive — the group must not wait for it",
+      );
+      assert.deepStrictEqual(state.incomingIds, []);
+
+      // One performer joins that same line and it becomes a real incoming line.
+      const withPlayer = [
+        ...riderOnly,
+        { sessionId: session.id, lineId: "L3", isStaff: true },
+      ];
+      const after = orch.groupArrivalState(
+        session.lines,
+        groupFrames,
+        optsFor(withPlayer),
+      );
+      assert.strictEqual(after.waiting, true);
+      assert.deepStrictEqual(after.incomingIds, ["L3"]);
+    },
 
   "operator eject: an abandoned dive completes nothing": async () => {
     // Ejecting a line out of a sub-score is a forward MOVE, not a completion:

@@ -13,10 +13,11 @@
  *         IP in database.js), orthogonal to session-lines output;
  *       * line endings — a git-checkout artifact (core.autocrlf), see below.
  *
- * If this fails after an intentional output change, re-capture with:
+ * If this fails after an intentional output change, re-capture with
  *   node bin/build-score.js "-u- Hello" __baseline__
- *   cp server_state/__baseline__.content.svg test/baseline/
- *   cp server_state/__baseline__.html       test/baseline/
+ * which prints the two built files (their names carry the build's revision);
+ * copy them to test/baseline/__baseline__.content.svg and
+ * test/baseline/__baseline__.html.
  */
 
 const assert = require("node:assert");
@@ -71,18 +72,16 @@ function assertMatchesBaseline(label, actualPath, expectedPath, normalize) {
 module.exports = {
   "vanilla score builds byte-identical to baseline": async () => {
     const session = await buildScore(BASELINE_FOLDER, { id: BASELINE_ID });
-    const { SERVER_STATE_DIR } = require("../database.js");
-
     // content.svg: strict byte-for-byte (no env-dependent content).
     assertMatchesBaseline(
       "content.svg",
-      `${SERVER_STATE_DIR}/${BASELINE_ID}.content.svg`,
+      session.bundleFile("content.svg"),
       path.join(baselineDir, `${BASELINE_ID}.content.svg`),
     );
     // html: byte-for-byte except the deploy-dependent wsPath and line endings.
     assertMatchesBaseline(
       "html",
-      `${SERVER_STATE_DIR}/${BASELINE_ID}.html`,
+      session.bundleFile("html"),
       path.join(baselineDir, `${BASELINE_ID}.html`),
       normalizeHtml,
     );

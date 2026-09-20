@@ -19,22 +19,31 @@ const { MESSAGES } = require("../constants.js");
 // `performerLineConnections` keeps riders and exists for the display counts
 // the operator reads.
 const {
+  lineConnections,
   performerLineConnections,
   populationLineConnections,
   isSpectatorConn,
+  isBoundToSession,
+  canPerform,
   smallestLineId,
   spectatorLandingLineId,
   lineIdNum,
+  lastVacatedLineId,
 } = require("../lib/session-lines/routing");
 // Session Lines: orchestration (split / barrier / rejoin / track-group). All of
 // this is inert unless session.hasSessionLines.
 const { createOrchestrator } = require("../lib/session-lines/orchestrator");
-const { BMLine } = require("../lib/session-lines/line");
+const {
+  BMLine,
+  landingHoldElapsed,
+  holdPendingAtFrame,
+} = require("../lib/session-lines/line");
 const {
   structuralEventSummaries,
   structuralProjectionKey,
   structuralProjectionVersion,
 } = require("../lib/session-lines/map-payload");
+const { buildAdminSnapshots } = require("../lib/session-lines/admin-snapshot");
 
 let prefixDir = ".";
 const testPrefixFile = prefixDir + "/account/admin.dat";
@@ -196,6 +205,83 @@ wsServer.on("request", function (request) {
   });
 });
 
+// ── Display revisions ────────────────────────────────────────────────────────
+// A display message can be scheduled for the FUTURE (`t`), and the client
+// honours that by holding it in a timer. Between the send and the fire the
+// room can move: a rewind repositions the line, a dive changes which frame
+// list the index resolves against, a reconnect answers with a fresh snapshot.
+// The held message then arrived last and won, overwriting a display the server
+// had already corrected — a performer showing the frame they were rewound off,
+// or resolving a main-flow index against a sub's frames.
+//
+// So every message that DRIVES a line's display carries `dr`, a number that
+// only goes up, and the client applies one only if it is at least the last one
+// it applied (`displayRevOk`). A socket generation cannot do this job: a
+// rewind and its stale SHOW live on the same socket.
+//
+// ONE sequence for the whole process, not one per line. A device changes
+// lines — a split hands it a fresh child, a merge a survivor, a structural
+// undo its restored line — and a per-line counter numbered each line's
+// messages from wherever that line happened to be. A device that had applied
+// revision 20 on L0 and was split onto a new L1 rejected L1's revisions 1…19
+// as stale: frames and snapshots alike, until the new counter caught up. One
+// sequence keeps every message ordered against every other, whichever line
+// sent it.
+//
+// Ordering alone does not retire what the OLD line already queued for this
+// device: that message is older than anything the new line sends, but nothing
+// newer may have been applied yet when its timer fires. So the assignment is a
+// display message too (MSG_LINE_ASSIGNED, MSG_BEGIN_SPLIT), and a device whose
+// line CHANGES takes the assignment's revision as its floor — everything the
+// previous line had queued is below it. A device told the id it already has (a
+// merge survivor) keeps its floor, and its own line's queued frame with it.
+//
+// MSG_PAUSE is one because it paints: the placeholder replaces the frame. An
+// unrevisioned pause let the SHOW an advance had queued for the preload
+// deadline land after it and put the frame back up in a paused room.
+//
+// Allocated at send time, which is when the server decides the transition —
+// sends are issued in causal order, so the numbers are too. It rides on the
+// SEND helpers rather than the call sites, because the one that gets
+// forgotten is the one that breaks it. Not persisted: a restart closes every
+// socket, and a new socket is a new epoch on the client (`resetDisplayEpoch`).
+const DISPLAY_MESSAGES = new Set([
+  MESSAGES.MSG_SHOW,
+  MESSAGES.MSG_SUB_ENTER,
+  MESSAGES.MSG_SUB_EXIT,
+  MESSAGES.MSG_PAUSE,
+  MESSAGES.MSG_LINE_ASSIGNED,
+  MESSAGES.MSG_BEGIN_SPLIT,
+]);
+let displayRevCounter = 0;
+
+// The messages that say WHICH SCORE a frame index belongs to, and so carry the
+// line's dive context (`ctx`, `orch.diveContextKey`). The page reports back
+// the context it is displaying on every tap, and MSG_TAP refuses a tap whose
+// context is not the line's: an index and a filename alone cannot tell a main
+// score's START.svg from its sub's.
+const CONTEXT_MESSAGES = new Set([
+  MESSAGES.MSG_SHOW,
+  MESSAGES.MSG_SUB_ENTER,
+  MESSAGES.MSG_SUB_EXIT,
+  MESSAGES.MSG_PAUSE,
+]);
+
+function stampDisplayRev(session, lineId, payload) {
+  if (!payload || !DISPLAY_MESSAGES.has(payload.m)) {
+    return payload;
+  }
+  displayRevCounter += 1;
+  const stamped = { ...payload, dr: displayRevCounter };
+  if (session.hasSessionLines && CONTEXT_MESSAGES.has(payload.m)) {
+    const line = (session.lines || []).find((l) => l && l.id === lineId);
+    if (line) {
+      stamped.ctx = orch.diveContextKey(line.subStack);
+    }
+  }
+  return stamped;
+}
+
 //time = 0 => immediately
 function sendToClient(conn, time, payload) {
   conn.sendUTF(
@@ -204,6 +290,12 @@ function sendToClient(conn, time, payload) {
       ...payload,
     }),
   );
+}
+
+// …and the same, for the display messages a single connection is addressed
+// with (a reconnect's snapshot, a structural gesture's per-device drive).
+function sendDisplayToClient(session, conn, time, payload) {
+  sendToClient(conn, time, stampDisplayRev(session, conn.lineId, payload));
 }
 
 // Encode a broadcast once. Structural map updates can be large, and encoding
@@ -262,7 +354,7 @@ function sendToAllAdmins(session, time, payload) {
 function sendToLine(session, lineId, time, payload) {
   const obj = {
     t: time,
-    ...payload,
+    ...stampDisplayRev(session, lineId, payload),
   };
   wsServer.connections.forEach(function each(conn) {
     if (conn.sessionId === session.id && conn.lineId === lineId) {
@@ -351,12 +443,35 @@ async function ensureLineAssignment(session, conn, deviceId) {
     // Balance over population only — spectators don't occupy a line. (A
     // spectator reaches this only when the room has no active line at all,
     // and then there is nothing live for it to watch anyway.)
-    lineId = smallestLineId(
-      session.lines,
-      wsServer.connections.filter((c) => !isSpectatorConn(c)),
-      session.id,
-    );
+    const population = wsServer.connections.filter((c) => !isSpectatorConn(c));
+    // Nobody is playing: wake the line the room left LAST (see
+    // lastVacatedLineId) rather than the lowest-numbered husk.
+    const vacated = session.lines.some((l) => l.status === "active")
+      ? null
+      : lastVacatedLineId(session.lines);
+    lineId = vacated || smallestLineId(session.lines, population, session.id);
     line = lineId ? session.lines.find((l) => l.id === lineId) : null;
+    // A dormant line is always the smallest (0 devices), so #13 hands newcomers
+    // the dead paths first — but only a revival that puts a line somewhere the
+    // room is NOT already standing brings a path back. Reviving one onto an
+    // occupied frame just doubles a line that already exists, which is what the
+    // owner saw after a finished score: three players joined a room sitting on
+    // `END` and the map drew three separate lines on it. Then the newcomer
+    // balances across the ACTIVE lines instead, which is where the owner wants
+    // late joiners anyway — spread over the room so every one of them can still
+    // reach the point it has got to.
+    if (line && line.status === "dormant" && revivalAddsNoPath(session, line)) {
+      const liveId = smallestLineId(
+        session.lines.filter((l) => l.status === "active"),
+        population,
+        session.id,
+      );
+      const live = liveId ? session.lines.find((l) => l.id === liveId) : null;
+      if (live) {
+        lineId = liveId;
+        line = live;
+      }
+    }
   }
   if (!line) {
     line =
@@ -380,6 +495,11 @@ async function ensureLineAssignment(session, conn, deviceId) {
   if (spectator) {
     return line;
   }
+  // A NEW or moved entry is written out now: it used to wait for the next
+  // unrelated save, so a joiner who arrived just before a restart was known to
+  // the room only in memory and came back as a stranger.
+  const registryChanged =
+    !!deviceId && session.deviceRegistry[deviceId] !== lineId;
   if (deviceId) {
     session.deviceRegistry[deviceId] = lineId;
   }
@@ -405,6 +525,11 @@ async function ensureLineAssignment(session, conn, deviceId) {
     // device revives it again — but an operator reading saved state should not
     // have to know that.
     await fastForwardRevivedLine(session, line);
+    // The revived line may be standing on a node another (dormant) line holds.
+    line = await settleCoLocatedLines(session, line);
+    lineId = line.id;
+    await session.saveSessionStateToFile();
+  } else if (registryChanged) {
     await session.saveSessionStateToFile();
   }
   // First device on a line (a revival, or the adoption of an empty split
@@ -431,10 +556,76 @@ function frameOccupancyExcluding(session, frameName, exclude) {
   }).length;
 }
 
+// The frames the room's OTHER active lines are standing on right now, one
+// entry per line (so repeats read as occupancy). This is what tells a revival
+// whether the latest track-group arrival still describes where the room IS —
+// a room that has moved on, to a later passage or to the end of the score,
+// leaves every frame of that group empty.
+//
+// Undefined — "cannot tell, take the record at its word" — while any active
+// line is mid-DIVE. A dived line stands on no main-flow frame (which is why
+// the occupancy count leaves it out too), so counting it as absent from the
+// group would read a room that is merely inside its sub-scores as a room that
+// has finished with them, and freeze a revival in place instead of landing it
+// on the group those lines are about to come back to.
+function activeMainFlowFrames(session, exclude) {
+  const others = activeLines(session).filter((l) => l !== exclude);
+  if (others.some((l) => l.subStack.length > 0)) {
+    return undefined;
+  }
+  return others
+    .map((l) => frameNameForLine(session, l))
+    .filter((name) => name != null);
+}
+
+// Would reviving `line` bring a PATH back, or just put a second line where the
+// room is already standing?
+//
+// The revival landing answers it: a missing slot of a live track group is a
+// path (that is the whole point of #13's fast-forward), and so is any frame no
+// active line holds. A landing that lands ON an active line is not — it splits
+// the same position across two lines for no musical reason, and the operator's
+// map then shows a crowd of lines on one node.
+//
+// False whenever the question cannot be asked cleanly: a room with a line
+// mid-dive (`activeMainFlowFrames` declines to guess), or a score with no
+// session lines. Revival is the documented default, so an unknown answers for
+// it rather than against.
+function revivalAddsNoPath(session, line) {
+  if (!session.hasSessionLines || !session.graph) {
+    return false;
+  }
+  const occupied = activeMainFlowFrames(session, line);
+  if (!occupied || occupied.length === 0) {
+    return false;
+  }
+  const record = session.latestGroupArrival;
+  const landing =
+    orch.revivalLandingFrame({
+      graph: session.graph,
+      listFiles: session.listFiles,
+      latestGroupFrame: record && record.frame,
+      line,
+      occupancy: (frameName) => frameOccupancyExcluding(session, frameName, line),
+      activeFrames: occupied,
+      // …and when the landing is null the line revives where it froze, which is
+      // the frame that has to be judged instead.
+    }) || frameNameForLine(session, line);
+  if (!landing) {
+    return false;
+  }
+  return occupied.some(
+    (frame) => frame.toLowerCase() === landing.toLowerCase(),
+  );
+}
+
 // Decision #13 revision: a dormant line being revived abandons its frozen
-// position and lands on the room's latest track group — on that group's
-// least-occupied frame, so revivals fill missing track slots rather than
-// doubling covered ones. All playhead mutation is synchronous (callers rely on
+// position and lands where the ROOM is — on the least-occupied frame of the
+// latest track group while the room is still spread across it (so revivals
+// fill missing track slots rather than doubling covered ones), and otherwise
+// on the least-occupied frame the active lines themselves hold. Which of the
+// two applies is revivalLandingFrame's decision, made from the frames below.
+// All playhead mutation is synchronous (callers rely on
 // line.currentIndex being final when this returns its promise); only the
 // registry/persistence follow-ups await. No-op → frozen-position revival.
 async function fastForwardRevivedLine(session, line) {
@@ -448,6 +639,9 @@ async function fastForwardRevivedLine(session, line) {
     latestGroupFrame: record && record.frame,
     line,
     occupancy: (frameName) => frameOccupancyExcluding(session, frameName, line),
+    // Where the ROOM is right now, so the fast-forward can tell a track group
+    // the room is still spread across from one it has long since left behind.
+    activeFrames: activeMainFlowFrames(session, line),
   });
   if (!target) {
     return;
@@ -570,6 +764,28 @@ function landingHoldSeconds(session, line) {
   return parseCustomDur(session.holdDuration, authored);
 }
 
+// How long the line's CURRENT frame opens its choice window for, as the raw
+// authored string (`voting="8"` / `"50%"` / `"false"`), or null when the graph
+// cannot answer for the frame.
+//
+// Same authority argument as `landingHoldSeconds` above, for the same reason
+// and one more: a tap reports the `voting` of the frame it is standing on,
+// read out of the DOM by the page that sent it — so the window's length was
+// decided by a value the client chose. A page with a stale frame list (one
+// mid-dive, one that missed a rewind) reported the wrong frame's window
+// honestly, and a message built by hand could name any length at all. The
+// score is the authority on how long its own frames are open; the tap's value
+// survives only as the fallback for a frame the graph does not carry.
+// The graph is built for EVERY score and carries every frame, so — exactly as
+// for `holding` — a frame it knows answers even when nothing was authored:
+// `voting: null` there means "take the session default", which is an ANSWER
+// and not a gap. Hence `Object.hasOwn` rather than a truth test, and hence the
+// tap's own value surviving only for a frame the graph cannot speak for.
+function landingVotingDur(session, line, tapValue) {
+  const entry = frameGraphEntryForLine(session, line);
+  return entry && Object.hasOwn(entry, "voting") ? entry.voting : tapValue;
+}
+
 // …and WHETHER it is held at all — the same question, of the same frame.
 //
 // The gate and the duration used to be asked of different things: the duration
@@ -611,6 +827,29 @@ function outgoingVoteIdsForLine(session, line) {
     nav.frameList,
     frameNameForLine(session, line),
   );
+}
+
+// The frame index a tap may move this line to, or null when it is refused —
+// `orch.validateTapTarget` asked of the line's ACTIVE score (the sub's frame
+// list and link graph mid-dive). The rule itself lives in the orchestrator so
+// it can be exercised without booting a server.
+//
+// `tapContext` is the dive context the tapping page reports DISPLAYING (the
+// `ctx` its last display message carried). On a session-lines score it must be
+// the line's own; a page that reports none is refused. Vanilla scores never
+// dive, send no context, and are not asked for one.
+function validatedTapTarget(session, line, selectedId, tapContext) {
+  const nav = navigationForLine(session, line);
+  const checkContext = !!session.hasSessionLines;
+  return orch.validateTapTarget({
+    selectedId,
+    frameName: frameNameForLine(session, line),
+    frameList: nav.frameList,
+    frameLinks: nav.frameLinks,
+    currentIndex: line.currentIndex,
+    context: checkContext ? (tapContext == null ? null : tapContext) : undefined,
+    lineContext: checkContext ? orch.diveContextKey(line.subStack) : undefined,
+  });
 }
 
 // ── Rendezvous reached-registry (#6) ─────────────────────────────────────────
@@ -854,6 +1093,24 @@ async function resolveSplit(session, line, gestureId = null) {
   // closed, and conn.currentVoteTo is reset a few lines below.
   const finalCounts = countVoteForLine(session, line);
 
+  // The population whose window just closed — captured BEFORE applySplit, which
+  // is the last moment they can be named: it rebinds each of them to a child,
+  // so afterwards `line.id` no longer identifies the set that voted.
+  //
+  // Only these votes are cleared. Voting windows on independent lines overlap
+  // routinely, and a session-wide loop erased them: a split on L0 wiped L2's
+  // choices mid-window, and because a later vote recalculates the tally from
+  // `conn.currentVoteTo` (and another split's partition reads it directly),
+  // performers on an unrelated line were sent somewhere they did not choose.
+  // Riders and map tabs on the splitting line are included — they never vote,
+  // but they are this line's own connections and clearing a field that is
+  // already -1 for them costs nothing.
+  const votingPopulation = lineConnections(
+    wsServer.connections,
+    session.id,
+    line.id,
+  );
+
   const { children, assignment } = orch.applySplit({
     session,
     parentLine: line,
@@ -881,11 +1138,9 @@ async function resolveSplit(session, line, gestureId = null) {
     }
   });
 
-  // Reset votes on every (now reassigned) connection in this session.
-  wsServer.connections.forEach((conn) => {
-    if (conn.sessionId === session.id) {
-      conn.currentVoteTo = -1;
-    }
+  // Reset votes on the (now reassigned) connections that took part in it.
+  votingPopulation.forEach((conn) => {
+    conn.currentVoteTo = -1;
   });
 
   await session.saveSessionStateToFile();
@@ -906,6 +1161,26 @@ async function resolveSplit(session, line, gestureId = null) {
   for (const child of children) {
     await startArrivalHoldForLanding(session, child);
     await showLineAfterArrivalIfNeeded(session, child);
+  }
+
+  // A child whose only members are OFFLINE devices is born active — the
+  // registry sweep counts them, so it is not a branch "nobody took" — yet
+  // nobody is connected to it. Dormancy is driven by a device leaving (#11),
+  // and there is nobody left to leave, so such a line used to stay active and
+  // empty for the rest of the session. Every fresh joiner then balanced onto
+  // it (0 players beats any populated line) and was dropped on its frame: the
+  // owner's room had finished on END while one of these sat on K, and both of
+  // the next two joiners were put on K. Give it the grace window a disconnect
+  // would: a swept device that comes back in time keeps its branch, otherwise
+  // the line goes dormant and the next joiner is placed by #13.
+  for (const child of children) {
+    if (
+      child.status === "active" &&
+      populationLineConnections(wsServer.connections, session.id, child.id)
+        .length === 0
+    ) {
+      startAttritionGrace(session, child);
+    }
   }
 
   // Admins were reassigned to child lines — refresh their (per-line) history +
@@ -985,6 +1260,19 @@ async function afterLineArrivedInner(session, line) {
     return true;
   }
 
+  // One line per node (owner: "at each node you can only have 1 line — either
+  // that line was merged from other lines, it is still only 1 line at that
+  // node"). Whoever else is standing here — active or dormant, with or without
+  // a rejoin-at announcing it — merges with the line that just arrived, and
+  // the survivor then meets whatever the frame holds (barrier, track group)
+  // through the recursive arrival runRejoin makes.
+  const coLocated = coLocatedLines(session, line);
+  if (coLocated.length > 0) {
+    await runRejoin(session, [line, ...coLocated], frameName, { inPlace: true });
+    if (becameDone) await tryReleaseBarriers(session);
+    return true;
+  }
+
   // v1 sub-sessions are plain: no split / barrier / rejoin inside a sub, so
   // there is no barrier here for this line to join and the release is due now.
   if (line.subStack.length > 0) {
@@ -1015,19 +1303,6 @@ async function afterLineArrivedInner(session, line) {
   // its arrival completed can be acted on now.
   if (becameDone) {
     await tryReleaseBarriers(session);
-  }
-
-  // Bare rejoin-at: a frame that is some line's rejoin TARGET. When 2+ active
-  // lines converge on it (no barrier gating), merge them right here.
-  const rejoinTargetNames = rejoinTargetSet(graph);
-  if (rejoinTargetNames.has(frameName.toLowerCase())) {
-    const converging = activeLines(session).filter(
-      (l) => frameNameForLine(session, l) === frameName,
-    );
-    if (converging.length >= 2) {
-      await runRejoin(session, converging, frameName);
-      return true;
-    }
   }
 
   // Track-group ARRIVAL barrier: a line landing on a grouped frame parks until
@@ -1285,39 +1560,11 @@ function canKeepHoldTargetOpen(session, line, target) {
   return lineCanReachHoldTarget(session, line, target);
 }
 
-// A line whose holding period at its current frame has not finished: either it
-// is running (`isHolding`) or the 1s standby that STARTS it is still pending
-// (`standbyTimer` — the gap between an advance and
-// startHoldingForSessionWithDelay). Both edges call back into
-// tryReleaseBarriers when they end.
-// Has the line's holding period at the frame it is STANDING on run its course?
-//
-// The `isHolding` flag is not the answer, because it is a state and not a clock
-// (owner: "based on the target intrinsic holding period instead of general
-// holding state, to prevent holding block between hold-until notes"). It is set
-// room-wide by the SM hold toggle, with no timer behind it; it survives a state
-// file saved mid-hold, again with no timer (§16); and either way nothing is ever
-// going to clear it. A gate that reads the flag alone then waits for an edge that
-// cannot come — and since a hold-until is exactly such a gate, two frames naming
-// each other stall the room between them.
-//
-// So the question is asked of the FRAME and the clock: the frame's authored
-// `holding` value decided the period (`landingHoldSeconds`, recorded in
-// `currentEndHoldTimeStamp` when it began), and `Date.now()` says whether it is
-// over. Only the two states that mean "not begun / still running" hold it open:
-// the 1 s standby gap ahead of the hold, and a live holding timer.
-function landingHoldElapsed(line) {
-  if (!line) return true;
-  if (line.isStandby || line.standbyTimer != null) return false; // not begun
-  if (line.holdingTimer != null) return false; // running, it will end itself
-  if (!line.isHolding) return true; // nothing is holding this line
-  const end = Number(line.currentEndHoldTimeStamp) || 0;
-  return end > 0 && Date.now() >= end; // flagged, but the period is spent
-}
-
-function holdPendingAtFrame(line) {
-  return !landingHoldElapsed(line);
-}
+// The line phase clock — landingHoldElapsed / holdPendingAtFrame — lives in
+// lib/session-lines/line.js, imported at the top of this file. The reasoning
+// for asking the FRAME and the clock rather than reading the isHolding flag is
+// there with it, and so the barrier tests can import the rule instead of
+// keeping a copy that drifts.
 
 // The clock half of `coveredHoldTargets`, read off the frames the room is
 // standing on: which refs have nothing left to play (`playedOut`) and which are
@@ -1436,15 +1683,6 @@ function lineCanReachHoldTarget(session, line, target) {
   );
 }
 
-// All frame names that are named as a rejoin-at target by some source frame.
-function rejoinTargetSet(graph) {
-  const set = new Set();
-  for (const targets of Object.values(graph.rejoinTargets || {})) {
-    for (const t of targets) set.add(String(t).toLowerCase());
-  }
-  return set;
-}
-
 async function enterBarrier(session, line, frameName, targets) {
   const barrier = ensureBarrier(session);
   const entry =
@@ -1523,7 +1761,10 @@ async function tryReleaseBarriers(session) {
     // before its device had rendered it. The advance is gone (releaseBarrier)
     // and the gate stays: a release ends a holding period, so it must not end
     // one that has not run.
-    const holdPending = parkedLines.some(holdPendingAtFrame);
+    // Called with the line alone: `some` passes (line, index), and the index
+    // would arrive as the rule's injectable clock — a line flagged holding with
+    // no timer behind it (restored mid-hold) then threw from `now()`.
+    const holdPending = parkedLines.some((l) => holdPendingAtFrame(l));
 
     if ((satisfied || forceRelease) && !holdPending) {
       delete barrier.byFrame[frameName];
@@ -1577,7 +1818,87 @@ async function releaseBarrier(session, entry, parkedLines) {
 // and the arrival keeps the holding period it is already playing. The travel
 // branch stays for a caller that merges lines from elsewhere; the barrier
 // release was that caller, until a rejoin became an announcement (§7.3).
-async function runRejoin(session, lines, rejoinFrameName) {
+// The node a line is standing on: its frame, plus the dive stack it is in. Two
+// lines inside a sub-score share a node only when they dived the same way
+// (same sub, same return landing at every level) — otherwise merging them
+// would have to pick one of two different ways back out.
+function lineNodeKey(session, line) {
+  const frame = frameNameForLine(session, line);
+  if (frame == null) return null;
+  return `${orch.diveContextKey(line.subStack)}#${String(frame).toLowerCase()}`;
+}
+
+// Every other non-retired line standing on `line`'s node.
+function coLocatedLines(session, line) {
+  const key = lineNodeKey(session, line);
+  if (key == null) return [];
+  return session.lines.filter(
+    (other) =>
+      other !== line &&
+      other.status !== "retired" &&
+      lineNodeKey(session, other) === key,
+  );
+}
+
+// Enforce one line per node across the whole room, for the landings that do
+// not come through afterLineArrived: every rewind, the operator valves, a
+// revival. Those are authoritative repositions, so the merge does not re-run
+// the frame's arrival (no parking) — it only stops two lines sharing a node.
+// Returns the survivor of the last merge that involved `focus`, or `focus`.
+async function settleCoLocatedLines(session, focus = null) {
+  if (!session.hasSessionLines) return focus;
+  let result = focus;
+  // Lines a structural merge undo has just pulled apart in THIS gesture
+  // (`session.__justSeparated`, set for the length of one rewind message).
+  // The settlement that follows an undo must not re-create the very event the
+  // undo took off: the operator clicked "unmerge", was told the lines were
+  // separated, and one statement later they were merged again on the node
+  // they came apart on — one round trip, no separation, and a fresh merge
+  // event stacked behind the undone one.
+  //
+  // Reaching this at all means the undo could not land a participant anywhere
+  // but the rejoin frame (its predecessor is no longer in the score), so it
+  // is worth saying out loud: the room is briefly two lines deep on one node,
+  // which is visible on the map and settled by the next ordinary landing.
+  const justSeparated = session.__justSeparated || null;
+  for (let guard = 0; guard < session.lines.length + 1; guard++) {
+    const groups = new Map();
+    for (const line of session.lines) {
+      if (line.status === "retired") continue;
+      const key = lineNodeKey(session, line);
+      if (key == null) continue;
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(line);
+    }
+    const crowded = [...groups.values()].find(
+      (group) =>
+        group.length > 1 &&
+        !(justSeparated && group.every((l) => justSeparated.has(l.id))),
+    );
+    if (!crowded) {
+      const stranded = [...groups.values()].find((group) => group.length > 1);
+      if (stranded) {
+        console.warn(
+          `settleCoLocatedLines: leaving ${stranded
+            .map((l) => l.id)
+            .join("+")} on ${frameNameForLine(session, stranded[0])} — ` +
+            `re-merging them would recreate the rejoin this gesture just undid`,
+        );
+      }
+      break;
+    }
+    const survivor = await runRejoin(
+      session,
+      crowded,
+      frameNameForLine(session, crowded[0]),
+      { inPlace: true, arrive: false },
+    );
+    if (focus && crowded.includes(focus) && survivor) result = survivor;
+  }
+  return result;
+}
+
+async function runRejoin(session, lines, rejoinFrameName, opts = {}) {
   const lineIds = lines.map((l) => l.id);
   const { survivor, absorbed } = orch.applyRecombine({
     session,
@@ -1586,14 +1907,18 @@ async function runRejoin(session, lines, rejoinFrameName) {
     frame: rejoinFrameName,
   });
   if (!survivor) {
-    return;
+    return null;
   }
 
   const anyGroupParked = lines.some((l) => l.isGroupWaiting);
   for (const l of absorbed) {
     l.clearAllTimer();
+    cancelAttritionTimer(l);
     l.isBarrierWaiting = false;
     l.isGroupWaiting = false;
+    // A retired line waits nowhere: take it out of any barrier's parked set so
+    // a release is not held open by a line that no longer exists.
+    orch.unparkLine(session, l);
   }
 
   survivor.isBarrierWaiting = false;
@@ -1604,7 +1929,8 @@ async function runRejoin(session, lines, rejoinFrameName) {
   // A co-presence merge finds the survivor already standing on the rejoin
   // frame: it does not travel, and must keep the holding period it is already
   // playing there rather than have one restarted under it.
-  const survivorTravels = targetIdx >= 0 && targetIdx !== survivor.currentIndex;
+  const survivorTravels =
+    !opts.inPlace && targetIdx >= 0 && targetIdx !== survivor.currentIndex;
   if (survivorTravels) {
     survivor.setCurrIdxTo(targetIdx);
   }
@@ -1649,8 +1975,39 @@ async function runRejoin(session, lines, rejoinFrameName) {
     await startArrivalHoldForLanding(session, survivor);
   }
 
+  // A merged line with nobody on it (a dormant husk absorbed into a line whose
+  // own devices are offline) gets the grace window a disconnect would.
+  if (
+    survivor.status === "active" &&
+    populationLineConnections(wsServer.connections, session.id, survivor.id)
+      .length === 0
+  ) {
+    startAttritionGrace(session, survivor);
+  }
+
+  if (opts.arrive === false) {
+    // An authoritative reposition (rewind, valve, revival): show the frame,
+    // re-run nothing — and so park nowhere, the rule every rewind follows.
+    if (orch.unparkLine(session, survivor)) notifyAdminsBarriers(session);
+    if (anyGroupParked || lines.some((l) => l.isBarrierWaiting)) {
+      sendToLine(session, survivor.id, 0, {
+        m: MESSAGES.MSG_BARRIER_RELEASED,
+        frame: rejoinFrameName,
+      });
+    }
+    if (!session.isPause) {
+      sendToLine(session, survivor.id, Date.now() + session.preloadDuration, {
+        m: MESSAGES.MSG_SHOW,
+        showIdx: survivor.currentIndex,
+      });
+    }
+    updateNumberOfConnectionForSession(session);
+    return survivor;
+  }
+
   // The rejoin frame may itself be an orchestration frame.
   await showLineAfterArrivalIfNeeded(session, survivor);
+  return survivor;
 }
 
 // Attrition (#11): a line that loses its last device goes DORMANT (revivable) —
@@ -1700,7 +2057,13 @@ async function handleConnectionClose(session, conn) {
   if (remaining.length > 0) {
     return;
   }
+  startAttritionGrace(session, line);
+}
 
+// Open the #11 grace window on a line nobody is connected to: unless a device
+// claims it within ATTRITION_GRACE_MS (ensureLineAssignment cancels the timer),
+// it goes dormant. A no-op while a window is already running.
+function startAttritionGrace(session, line) {
   if (line._attritionTimer) {
     return; // grace window already running
   }
@@ -1761,29 +2124,29 @@ function rehomeRidersOffLine(session, line) {
   for (const conn of riders) {
     conn.lineId = target.id;
     conn.currentVoteTo = -1;
-    sendToClient(conn, 0, {
+    sendDisplayToClient(session, conn, 0, {
       m: MESSAGES.MSG_LINE_ASSIGNED,
       lineId: target.id,
     });
     if (top) {
-      sendToClient(conn, 0, {
+      sendDisplayToClient(session, conn, 0, {
         m: MESSAGES.MSG_SUB_ENTER,
         sub: top.score,
         showIdx: target.currentIndex,
       });
     } else if (wasInSub) {
-      sendToClient(conn, 0, {
+      sendDisplayToClient(session, conn, 0, {
         m: MESSAGES.MSG_SUB_EXIT,
         showIdx: target.currentIndex,
       });
     } else if (!session.isPause) {
-      sendToClient(conn, 0, {
+      sendDisplayToClient(session, conn, 0, {
         m: MESSAGES.MSG_SHOW,
         showIdx: target.currentIndex,
       });
     }
     if (session.isPause && (top || wasInSub)) {
-      sendToClient(conn, 0, {
+      sendDisplayToClient(session, conn, 0, {
         m: MESSAGES.MSG_PAUSE,
         isPause: true,
         showIdx: target.currentIndex,
@@ -1810,6 +2173,7 @@ async function finalizeAttrition(session, line) {
   }
 
   line.status = "dormant";
+  line.dormantAt = Date.now();
   line.clearAllTimer();
   line.votingTimer = line.holdingTimer = line.standbyTimer = null;
   line.isVoting = false;
@@ -2692,6 +3056,11 @@ async function advanceLineToGroup(session, line, anchorFrame) {
     latestGroupFrame: anchorFrame,
     line,
     occupancy: (frameName) => frameOccupancyExcluding(session, frameName, line),
+    // No activeFrames, deliberately: the liveness test exists to spot a
+    // STALE arrival record, and there is nothing stale here — the operator is
+    // naming the group, on a barrier that is waiting at this moment. Omitting
+    // it keeps the group live by definition, so a straggler still lands even
+    // when it is the first line the group would have.
   });
   if (!target || !(await teleportLineForAdvance(session, line, target))) {
     return false;
@@ -4468,7 +4837,7 @@ function driveLineDisplays(session, lines, inSub) {
       // flow, and it is the behaviour they have always had.
       const was = inSub.get(conn) || null;
       if (top && was !== top.score) {
-        sendToClient(conn, 0, {
+        sendDisplayToClient(session, conn, 0, {
           m: MESSAGES.MSG_SUB_ENTER,
           sub: top.score,
           showIdx: line.currentIndex,
@@ -4476,14 +4845,14 @@ function driveLineDisplays(session, lines, inSub) {
       } else if (!top && was) {
         // Sent even while paused, with the placeholder restored right after, so
         // a stale sub context cannot outlive the undo and break the unpause.
-        sendToClient(conn, 0, {
+        sendDisplayToClient(session, conn, 0, {
           m: MESSAGES.MSG_SUB_EXIT,
           showIdx: line.currentIndex,
         });
       } else if (!session.isPause) {
         // Already in the right view — main flow, or the very sub its line ends
         // in. Only the frame changes.
-        sendToClient(conn, showTime, {
+        sendDisplayToClient(session, conn, showTime, {
           m: MESSAGES.MSG_SHOW,
           showIdx: line.currentIndex,
         });
@@ -4491,7 +4860,7 @@ function driveLineDisplays(session, lines, inSub) {
         continue; // a paused device in the right view keeps its placeholder
       }
       if (session.isPause) {
-        sendToClient(conn, 0, {
+        sendDisplayToClient(session, conn, 0, {
           m: MESSAGES.MSG_PAUSE,
           isPause: true,
           showIdx: line.currentIndex,
@@ -4565,6 +4934,10 @@ async function mergeRewindOne(session, eventId, expectedFrame) {
     cancelAttritionTimer(line);
     line._lastReachedRef = null;
     recordArrival(session, line);
+    // …and it is off limits to this gesture's own one-line-per-node settlement
+    // (see settleCoLocatedLines). The set lives for the length of one rewind
+    // message, so a LATER landing merges them again exactly as the score asks.
+    if (session.__justSeparated) session.__justSeparated.add(line.id);
   }
 
   await tryReleaseBarriers(session);
@@ -4908,8 +5281,8 @@ async function lineRewindWalk(
   let line = (session.lines || []).find(
     (l) => l && l.id === lineId && l.status !== "retired",
   );
-  // A merge-ABSORBED line (owner). The map offers its route too — as a ghost,
-  // since the line itself is gone — so the operator can reach for the line
+  // A merge-ABSORBED line (owner). The map offers rewind entries on its route too
+  // (`absorbedLines`), since the line itself is gone — so the operator can reach for the line
   // they watched walk there instead of the survivor that swallowed it. It has
   // to come BACK before it can be rewound, so the merge undo runs first, and
   // whole (mergeRewind folds the convergence, and takes off anything the room
@@ -5270,172 +5643,45 @@ async function cancelVotingTimer(session, line) {
   });
 }
 
+// Every call in one turn of the event loop becomes ONE push, taken after the
+// turn's mutations have run: a single gesture calls this several times (a
+// rewind lands lines, re-homes riders and settles the room, each announcing
+// itself), and every push rebuilds and re-serializes the whole snapshot for
+// every admin tab. The push reads the room when it goes out, so the one that
+// is sent is the one the others would have ended on.
 function updateNumberOfConnectionForSession(session) {
-  // An admin is a player with extra tools (L3 decision), so admins count as
-  // players here and in the per-line split below — isStaff is true for both
-  // the player and admin passwords. Map-view tabs are observation tools and
-  // appear in NO count this payload carries: a tool must leave no footprint.
-  const performers = wsServer.connections.filter(
-    (conn) => conn.sessionId == session.id && !conn.isMapView,
-  );
-  const countPlayer = performers.filter((conn) => conn.isStaff).length;
-  const countRider = performers.filter((conn) => !conn.isStaff).length;
+  if (session.__snapshotPending) return;
+  session.__snapshotPending = true;
+  setImmediate(() => {
+    session.__snapshotPending = false;
+    pushConnectionSnapshot(session);
+  });
+}
 
-  const basePayload = {
-    m: MESSAGES.MSG_SHOW_NUMBER_CONNECTION,
-    playerCount: countPlayer,
-    riderCount: countRider,
-  };
-  const ordinaryAdmins = wsServer.connections.filter(
-    (conn) => conn.sessionId === session.id && conn.isAdmin && !conn.isMapView,
-  );
-  const mapAdmins = wsServer.connections.filter(
-    (conn) => conn.sessionId === session.id && conn.isAdmin && conn.isMapView,
-  );
-  // Map-only operational history. It is small and capped, but ordinary admin
-  // session tabs do not render it, so keep it off their frequent count push.
-  let mapPayload =
-    mapAdmins.length > 0
-      ? { ...basePayload, rewindLog: session.rewindLog || [] }
-      : basePayload;
+// The room-specific answers the snapshot builder needs
+// (lib/session-lines/admin-snapshot.js); it imports nothing from here.
+const snapshotRoom = {
+  messageType: MESSAGES.MSG_SHOW_NUMBER_CONNECTION,
+  structuralProjection: (session) => structuralProjection(session),
+  roomCheckpointOptions: (session) => roomCheckpointOptions(session),
+  structuralEventSummaries,
+  mergeLatecomerCount: (session, entry) => mergeLatecomerCount(session, entry),
+  mainHistoryStateForLine: (line) => mainHistoryStateForLine(line),
+  frameNameForLine: (session, line) => frameNameForLine(session, line),
+  mainFlowFrameForLine: (session, line) => mainFlowFrameForLine(session, line),
+  subOriginFrameForLine: (session, line) => subOriginFrameForLine(session, line),
+  walkedRefs: (session) => orch.roomWalkedRefs(session),
+  lineIdNum,
+};
 
-  // Session Lines (Chunk M): per-line device distribution so the operator sees
-  // the room's split across lines and can spot stalled ones (dormant, or parked
-  // at a barrier). Ordinary admin/session tabs use `lines` for their compact
-  // status panel, but none of the structural projection below.
-  if (
-    session.hasSessionLines &&
-    ordinaryAdmins.length + mapAdmins.length > 0
-  ) {
-    // Which track groups the room can be rewound to, decided HERE.
-    // The map used to re-derive this from `lines[]` with its own copy of
-    // `commonCheckpoints`, and the two answers could not agree: the copy counted
-    // riders as population (a spectator is never population — decision #12) so a
-    // rider-only line hid a checkpoint the server would have accepted, and it
-    // had no way to see the split records at all, so it could not know where a
-    // line whose trail a fork truncated had really crossed the group. One
-    // answer, computed where both inputs live, and the menu is a projection of
-    // it like everything else on that canvas. Outside the memoized projection
-    // because it turns on who is CONNECTED, which changes with every join and
-    // leave; `session.graph.groups` is small and the trails are already in hand.
-    if (mapAdmins.length > 0) {
-      const structural = structuralProjection(session);
-      mapPayload.roomCheckpoints = roomCheckpointOptions(session);
-      mapPayload.structuralVersion = structural.version;
-      mapPayload.structuralEvents = structuralEventSummaries(structural).map(
-        (summary) => {
-          if (summary.kind !== "merge" || !summary.available) return summary;
-          const entry = structural.mergeRewinds.find(
-            (candidate) => candidate.eventId === summary.eventId,
-          );
-          if (!entry) return summary;
-          const counted = mergeLatecomerCount(session, entry);
-          return {
-            ...summary,
-            latecomers: counted.total,
-            latecomersHere: counted.live,
-          };
-        },
-      );
-    }
-    const fullLines = session.lines
-      .filter((l) => l.status !== "retired")
-      .map((l) => {
-        // DISPLAY counts, so riders are kept here (and only here): the operator
-        // wants to see the audience, while every decision the room makes runs
-        // over populationLineConnections instead.
-        const linePerformers = performerLineConnections(
-          wsServer.connections,
-          session.id,
-          l.id,
-        );
-        const mainHistory = mainHistoryStateForLine(l);
-        // The oldest app-level message on this line. A device whose JS is gone
-        // (a frozen tab, a wedged renderer) keeps answering the transport
-        // keepalive from its network stack, so the only tell left is that its
-        // 60s MSG_PING stopped. Reported, never acted on: a backgrounded phone
-        // throttles that ping too, and dropping a live performer would change
-        // line population and group waits.
-        // Population only: a quiet RIDER is not a stalled room — a spectator
-        // holds nothing open — so flagging one would send the operator after a
-        // device that cannot be the cause.
-        const lastSeens = linePerformers
-          .filter((c) => c.isStaff !== false)
-          .map((c) => c.lastSeen)
-          .filter((t) => typeof t === "number");
-        return {
-          id: l.id,
-          // The durable identity behind the recycled number (§8.4). The map
-          // needs it to tell a merge this line really walked through from one
-          // that swallowed an OLDER route of the same number, before it warns
-          // that a rewind reaches back past it.
-          uid: l.uid,
-          status: l.status,
-          players: linePerformers.filter((c) => c.isStaff).length,
-          riders: linePerformers.filter((c) => !c.isStaff).length,
-          quietSince: lastSeens.length ? Math.min(...lastSeens) : null,
-          frame: frameNameForLine(session, l),
-          inSub: l.subStack.length > 0,
-          sub:
-            l.subStack.length > 0
-              ? l.subStack[l.subStack.length - 1].score
-              : null,
-          // Where an operator eject would drop this line: the OUTERMOST dive's
-          // return frame, resolved against the live list. Null while the score
-          // no longer offers that landing, so the map's menu can say why it has
-          // no button instead of offering one that would do nothing.
-          subReturn:
-            l.subStack.length > 0 ? mainFlowFrameForLine(session, l) : null,
-          // …and where a rollback would put it back: the frame it dived from.
-          subOrigin:
-            l.subStack.length > 0 ? subOriginFrameForLine(session, l) : null,
-          waiting: !!(l.isBarrierWaiting || l.isGroupWaiting),
-          // A barrier — a track group's arrival wait or a hold-until — is held
-          // open waiting for THIS line, so the map marks it and offers the
-          // per-line advance on the node it is standing on.
-          straggler: !!l.stragglerFor,
-          voting: !!l.isVoting,
-          holding: !!l.isHolding,
-          // Per-line history (ACTIVE context — a line inside a sub carries its
-          // sub trail), so the map can paint every line's visited trail and
-          // checkpoint, not only the receiving admin's bound line.
-          checkpoint: l.history[l.historyIndex] || null,
-          trail: l.history.slice(0, l.historyIndex + 1),
-          // Main-flow trail for room-wide checkpoint detection while a line is
-          // inside a sub; the active sub trail above still drives the overlay.
-          mainCheckpoint: mainHistory.history[mainHistory.historyIndex] || null,
-          mainTrail: mainHistory.history.slice(0, mainHistory.historyIndex + 1),
-        };
-      })
-      // By NUMBER, which is how the operator reads the room — `session.lines`
-      // is in creation order, and a structural undo re-creates the lines it
-      // brings back in the order it walks (newest event first), so an undo of
-      // a convergence left the panel and the map legend reading "L0, L2, L1".
-      // Sorted in the payload rather than in `session.lines`: the runtime's
-      // own order is nobody's business but its own.
-      .sort((a, b) => lineIdNum(a.id) - lineIdNum(b.id));
-    // The session tab renders only the line-status strip. Histories, durable
-    // identities and rewind landings are map-only and can be as large as the
-    // performance, so do not make every ordinary admin parse them.
-    basePayload.lines = fullLines.map((line) => ({
-      id: line.id,
-      status: line.status,
-      players: line.players,
-      riders: line.riders,
-      quietSince: line.quietSince,
-      frame: line.frame,
-      inSub: line.inSub,
-      sub: line.sub,
-      waiting: line.waiting,
-      straggler: line.straggler,
-      voting: line.voting,
-      holding: line.holding,
-    }));
-    if (mapAdmins.length > 0) mapPayload.lines = fullLines;
+function pushConnectionSnapshot(session) {
+  for (const { connections, payload } of buildAdminSnapshots(
+    session,
+    wsServer.connections,
+    snapshotRoom,
+  )) {
+    sendToConnections(connections, 0, payload);
   }
-
-  sendToConnections(ordinaryAdmins, 0, basePayload);
-  sendToConnections(mapAdmins, 0, mapPayload);
 }
 
 // Full cascades, restored identities, landings and ghost trails are sizeable
@@ -5493,7 +5739,7 @@ function structuralProjection(session) {
   if (cached && cached.key === key) {
     return cached.value;
   }
-  // Built BEFORE the ghosts and handed to them: a route is drawn for exactly
+  // Built BEFORE the absorbed-line routes and handed to them: a route is offered for exactly
   // the passages these entries offer an undo for, which is one question with
   // one answer (see `absorbedLineSnapshots`).
   const mergeRewinds = orch
@@ -5502,23 +5748,16 @@ function structuralProjection(session) {
       splitEvents: session.splitEvents,
       lines: session.lines,
     })
-    // The SURVIVOR's route into the rejoin, on the same terms as the routes of
-    // the lines it swallowed — so the map can draw all of them alike (owner).
-    // Only on the entry that carries the passage; the folded older halves
-    // would publish the same route twice.
     .map((entry) =>
       !entry.available
         ? entry
         : {
             ...entry,
             // Where every line of the passage comes back to. On EVERY
-            // available entry, folded halves included: a ghost's button
-            // names the event its own snapshot came from, which for a
+            // available entry, folded halves included: an absorbed line's
+            // button names the event its own snapshot came from, which for a
             // convergence that merged in pairs is often the older one.
             landings: mergeRestoreLandings(session, entry),
-            ...(entry.partOfConvergence
-              ? {}
-              : survivorGhostRoute(session, entry)),
           },
     );
   const value = {
@@ -5627,8 +5866,8 @@ function roomRewindUndoes(session, group) {
  * NAME the destinations before the operator commits to a topology change.
  *
  * It matters most exactly where the map can say least: behind a still-undoable
- * rejoin the ghosts already draw the landings, but reaching an OLDER merge
- * draws nothing at all (its absorbed numbers are back in the pool), so
+ * rejoin the canvas marks no landing, and reaching an OLDER merge draws
+ * nothing at all either (its absorbed numbers are back in the pool), so
  * "⏪⏪ undo merge here — also undoes 2 later steps" was asking the operator to
  * commit with no idea where three lines were about to appear.
  *
@@ -5681,66 +5920,6 @@ function mergeRestoreLandings(session, entry) {
   return [...landings.values()].sort(
     (a, b) => lineIdNum(a.lineId) - lineIdNum(b.lineId),
   );
-}
-
-/**
- * The SURVIVOR's route into one rejoin — the same thing
- * `absorbedLineSnapshots` publishes for the lines that merge swallowed, for
- * the line that swallowed them (owner: "all lines should be equal … the map
- * has no main line, it only lines").
- *
- * Without it the map drew one of the routes feeding a rejoin as live green
- * history and the rest as ghosts, and which one got the green was decided by
- * nothing but `planRecombine` electing the lowest-numbered line as survivor —
- * so `L0` won every merge it was in and read as a main line the model does not
- * have. Behind a still-undoable rejoin the survivor's own pre-merge route is
- * exactly as past as its co-arrivals': nobody is standing on it, and the same
- * one undo gives all of them back.
- *
- * Taken from the OLDEST member of the convergence, because that is the
- * position the whole passage's undo restores the survivor to (a barrier
- * release records it still parked on its own frame; a later co-presence event
- * records it standing on the rejoin frame). `absorbedRoute` then applies the
- * same `preMergeLanding` step-back, so the last entry is always the node the
- * undo would land it on.
- *
- * @returns {{survivorTrail: string[], survivorLanding: string, survivorSub: (string|null)}|{}}
- */
-function survivorGhostRoute(session, entry) {
-  const convergence = orch.mergeConvergenceEvents({
-    mergeEvents: session.mergeEvents,
-    eventId: entry.eventId,
-  });
-  const oldest = convergence[convergence.length - 1]; // newest-first
-  if (!oldest) {
-    return {};
-  }
-  // The SAME gate `absorbedLineSnapshots` applies — the entry's own
-  // `available`, and nothing else. This used to re-run `mergeRewindPlan`,
-  // which asks something NARROWER: a plan refuses a merge with anything built
-  // on top of it (`superseded`), while the entry beside it reads available
-  // because the undo walks that cascade off first. So the survivor's route
-  // lost its ghost as soon as the room rejoined anywhere else — in step with
-  // the routes it swallowed, which is the only reason the lopsidedness this
-  // ghost exists to remove did not come straight back.
-  if (!entry.available) {
-    return {};
-  }
-  const snapshot = (oldest.participants || []).find(
-    (candidate) => candidate && candidate.lineId === oldest.survivorLineId,
-  );
-  if (!snapshot) {
-    return {}; // a record that does not carry the survivor's own snapshot
-  }
-  const route = absorbedRoute(session, oldest, snapshot);
-  if (!route) {
-    return {};
-  }
-  return {
-    survivorTrail: route.trail,
-    survivorLanding: route.trail[route.trail.length - 1],
-    survivorSub: route.sub,
-  };
 }
 
 /**
@@ -5918,15 +6097,10 @@ function absorbedLineSnapshots(session, mergeRewinds) {
  * land on and every entry is a legitimate rewind destination.
  */
 function absorbedRoute(session, event, snapshot) {
-  const lowerFrames =
-    session.listFilesInLowerCase ||
-    (session.listFiles || []).map((f) => f.toLowerCase());
-  const frameIndexOf = (name) =>
-    lowerFrames.indexOf(String(name || "").toLowerCase());
   const stepBack = orch.preMergeLanding({
     snapshot,
     mergeFrame: event.frame,
-    frameIndexOf,
+    frameIndexOf: orch.frameIndexResolver(session),
   });
   const history = Array.isArray(snapshot.history) ? snapshot.history : [];
   const at =
@@ -6003,8 +6177,15 @@ function rewindOperationIdOf(messageData) {
  * sentence the map has been holding since the click.
  */
 async function handleSelectHistory(conn, session, messageData) {
+  // Collected by every merge undo this gesture runs — a walk takes several
+  // events off — and read by the settlement below. Scoped to the message, so
+  // the next ordinary landing settles the room by the usual rule.
+  session.__justSeparated = new Set();
   try {
     await dispatchRewind(conn, session, messageData);
+    // A rewind can stand a line on a node another line holds (a per-line
+    // rewind onto an occupied frame, a room rewind's fill); one line per node.
+    await settleCoLocatedLines(session);
   } catch (err) {
     console.error("rewind gesture failed", err);
     reportRewindRefusal(
@@ -6016,6 +6197,8 @@ async function handleSelectHistory(conn, session, messageData) {
       true,
       rewindOperationIdOf(messageData),
     );
+  } finally {
+    session.__justSeparated = null;
   }
 }
 
@@ -6371,13 +6554,21 @@ async function messageHandleExclusively(conn, messageData, session) {
     return;
   }
 
+  // Every message below this point acts on a ROOM, so it must come from a
+  // socket this server has already bound to that room (`isBoundToSession`, and
+  // the reasoning is there). MSG_PING is what binds it, above, and it is the
+  // first thing every client sends.
+  if (!isBoundToSession(conn, session.id)) {
+    return;
+  }
+
   // The spectator rule, server side (owner): "a rider is a spectator, and a
   // spectator can't affect the session in any way". A rider's page only ever
   // sends PING (handled above) and NEED_DISPLAY — its tap handler returns on
   // `!window.staffCode` and the operator controls are rendered for admins only
   // — so refusing everything else costs a legitimate rider nothing, and the
   // rule stops depending on the client to enforce it.
-  if (conn.isStaff === false && msg !== MESSAGES.MSG_NEED_DISPLAY) {
+  if (conn.isStaff !== true && msg !== MESSAGES.MSG_NEED_DISPLAY) {
     return;
   }
 
@@ -6395,7 +6586,27 @@ async function messageHandleExclusively(conn, messageData, session) {
   }
 
   if (msg === MESSAGES.MSG_TAP) {
-    const line = lineForConn(session, conn);
+    // A TAP is a PERFORMER's action, so it is answered for by a performer's
+    // connection — see `canPerform` for what that means and why each part of
+    // it is needed. The credentials are re-checked against THIS message, not
+    // only against the handshake.
+    const credentialsValid =
+      password === session.playerPassword || password === session.adminPassword;
+    if (!canPerform(conn, session.id, credentialsValid)) {
+      return;
+    }
+    // …and it acts on the line this connection is BOUND to. `lineForConn`
+    // falls back to the room's first active line for a connection with no
+    // binding, which is the right answer for a display send and the wrong one
+    // for a mutation: it would let a socket move a line it was never placed
+    // on. A bound connection is what `ensureLineAssignment` guarantees at the
+    // handshake, so a legitimate performer always has one.
+    const line = session.lines.find(
+      (l) => l.id === conn.lineId && l.status !== "retired",
+    );
+    if (!line) {
+      return;
+    }
     const { selectedId } = messageData;
     if (
       clientIndex !== line.currentIndex ||
@@ -6408,10 +6619,29 @@ async function messageHandleExclusively(conn, messageData, session) {
       return;
     }
 
-    const { frameVotingDur, nextFrameHoldingDur } = messageData;
+    // selectedId should have format: nextVoteId#currFileName#aEleIndex —
+    // resolved against the frame the line is standing on, and refused outright
+    // if it does not name a destination that frame offers.
+    const targetIndex = validatedTapTarget(
+      session,
+      line,
+      selectedId,
+      messageData.ctx,
+    );
+    if (targetIndex == null) {
+      return;
+    }
+
+    const { nextFrameHoldingDur } = messageData;
     line.nextFrameHoldingDur = nextFrameHoldingDur;
-    // selectedId should have format: nextVoteId#currFileName#aEleIndex
-    const [nextFrameIndex] = selectedId.split("#");
+    // The window's length comes from the SCORE, not from the tap (see
+    // landingVotingDur); the tap's own value is the fallback for a frame the
+    // graph cannot answer for.
+    const frameVotingDur = landingVotingDur(
+      session,
+      line,
+      messageData.frameVotingDur,
+    );
     // Session Lines: a tap on a split frame is a CHOICE — it must always open a
     // choice window (never the instant-advance path), so every device can pick.
     const splitFrame = isSplitFrame(session, line);
@@ -6422,13 +6652,16 @@ async function messageHandleExclusively(conn, messageData, session) {
         frameVotingDur === "false" ||
         session.votingDuration === 0)
     ) {
+      // STAY resolves to the frame the line is already on. There is no move to
+      // make and no window to open, so the instant path is done. (Told apart
+      // from a frame that genuinely links to ITSELF, which is an ordinary
+      // advance and still plays its landing's hold.)
+      if (String(selectedId).split("#")[0] === "stay") {
+        return;
+      }
       // Session Lines: an instant tap on a session-sub-start link dives (same
       // rule as a voted advance — choosing the link IS the dive).
-      const subLink = subLinkForAdvanceTarget(
-        session,
-        line,
-        Number(nextFrameIndex),
-      );
+      const subLink = subLinkForAdvanceTarget(session, line, targetIndex);
       if (subLink) {
         // No hold started here: the dive lands on the sub's START, and
         // enterSubSession starts THAT frame's holding period. This tap speaks
@@ -6437,7 +6670,7 @@ async function messageHandleExclusively(conn, messageData, session) {
         await diveViaSubLink(session, line, subLink);
         return;
       }
-      line.setCurrIdxTo(Number(nextFrameIndex));
+      line.setCurrIdxTo(targetIndex);
       await session.saveSessionStateToFile();
 
       emitHistoryToAdmins(session, line);
@@ -6510,60 +6743,124 @@ async function messageHandleExclusively(conn, messageData, session) {
     // that does not exist. Riders included: a spectator is bound to the line
     // it watches, and its re-home already reports the same way.
     if (session.hasSessionLines) {
-      sendToClient(conn, 0, {
+      sendDisplayToClient(session, conn, 0, {
         m: MESSAGES.MSG_LINE_ASSIGNED,
         lineId: line.id,
       });
     }
 
-    if (!session.isPause) {
-      // Session Lines: a device reconnecting into a line that is mid-sub-session
-      // must re-fetch + re-enter the sub, not show a main-flow index.
-      const inSub = session.hasSessionLines && line.subStack.length > 0;
-      if (inSub) {
+    // A /map tab is excluded: it renders no frames, keeps no sub view, and
+    // tracks `showIdx` only so its own outgoing messages carry one. A snapshot
+    // naming a sub would hand it a SUB-relative index to resolve against the
+    // main flow — which is exactly why a dived line has always reached it as
+    // MSG_SUB_ENTER, a message it ignores. It keeps that answer.
+    if (session.hasSessionLines && !conn.isMapView) {
+      // ONE authoritative picture, applied in one step by the client.
+      //
+      // The old answer was a handful of independent messages, each sent only
+      // when its state was ON — so everything that was OFF was said by nothing
+      // at all, and a reconnecting page kept whatever it had been left
+      // holding. Three ways that showed:
+      //
+      //  - a device that disconnected inside a sub and reconnected after the
+      //    line had returned to the main flow got a bare SHOW, which changes
+      //    the index without restoring the main frame list — so a main-flow
+      //    index was resolved against the sub's frames;
+      //  - a device that missed a barrier release reconnected with its
+      //    "waiting for other lines…" banner intact, because a release is a
+      //    message and no message means "no change";
+      //  - a PAUSED room sent no context-bearing message at all, so a page
+      //    loaded during a pause had no idea it was mid-dive until the resume
+      //    handed it a sub-relative index with no sub loaded.
+      //
+      // Every field is present on every snapshot, including the nulls and
+      // falses — that is what makes it authoritative rather than additive.
+      const top = line.subStack[line.subStack.length - 1];
+      const straggler = line.stragglerFor
+        ? stragglerBanner(session, line)
+        : null;
+      const waitingBanner =
+        line.isBarrierWaiting || line.isGroupWaiting
+          ? { role: "parked", frame: frameNameForLine(session, line) }
+          : straggler
+            ? {
+                role: "straggler",
+                frame: straggler.frame,
+                group: straggler.group,
+                barrier: straggler.barrier,
+              }
+            : null;
+      if (line.isVoting) {
+        conn.currentVoteTo = -1;
+      }
+      sendDisplayToClient(session, conn, 0, {
+        // Carried on MSG_SHOW rather than a message type of its own: a new
+        // constant would have to be published to the page, and the built HTML
+        // is shared by vanilla scores, which must stay byte-identical. `snapshot`
+        // is what tells the client this SHOW speaks for the whole display —
+        // absent everywhere else, so an ordinary SHOW is unchanged.
+        m: MESSAGES.MSG_SHOW,
+        snapshot: true,
+        lineId: line.id,
+        // The score the frame index belongs to. `null` is main flow, and it is
+        // SENT rather than implied: it is what takes a reconnecting page out
+        // of a sub it is no longer in.
+        sub: top ? top.score : null,
+        showIdx: line.currentIndex,
+        isPause: !!session.isPause,
+        // The SM hold switch, which is a different thing from a running
+        // holding period and has its own indicator.
+        isHold: !!line.isHolding,
+        holding:
+          line.isHolding && line.currentEndHoldTimeStamp
+            ? {
+                endTime: line.currentEndHoldTimeStamp,
+                duration: line.currentHoldingDuration,
+              }
+            : null,
+        voting: line.isVoting
+          ? {
+              endTime: line.currentEndTimeStamp,
+              duration: line.currentVotingDuration,
+            }
+          : null,
+        waiting: waitingBanner,
+      });
+    } else {
+      // Vanilla scores, and the /map tab above: the messages they have always
+      // been answered with, unchanged.
+      if (!session.isPause) {
+        const inSub = session.hasSessionLines && line.subStack.length > 0;
         const top = line.subStack[line.subStack.length - 1];
+        sendToClient(
+          conn,
+          0,
+          inSub
+            ? {
+                m: MESSAGES.MSG_SUB_ENTER,
+                sub: top.score,
+                showIdx: line.currentIndex,
+              }
+            : { m: MESSAGES.MSG_SHOW, showIdx: line.currentIndex },
+        );
+      }
+
+      if (line.isVoting) {
+        conn.currentVoteTo = -1;
         sendToClient(conn, 0, {
-          m: MESSAGES.MSG_SUB_ENTER,
-          sub: top.score,
-          showIdx: line.currentIndex,
-        });
-      } else {
-        sendToClient(conn, 0, {
-          m: MESSAGES.MSG_SHOW,
-          showIdx: line.currentIndex,
+          m: MESSAGES.MSG_BEGIN_VOTING,
+          endTime: line.currentEndTimeStamp,
+          duration: line.currentVotingDuration,
         });
       }
-    }
 
-    if (
-      session.hasSessionLines &&
-      (line.isBarrierWaiting || line.isGroupWaiting)
-    ) {
-      sendToClient(conn, 0, {
-        m: MESSAGES.MSG_BARRIER_WAITING,
-        frame: frameNameForLine(session, line),
-      });
-    } else if (session.hasSessionLines && line.stragglerFor) {
-      // The other half of the banner protocol: a reconnecting device on a line
-      // a barrier is still waiting for gets its "your move" prompt back.
-      sendToClient(conn, 0, stragglerBanner(session, line));
-    }
-
-    if (line.isVoting) {
-      conn.currentVoteTo = -1;
-      sendToClient(conn, 0, {
-        m: MESSAGES.MSG_BEGIN_VOTING,
-        endTime: line.currentEndTimeStamp,
-        duration: line.currentVotingDuration,
-      });
-    }
-
-    if (line.isHolding) {
-      sendToClient(conn, 0, {
-        m: MESSAGES.MSG_BEGIN_HOLDING,
-        endTime: line.currentEndHoldTimeStamp,
-        duration: line.currentHoldingDuration,
-      });
+      if (line.isHolding) {
+        sendToClient(conn, 0, {
+          m: MESSAGES.MSG_BEGIN_HOLDING,
+          endTime: line.currentEndHoldTimeStamp,
+          duration: line.currentHoldingDuration,
+        });
+      }
     }
 
     if (isAdmin) {
@@ -6586,20 +6883,15 @@ async function messageHandleExclusively(conn, messageData, session) {
     }
 
     updateNumberOfConnectionForSession(session);
-    // Session Lines: these carry ONE line's state — broadcasting them
-    // session-wide (today's vanilla behavior) would yank every other line's
-    // display/hold indicator to this line whenever any device reconnects.
-    if (session.hasSessionLines) {
-      sendToLine(session, line.id, 0, {
-        m: MESSAGES.MSG_CHECK_HOLD,
-        isHold: line.isHolding,
-      });
-      sendToLine(session, line.id, 0, {
-        m: MESSAGES.MSG_PAUSE,
-        isPause: session.isPause,
-        showIdx: line.currentIndex,
-      });
-    } else {
+    // Session Lines: the snapshot above already told the RECONNECTING device
+    // its hold switch, its pause state and its frame, in one message and in
+    // one revision. These used to be re-broadcast to the whole line as well,
+    // which drove every other device's display — an unversioned MSG_PAUSE
+    // carries a `showIdx` and repaints on it — because one of their number
+    // reloaded a page. Nothing about a reconnect changes what the others are
+    // showing, so nothing is sent to them. Vanilla keeps today's session-wide
+    // pair exactly.
+    if (!session.hasSessionLines) {
       sendToAllClients(session, 0, {
         m: MESSAGES.MSG_CHECK_HOLD,
         isHold: line.isHolding,
@@ -6764,6 +7056,7 @@ async function messageHandleExclusively(conn, messageData, session) {
       } else {
         await forceReleaseBarrier(session, messageData.frame);
       }
+      await settleCoLocatedLines(session);
     }
     return;
   }

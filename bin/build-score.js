@@ -26,6 +26,7 @@ const DEFAULTS = {
   defaultAutoplay: true,
   enableAutoplayByDefault: false,
   dataDir: null,
+  stateDir: null,
 };
 
 async function buildScore(folder, opts = {}) {
@@ -33,6 +34,9 @@ async function buildScore(folder, opts = {}) {
   const session = new BMSession();
   if (o.dataDir) {
     session.scoreDataDir = o.dataDir;
+  }
+  if (o.stateDir) {
+    session.stateDir = o.stateDir;
   }
   await session.initState(
     o.id,
@@ -62,8 +66,8 @@ if (require.main === module) {
   buildScore(folder, id ? { id } : {})
     .then((session) => {
       console.log(`\nBuilt score "${folder}" (id=${session.id})`);
-      console.log(`  ${SERVER_STATE_DIR}/${session.id}.content.svg`);
-      console.log(`  ${SERVER_STATE_DIR}/${session.id}.html`);
+      console.log(`  ${session.bundleFile("content.svg")}`);
+      console.log(`  ${session.bundleFile("html")}`);
       if (session.hasSessionLines) {
         console.log(`  hasSessionLines=true`);
       }

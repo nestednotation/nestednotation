@@ -106,6 +106,87 @@ module.exports = {
     assert.ok(codes(errors).includes("split-n-too-small"), JSON.stringify(errors));
   },
 
+  "malformed or empty split counts are errors, not silently re-read": () => {
+    for (const raw of ["2.5", "2x", "oops", "", " ", "-2", "1e1"]) {
+      const frames = [
+        frame("START.svg", { "session-split": raw }, ["B.svg", "C.svg"]),
+        frame("B.svg", {}, []),
+        frame("C.svg", {}, []),
+      ];
+      const g = buildGraph(frames);
+      assert.strictEqual(g.splits["START.svg"], undefined, `"${raw}" must not become a split`);
+      const { errors } = validateScore(g, frames.map((f) => f.name), () => null);
+      assert.deepStrictEqual(
+        codes(errors).filter((c) => c.startsWith("split-")),
+        ["split-malformed"],
+        `"${raw}": ${JSON.stringify(errors)}`,
+      );
+    }
+  },
+
+  "a well-formed split count with surrounding space still validates": () => {
+    const frames = [
+      frame("START.svg", { "session-split": " 2 " }, ["B.svg", "C.svg"]),
+      frame("B.svg", {}, []),
+      frame("C.svg", {}, []),
+    ];
+    const g = buildGraph(frames);
+    assert.strictEqual(g.splits["START.svg"].n, 2);
+    const { errors } = validateScore(g, frames.map((f) => f.name), () => null);
+    assert.deepStrictEqual(errors, []);
+  },
+
+  "single-quoted runtime attributes are an explicit error, main and sub": () => {
+    const svg =
+      `<svg xmlns="http://www.w3.org/2000/svg" session-split='2' voting="3">` +
+      `<a xlink:href='B.svg'><rect/></a><a xlink:href="C.svg"><rect/></a></svg>`;
+    const frames = [
+      { name: "START.svg", svg, attrs: parseFrameAttrs(svg) },
+      frame("B.svg", {}, ["Out.svg"]),
+      frame("C.svg", {}, []),
+      frame("Out.svg", {}, []),
+    ];
+    frames[1] = frame("B.svg", {}, [{ href: "C.svg", sub: "S" }]);
+    const subSvg = `<svg session-sub-end='true'></svg>`;
+    const subLoader = () => ({
+      frameNames: ["START.svg"],
+      graph: buildGraph([{ name: "START.svg", svg: subSvg, attrs: parseFrameAttrs(subSvg) }]),
+    });
+    const g = buildGraph(frames);
+    const { errors } = validateScore(g, frames.map((f) => f.name), subLoader);
+    const quoted = errors.filter((e) => e.code === "attr-single-quoted");
+    assert.deepStrictEqual(
+      quoted.map((e) => `${e.score || "main"}:${e.frame}:${e.message.split(" ")[0]}`).sort(),
+      ["S:START.svg:session-sub-end", "main:START.svg:session-split", "main:START.svg:xlink:href"],
+      JSON.stringify(errors),
+    );
+    // A double-quoted value that merely contains quotes is not flagged.
+    const ok = parseFrameAttrs(`<svg onload="f('x')"><a xlink:href="B.svg" title="it's"/></svg>`);
+    assert.deepStrictEqual(ok.singleQuotedAttrs, []);
+  },
+
+  "attribute-looking text inside a double-quoted value is not a single-quoted attribute": () => {
+    // Root and link: the note text mentions runtime attributes in single
+    // quotes, but no such attribute exists on either tag.
+    const svg =
+      `<svg xmlns="http://www.w3.org/2000/svg" data-note="write session-split='2' here">` +
+      `<a title="use xlink:href='C.svg' later" xlink:href="B.svg"><rect/></a></svg>`;
+    const parsed = parseFrameAttrs(svg);
+    assert.deepStrictEqual(parsed.singleQuotedAttrs, []);
+    const frames = [
+      { name: "START.svg", svg, attrs: parsed },
+      frame("B.svg", {}, []),
+    ];
+    const g = buildGraph(frames);
+    const { errors } = validateScore(g, frames.map((f) => f.name), () => null);
+    assert.ok(!codes(errors).includes("attr-single-quoted"), JSON.stringify(errors));
+    // A real single-quoted attribute next to such a note is still reported.
+    const mixed = parseFrameAttrs(
+      `<svg data-note="voting='3'" session-split='2'><a title="href='X.svg'" xlink:href='B.svg'/></svg>`,
+    );
+    assert.deepStrictEqual(mixed.singleQuotedAttrs.sort(), ["session-split", "xlink:href"]);
+  },
+
   "dangling rejoin target is an error": () => {
     const frames = [
       frame("START.svg", { "session-rejoin-at": "Nowhere.svg" }, ["B.svg"]),

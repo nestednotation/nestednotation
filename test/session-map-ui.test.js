@@ -1,4 +1,11 @@
-/** Responsive map controls and uniquely correlated rewind receipts. */
+/**
+ * Responsive map controls (CSS/markup rules).
+ *
+ * Rewind receipts used to be checked here too, by searching the source for
+ * `operationId` near each send. That coverage now executes: the map's own
+ * requests and receipt handling in map-client.test.js, and the server's
+ * receipt, log entry and save in rewind-receipts.test.js.
+ */
 
 const assert = require("node:assert");
 const fs = require("node:fs");
@@ -13,19 +20,10 @@ const CSS = fs.readFileSync(
   path.join(ROOT, "public", "stylesheets", "style.css"),
   "utf8",
 );
-const RUNTIME = fs.readFileSync(path.join(ROOT, "bin", "www"), "utf8");
 const VIEW = fs.readFileSync(
   path.join(ROOT, "views", "session-map.jade"),
   "utf8",
 );
-
-function between(source, start, end) {
-  const from = source.indexOf(start);
-  assert.notStrictEqual(from, -1, `missing ${start}`);
-  const to = source.indexOf(end, from + start.length);
-  assert.notStrictEqual(to, -1, `missing ${end}`);
-  return source.slice(from, to);
-}
 
 function ruleContaining(source, selector) {
   const at = source.indexOf(selector);
@@ -38,68 +36,6 @@ function ruleContaining(source, selector) {
 }
 
 module.exports = {
-  "rewind log is hydrated from persisted session state": () => {
-    assert.match(CLIENT, /function syncRewindLog\(entries\)/);
-    assert.match(CLIENT, /Array\.isArray\(data\.rewindLog\)/);
-    assert.match(CLIENT, /syncRewindLog\(data\.rewindLog\)/);
-    assert.match(CLIENT, /data\.rewindEntry/);
-
-    assert.match(RUNTIME, /session\.recordRewind\(/);
-    assert.match(RUNTIME, /await session\.saveSessionStateToFile\(\)/);
-    assert.match(RUNTIME, /rewindLog: session\.rewindLog \|\| \[\]/);
-    assert.match(RUNTIME, /rewindEntry,/);
-
-    assert.match(VIEW, /the rewinds this session has made/);
-  },
-
-  "rewind requests and answers carry one exact operation id": () => {
-    const sends = [...CLIENT.matchAll(/sendToServer\(MSG_SELECT_HISTORY,/g)];
-    assert.strictEqual(sends.length, 7, "expected every map rewind entry point");
-    for (const send of sends) {
-      const nearby = CLIENT.slice(
-        Math.max(0, send.index - 400),
-        send.index + 450,
-      );
-      assert.match(
-        nearby,
-        /operationId/,
-        `rewind send at offset ${send.index} has no operation id`,
-      );
-    }
-
-    const done = between(
-      CLIENT,
-      "if (msg === window.MSG_REWIND_DONE)",
-      "if (msg === MSG_SHOW_NUMBER_CONNECTION)",
-    );
-    assert.match(done, /pendingRewind\.operationId === data\.operationId/);
-    assert.doesNotMatch(done, /pendingRewind\.(?:kind|frame)/);
-
-    const refused = between(
-      CLIENT,
-      "if (msg === window.MSG_REWIND_REFUSED)",
-      "if (msg === window.MSG_REWIND_DONE)",
-    );
-    assert.match(refused, /pendingRewind\.operationId === data\.operationId/);
-
-    const refusalReporter = between(
-      RUNTIME,
-      "function reportRewindRefusal(",
-      "function reportRewindDone(",
-    );
-    const doneReporter = between(
-      RUNTIME,
-      "function reportRewindDone(",
-      "function dormantLineKeys(",
-    );
-    assert.match(refusalReporter, /operationId: operationId \|\| null/);
-    assert.match(doneReporter, /operationId: operationId \|\| null/);
-    assert.match(
-      RUNTIME,
-      /const operationId = rewindOperationIdOf\(messageData\)/,
-    );
-  },
-
   "map controls and menus remain reachable in narrow viewports": () => {
     assert.match(ruleContaining(CSS, "#session-map-header"), /flex-wrap:\s*wrap/);
     assert.match(ruleContaining(CSS, "#session-map-heading"), /flex:\s*1 1/);

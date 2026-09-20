@@ -12,7 +12,7 @@
 const assert = require("node:assert");
 const fs = require("node:fs");
 
-const { buildScore, SERVER_STATE_DIR } = require("../bin/build-score.js");
+const { buildScore } = require("../bin/build-score.js");
 const { buildSessionLinesFixture } = require("./session-lines-fixture");
 const { BMLine } = require("../lib/session-lines/line");
 const {
@@ -169,10 +169,7 @@ module.exports = {
 
     // Every destination id is the id of an <a> on the split frame in the built
     // page — this is what the client's getElementById(voteId) resolves.
-    const built = fs.readFileSync(
-      `${SERVER_STATE_DIR}/${session.id}.content.svg`,
-      "utf8",
-    );
+    const built = fs.readFileSync(session.bundleFile("content.svg"), "utf8");
     for (const id of new Set(destinations)) {
       assert.ok(
         built.includes(`<a id="${id}"`),

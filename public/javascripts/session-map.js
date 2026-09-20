@@ -2,18 +2,39 @@
 //
 // Loaded only by views/session-map.jade (GET /session/:id/map), never by the
 // session page. Draws the whole score — main flow + sub-scores — as a DAG
-// (cytoscape + dagre from the same jsdelivr CDN the app already uses) and marks
+// (cytoscape + dagre, served from public/javascripts/vendor) and marks
 // each line's current frame live. It opens its own ws connection via
 // ws-client.js and implements the minimal parseMessage contract: MSG_PING time
 // calibration (mirrors session.js) and MSG_SHOW_NUMBER_CONNECTION, whose
 // admin-only `lines` payload the server refreshes on every line landing.
 
 (function () {
-  const CDN_SCRIPTS = [
-    "https://cdn.jsdelivr.net/npm/cytoscape@3/dist/cytoscape.min.js",
-    "https://cdn.jsdelivr.net/npm/dagre@0.8.5/dist/dagre.min.js",
-    "https://cdn.jsdelivr.net/npm/cytoscape-dagre@2/cytoscape-dagre.js",
+  // Served by this server, pinned (vendor/README.md): the map is the
+  // operator's recovery tool, so it must load on a venue network with no
+  // internet access. dagre / cytoscape-dagre are optional (breadthfirst
+  // fallback); cytoscape itself is not.
+  const GRAPH_SCRIPTS = [
+    {
+      src: "/javascripts/vendor/cytoscape.min.js",
+      required: true,
+      present: () => typeof window.cytoscape === "function",
+    },
+    {
+      src: "/javascripts/vendor/dagre.min.js",
+      present: () => typeof window.dagre !== "undefined",
+    },
+    {
+      src: "/javascripts/vendor/cytoscape-dagre.js",
+      present: () => typeof window.cytoscapeDagre !== "undefined",
+    },
   ];
+
+  // Bounds on each startup step. A request the network swallows would
+  // otherwise leave the page on "loading…" with no way forward.
+  const SCRIPT_TIMEOUT_MS = 15000;
+  const GRAPH_FETCH_TIMEOUT_MS = 10000;
+  const GRAPH_FETCH_ATTEMPTS = 15;
+  const GRAPH_RETRY_DELAY_MS = 2000;
 
   let cy = null;
   let pendingLines = null;
@@ -23,6 +44,14 @@
   // the live badges it now carries every line's history trail + checkpoint, so
   // the history overlay is painted from here in session-lines mode.
   let lastLines = null;
+
+  // Every frame the room has walked (`walked` on the map's count push,
+  // orchestrator `roomWalkedRefs`): lowercased, main frames bare, sub frames
+  // `score/frame`. The green overlay is painted from this rather than from
+  // the lines' own trails, which a fork restarts, a dive swaps for the sub's
+  // and a rejoin retires. Only sent when it changed, so a push without it
+  // keeps this one.
+  let lastWalked = null;
 
   // Active structural split instances ride with the lines snapshot. The
   // original parent is retired (and absent from lastLines), so this separate
@@ -37,8 +66,7 @@
   // The lines a still-undoable merge swallowed, with the trail its undo would
   // give them back (owner). They are retired, so they are in no count and no
   // `lastLines` entry — but their route is where the operator watched them
-  // walk, so the map paints it as a GHOST and offers the same per-line rewind
-  // on it. Clicking one brings the line back out of the merge on the way
+  // walk, so the map offers the same per-line rewind on it. Clicking one brings the line back out of the merge on the way
   // (bin/www lineRewind).
   let lastAbsorbedLines = [];
 
@@ -103,14 +131,148 @@
   };
   let vanillaPhaseTimer = null;
 
-  function loadScript(src) {
+  function loadScript(src, timeoutMs = SCRIPT_TIMEOUT_MS) {
     return new Promise((resolve, reject) => {
       const s = document.createElement("script");
+      const fail = (message) => {
+        clearTimeout(timer);
+        s.onload = s.onerror = null;
+        // Remove the tag so a retry starts a fresh request.
+        s.remove();
+        reject(new Error(message));
+      };
+      const timer = setTimeout(
+        () => fail(`timed out loading ${src}`),
+        timeoutMs,
+      );
       s.src = src;
-      s.onload = resolve;
-      s.onerror = () => reject(new Error(`failed to load ${src}`));
+      s.onload = () => {
+        clearTimeout(timer);
+        resolve();
+      };
+      s.onerror = () => fail(`failed to load ${src}`);
       document.head.appendChild(s);
     });
+  }
+
+  // One request under one deadline that covers reading the body as well as
+  // the headers: a response whose headers arrive but whose body stalls is cut
+  // off like one that never answers. Resolves to { status, ok, body } (body
+  // parsed only for a 2xx); rejects with an AbortError on the deadline.
+  async function fetchJsonWithTimeout(url, timeoutMs) {
+    const controller =
+      typeof AbortController === "function" ? new AbortController() : null;
+    let timer = null;
+    const deadline = new Promise((resolve, reject) => {
+      timer = setTimeout(() => {
+        if (controller) controller.abort();
+        const e = new Error(`timed out fetching ${url}`);
+        e.name = "AbortError";
+        reject(e);
+      }, timeoutMs);
+    });
+    const attempt = (async () => {
+      const res = await fetch(
+        url,
+        controller ? { signal: controller.signal } : {},
+      );
+      const body = res.ok ? await res.json() : null;
+      return { status: res.status, ok: res.ok, body };
+    })();
+    try {
+      // The race, not only the abort, bounds the body: an abort is not
+      // guaranteed to reject a body read already under way.
+      return await Promise.race([attempt, deadline]);
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  // The score graph. Right after a server (re)start it is re-derived
+  // asynchronously, so a 404 may just mean "still building"; a network error,
+  // a timeout or an unreadable body is retried the same way. Every score,
+  // vanilla included, has a graph, so running out of attempts on 404s is a
+  // startup failure too: it throws, and the page offers retry.
+  async function fetchGraph() {
+    let lastProblem = "no answer";
+    for (let attempt = 0; attempt < GRAPH_FETCH_ATTEMPTS; attempt++) {
+      if (attempt > 0) {
+        setStatus(`${lastProblem} — retrying… (${attempt})`);
+        await new Promise((r) => setTimeout(r, GRAPH_RETRY_DELAY_MS));
+      }
+      let res;
+      try {
+        res = await fetchJsonWithTimeout(
+          `/session/${window.sessionId}/graph`,
+          GRAPH_FETCH_TIMEOUT_MS,
+        );
+      } catch (e) {
+        if (e && e.name === "AbortError") {
+          lastProblem = "the server did not answer in time";
+        } else if (e && e.name === "SyntaxError") {
+          lastProblem = "the server sent an unreadable graph";
+        } else {
+          lastProblem = "the server is unreachable";
+        }
+        continue;
+      }
+      if (res.ok && res.body && res.body.main) return res.body;
+      if (res.ok) {
+        lastProblem = "the server sent an unreadable graph";
+      } else if (res.status === 404) {
+        lastProblem = "score still building";
+      } else {
+        lastProblem = `the server answered ${res.status}`;
+      }
+    }
+    if (lastProblem === "score still building") {
+      throw new Error(
+        "the score graph is not available yet — the score may still be building, or this session no longer exists",
+      );
+    }
+    throw new Error(`could not load the score graph: ${lastProblem}`);
+  }
+
+  async function loadGraphScripts() {
+    for (const lib of GRAPH_SCRIPTS) {
+      if (lib.present()) continue; // loaded by an earlier attempt
+      try {
+        await loadScript(lib.src);
+      } catch (e) {
+        if (lib.required) {
+          throw new Error(`the map drawing library did not load (${e.message})`);
+        }
+        console.warn("session-map: optional layout lib failed", e);
+      }
+    }
+  }
+
+  // A startup failure is said in the page, with a way to try again that keeps
+  // the tab rather than reloading it.
+  function showStartupError(message, retry) {
+    setStatus(`map failed to load: ${message}`);
+    announce(`The score map failed to load: ${message}. Use retry to try again.`);
+    const status = document.getElementById("session-map-status");
+    if (status) status.classList.add("startup-error");
+    const heading = document.getElementById("session-map-heading");
+    if (!heading) return;
+    let button = document.getElementById("session-map-retry");
+    if (!button) {
+      button = document.createElement("button");
+      button.id = "session-map-retry";
+      button.type = "button";
+      button.textContent = "retry";
+      heading.appendChild(button);
+    }
+    button.hidden = false;
+    button.disabled = false;
+    button.onclick = () => {
+      button.disabled = true;
+      button.hidden = true;
+      if (status) status.classList.remove("startup-error");
+      retry();
+    };
+    button.focus();
   }
 
   function setStatus(text) {
@@ -240,15 +402,29 @@
             .join(""));
   }
 
+  // Said to assistive technology. The toast and the status line come and go
+  // or change on every push; this region stays in the page, so a screen reader
+  // reads each result or error once, when it happens.
+  function announce(text) {
+    const el = document.getElementById("session-map-announce");
+    if (!el || !text) return;
+    // Clear first: the same sentence twice in a row is still two events.
+    el.textContent = "";
+    setTimeout(() => {
+      el.textContent = text;
+    }, 50);
+  }
+
   function showToast(text, rewindEntry) {
     const el = document.getElementById("session-map-toast");
     if (!el || !text) return;
     logRewind(rewindEntry || text);
+    announce(text);
     // The × is not decoration: these run to several lines now, and a receipt
     // sitting over the canvas for its full dwell is in the way of the very
     // room it is describing.
     el.innerHTML =
-      '<button type="button" class="toast-close" title="dismiss">×</button>' +
+      '<button type="button" class="toast-close" title="dismiss" aria-label="dismiss">×</button>' +
       "<span></span>";
     el.querySelector("span").textContent = text;
     el.querySelector(".toast-close").addEventListener("click", hideToast);
@@ -524,32 +700,6 @@
       style: { shape: "diamond", "border-color": "#2b6cb0", "border-width": 2, padding: "10px" },
     },
     { selector: "node.subend", style: { "border-style": "double", "border-width": 3 } },
-    // The route of a line a merge swallowed, while that merge can still be
-    // undone. Declared BEFORE the live trail classes so a live line always wins
-    // the node it shares — a ghost is what is no longer there.
-    {
-      selector: "node.ghost-trail",
-      style: {
-        // Distinctly greyer than the #f4f4f4 an unvisited frame carries : at
-        // map zoom the old #eceff1 differed from "never walked" by a dashed
-        // border alone, so the routes a rejoin can still be undone along read
-        // as blank score rather than as history. The dimmed label and the
-        // dashed `ghost-edge` between two of these carry the rest — a route
-        // has to look like a route.
-        "background-color": "#cfd8dc",
-        "border-style": "dashed",
-        "border-color": "#607d8b",
-        "text-opacity": 0.7,
-      },
-    },
-    {
-      selector: "node.ghost-landing",
-      style: {
-        "underlay-color": "#78909c",
-        "underlay-opacity": 0.22,
-        "underlay-padding": 6,
-      },
-    },
     // History trail: visited ≤ checkpoint, "ahead" = redo entries past it.
     // Declared before .here so a line's live position wins on background.
     { selector: "node.visited", style: { "background-color": "#dcedc8" } },
@@ -627,21 +777,6 @@
       },
     },
     { selector: "edge.via-sub", style: { "line-style": "dotted", "line-color": "#ccc" } },
-    // A hop INSIDE a ghosted route. Declared last so it wins over the
-    // structural edge colors along that stretch: what the operator needs to
-    // see there is one dashed path, not a split's orange and a plain hop
-    // reading as live score. The final hop INTO the rejoin is not ghosted —
-    // its target is the node a line is standing on — so the purple rejoin
-    // arrow still says where the passage ends.
-    {
-      selector: "edge.ghost-edge",
-      style: {
-        "line-color": "#607d8b",
-        "target-arrow-color": "#607d8b",
-        "line-style": "dashed",
-        width: 2,
-      },
-    },
   ];
 
   // Manual arrangement: nodes are draggable; positions persist per session so
@@ -784,6 +919,10 @@
   }
 
   function render(container, elements) {
+    // A startup retry can render again after a failure part-way through.
+    if (cy) {
+      cy.destroy();
+    }
     cy = cytoscape({
       container,
       elements,
@@ -830,6 +969,37 @@
   // every other live marker on the map.
   const QUIET_THRESHOLD_MS = 180000;
 
+  // The server sends a line's trails only when they changed since the last
+  // push this tab received; otherwise the line carries `trailKept` and the
+  // trails are the ones kept here, by durable line identity (bin/www
+  // linesForMapTab keeps the matching record, and both sides forget a line a
+  // push no longer carries).
+  const knownTrails = new Map();
+  function withKnownTrails(lines) {
+    const present = new Set();
+    const resolved = lines.map((line) => {
+      const key = line.uid || line.id;
+      present.add(key);
+      if (line.trailKept) {
+        const known = knownTrails.get(key);
+        return known
+          ? { ...line, trail: known.trail, mainTrail: known.mainTrail }
+          : line;
+      }
+      knownTrails.set(key, { trail: line.trail, mainTrail: line.mainTrail });
+      return line;
+    });
+    for (const key of [...knownTrails.keys()]) {
+      if (!present.has(key)) knownTrails.delete(key);
+    }
+    return resolved;
+  }
+
+  // The snapshot is taken at once (menus, guards and rewinds read `lastLines`),
+  // but the canvas is repainted at most once per animation frame, from the
+  // latest one: a burst of pushes costs one repaint, and a hidden tab none
+  // until it is shown again.
+  let paintScheduled = false;
   function updateLines(lines) {
     if (!Array.isArray(lines)) {
       return;
@@ -839,6 +1009,20 @@
       return;
     }
     lastLines = lines;
+    if (paintScheduled) return;
+    paintScheduled = true;
+    const paint = () => {
+      paintScheduled = false;
+      if (cy && Array.isArray(lastLines)) paintLines(lastLines);
+    };
+    if (typeof requestAnimationFrame === "function") {
+      requestAnimationFrame(paint);
+    } else {
+      setTimeout(paint, 0);
+    }
+  }
+
+  function paintLines(lines) {
     cy.batch(() => {
       cy.nodes()
         .removeClass("here here-voting here-holding here-waiting here-dormant")
@@ -879,9 +1063,18 @@
       // it. The badge is the affordance the feature never had, and it rides on
       // the mechanism that was already there rather than fighting the four
       // border colours a node can carry.
+      // Keyed by NODE, not by frame name: a rejoin can happen inside a
+      // sub-score, whose frame names collide freely with the main flow's. A
+      // bare name put the badge on whatever `main:<name>` happened to exist —
+      // an unrelated main frame, or nothing at all — so the one affordance for
+      // reaching an older sub rejoin was missing exactly where the operator
+      // had watched it happen. Splits are main-flow only (the validator
+      // forbids a split inside a sub), so they keep the `main:` prefix.
       const undoable = new Set();
       for (const entry of lastSplitRewinds || []) {
-        if (entry && entry.available && entry.frame) undoable.add(entry.frame);
+        if (entry && entry.available && entry.frame) {
+          undoable.add(`main:${entry.frame}`);
+        }
       }
       for (const entry of lastMergeRewinds || []) {
         // One convergence, one marker: its folded halves sit on this frame too.
@@ -891,11 +1084,15 @@
           !entry.partOfConvergence &&
           entry.frame
         ) {
-          undoable.add(entry.frame);
+          undoable.add(
+            entry.sub
+              ? `sub:${entry.sub}:${entry.frame}`
+              : `main:${entry.frame}`,
+          );
         }
       }
-      for (const frame of undoable) {
-        const node = cy.getElementById(`main:${frame}`);
+      for (const nodeId of undoable) {
+        const node = cy.getElementById(nodeId);
         if (node.empty()) continue;
         const badge = node.data("badge");
         node.data("badge", badge ? `${badge} ⏪⏪` : "⏪⏪");
@@ -911,17 +1108,23 @@
       // discover that the undo they wanted was one press away. A single ⏪ says
       // "there is a way back in here" without claiming the rejoin happened on
       // this frame, which is what ⏪⏪ means everywhere else on the canvas.
+      // Same node keying, and now a landing INSIDE a sub is marked too: a line
+      // absorbed mid-dive comes back on a sub node, which `preMergeLanding`
+      // resolves within that sub's own frame list.
       const landings = new Set();
       for (const entry of lastMergeRewinds || []) {
         if (!entry || !entry.available || entry.partOfConvergence) continue;
         for (const landing of entry.landings || []) {
-          if (!landing || landing.sub || !landing.frame) continue;
-          if (undoable.has(landing.frame)) continue; // the rejoin's own node
-          landings.add(landing.frame);
+          if (!landing || !landing.frame) continue;
+          const nodeId = landing.sub
+            ? `sub:${landing.sub}:${landing.frame}`
+            : `main:${landing.frame}`;
+          if (undoable.has(nodeId)) continue; // the rejoin's own node
+          landings.add(nodeId);
         }
       }
-      for (const frame of landings) {
-        const node = cy.getElementById(`main:${frame}`);
+      for (const nodeId of landings) {
+        const node = cy.getElementById(nodeId);
         if (node.empty()) continue;
         const badge = node.data("badge");
         node.data("badge", badge ? `${badge} ⏪` : "⏪");
@@ -967,9 +1170,10 @@
       if (vanillaState.voting) node.addClass("here-voting");
       if (vanillaState.holding) node.addClass("here-holding");
     });
+    const plural = (n, one) => `${n} ${one}${n === 1 ? "" : "s"}`;
     setStatus(
-      `single line · ${vanillaState.players} players` +
-        (vanillaState.riders ? ` · ${vanillaState.riders} riders` : ""),
+      `single line · ${plural(vanillaState.players, "player")}` +
+        (vanillaState.riders ? ` · ${plural(vanillaState.riders, "rider")}` : ""),
     );
   }
 
@@ -1243,10 +1447,9 @@
       exitSub: true,
       sub,
       frame,
-      operationId: pendingOperationId(),
     };
     if (idx != null) payload.selectedIdx = idx;
-    sendToServer(MSG_SELECT_HISTORY, payload);
+    commitRewind(payload);
   }
 
   // ── History overlay + rewind node menu ─────────────────────────────────────
@@ -1287,97 +1490,33 @@
       return;
     }
     cy.batch(() => {
-      cy.nodes().removeClass(
-        "visited visited-ahead checkpoint ghost-trail ghost-landing",
-      );
-      cy.edges().removeClass("ghost-edge");
-      // Session Lines: paint EVERY line's trail + checkpoint from the lines[]
-      // payload (visited = union over lines; a checkpoint halo per line, which
-      // normally sits on its `here` node since a landing always moves the
-      // history pointer to the end). A line inside a sub carries its sub trail
-      // — same prefix rule as its position, resolving into the sub box.
+      cy.nodes().removeClass("visited visited-ahead checkpoint");
+      // Session Lines: green is every frame the ROOM has walked (`walked`),
+      // not the union of the live lines' trails — a fork restarts each
+      // branch's trail at its own frame, a line mid-dive carries only its sub
+      // trail, and a rejoin retires the lines it swallows, so the trails alone
+      // left most of the room's route blank. The blue halo is still per line:
+      // its checkpoint, normally on its `here` node.
       if (!vanillaMode && Array.isArray(lastLines)) {
-        // Ghosts FIRST: every route feeding a still-undoable rejoin, so the
-        // rewind entries those nodes carry sit on something the operator can
-        // see. A live line still wins a node it SHARES, so the ghost classes
-        // come off again below — except on its own pre-merge route.
-        const ghost = (prefix, trail, landing) => {
-          for (const name of trail || []) {
-            const node = cy.getElementById(`${prefix}${name}`);
-            if (!node.empty()) node.addClass("ghost-trail");
+        const walked = new Set(Array.isArray(lastWalked) ? lastWalked : []);
+        cy.nodes().forEach((node) => {
+          const id = node.id();
+          let ref = null;
+          if (id.startsWith("main:")) {
+            ref = lc(id.slice(5));
+          } else if (id.startsWith("sub:")) {
+            const rest = id.slice(4);
+            const cut = rest.indexOf(":");
+            if (cut > 0) ref = lc(`${rest.slice(0, cut)}/${rest.slice(cut + 1)}`);
           }
-          if (landing) {
-            const node = cy.getElementById(`${prefix}${landing}`);
-            if (!node.empty()) node.addClass("ghost-landing");
-          }
-        };
-        for (const l of lastAbsorbedLines || []) {
-          ghost(l.sub ? `sub:${l.sub}:` : "main:", l.trail, l.landing);
-        }
-        // …and the SURVIVOR's own route into each rejoin (owner). Behind a
-        // still-undoable merge it is exactly as past as the routes it
-        // swallowed — nobody is standing on it, and one undo gives all of them
-        // back — so drawing it as live green history said the room had a main
-        // line, when all it had was `planRecombine` electing the lowest number
-        // as survivor. Collected per line, because the live pass below has to
-        // know which of that line's OWN trail entries not to un-ghost.
-        const survivorGhosts = new Map();
-        for (const entry of lastMergeRewinds || []) {
-          if (!entry || !entry.available || entry.partOfConvergence) continue;
-          if (!Array.isArray(entry.survivorTrail) || !entry.survivorTrail.length)
-            continue;
-          // By ROUTE where both ends carry one, number as the fallback — the
-          // test `mergesBehindLine` and the menu already share, for the same
-          // reason: numbers recycle in both directions.
-          const line = (lastLines || []).find((l) =>
-            !l
-              ? false
-              : entry.survivorLineUid && l.uid
-                ? l.uid === entry.survivorLineUid
-                : l.id === entry.survivorLineId,
-          );
-          if (!line) continue;
-          const prefix = entry.survivorSub
-            ? `sub:${entry.survivorSub}:`
-            : "main:";
-          ghost(prefix, entry.survivorTrail, entry.survivorLanding);
-          // Keyed by NODE id, not bare frame name: a sub-score frame can share
-          // a name with a main one, and a line that has since left the dive it
-          // merged from must not have its main trail greyed by a sub ghost.
-          const seen = survivorGhosts.get(line.id) || new Set();
-          for (const name of entry.survivorTrail) seen.add(`${prefix}${lc(name)}`);
-          survivorGhosts.set(line.id, seen);
-        }
-        for (const l of lastLines) {
-          const prefix = l.sub ? `sub:${l.sub}:` : "main:";
-          // This line's own frames that lie behind one of its still-undoable
-          // rejoins. Its green history begins at the rejoin frame; ANOTHER
-          // line visiting one of them still un-ghosts it below, exactly as a
-          // live line has always won a node it shares with a ghost.
-          const behind = survivorGhosts.get(l.id);
-          for (const name of l.trail || []) {
-            if (behind && behind.has(`${prefix}${lc(name)}`)) continue;
-            const node = cy.getElementById(`${prefix}${name}`);
-            if (!node.empty()) node.removeClass("ghost-trail").addClass("visited");
-          }
-          if (l.checkpoint) {
-            const node = cy.getElementById(`${prefix}${l.checkpoint}`);
-            if (!node.empty()) node.removeClass("ghost-landing").addClass("checkpoint");
-          }
-        }
-        // Draw the ghosted stretches as ROUTES, not as a handful of greyed
-        // nodes: any hop whose BOTH ends are still ghosts after the live pass
-        // above. Asking the classes rather than the trails keeps this honest
-        // for free — a node another line has since walked onto is green again
-        // by now, so the edges either side of it stop being ghosts with it.
-        cy.edges().forEach((edge) => {
-          if (
-            edge.source().hasClass("ghost-trail") &&
-            edge.target().hasClass("ghost-trail")
-          ) {
-            edge.addClass("ghost-edge");
-          }
+          if (ref && walked.has(ref)) node.addClass("visited");
         });
+        for (const l of lastLines) {
+          if (!l.checkpoint) continue;
+          const prefix = l.sub ? `sub:${l.sub}:` : "main:";
+          const node = cy.getElementById(`${prefix}${l.checkpoint}`);
+          if (!node.empty()) node.addClass("checkpoint");
+        }
         return;
       }
       // Vanilla mode (or before the first lines push): the bound line's
@@ -1449,21 +1588,13 @@
       lines: true,
     },
     { heading: "Where they have been" },
-    { fill: "#dcedc8", border: "#999", text: "visited — a trail passes here" },
+    { fill: "#dcedc8", border: "#999", text: "visited — the room has walked here" },
     {
       fill: "#f1f8e9",
       border: "#999",
       text: "a step past the current position",
     },
     { fill: "#f4f4f4", border: "#2b6cb0", text: "the current trail entry" },
-    {
-      ghost: true,
-      // Every route feeding a still-undoable rejoin, the survivor's own
-      // included — the row used to say "a line a merge swallowed", which was
-      // the old, lopsided rule.
-      text: "a route into a rejoin that can still be undone — nobody is on it",
-      lines: true,
-    },
     { heading: "Frame kinds" },
     { fill: "#f4f4f4", border: "#2e7d32", text: "START" },
     { fill: "#f4f4f4", border: "#e67e22", text: "a split frame", lines: true },
@@ -1493,7 +1624,7 @@
     {
       // The one badge that is not about a line standing here: it marks a frame
       // whose split or rejoin the room can still be walked back through, which
-      // otherwise had no marking at all once its ghosts came off.
+      // otherwise had no marking at all.
       glyph: "⏪⏪",
       text: "this frame's split or rejoin can still be undone (tap it)",
       lines: true,
@@ -1534,13 +1665,11 @@
       }
       const swatch = row.edge
         ? `<span class="legend-swatch legend-edge" style="border-top-color:${row.edge}"></span>`
-        : row.ghost
-          ? `<span class="legend-swatch" style="background:#cfd8dc;border:1px dashed #607d8b"></span>`
-          : row.glyph
-            ? `<span class="legend-swatch legend-glyph">${escapeHtml(row.glyph)}</span>`
-            : `<span class="legend-swatch" style="background:${row.fill};border-color:${
-                row.border
-              }${row.dashed ? ";border-style:dashed" : ""}"></span>`;
+        : row.glyph
+          ? `<span class="legend-swatch legend-glyph">${escapeHtml(row.glyph)}</span>`
+          : `<span class="legend-swatch" style="background:${row.fill};border-color:${
+              row.border
+            }${row.dashed ? ";border-style:dashed" : ""}"></span>`;
       html += `<div class="legend-row">${swatch}<span>${escapeHtml(
         row.text,
       )}</span></div>`;
@@ -1609,6 +1738,69 @@
   // room has answered for itself closes with a note instead.
   let openDialog = null;
 
+  // Modal means modal to the keyboard and to assistive technology too: while
+  // the panel is up, everything behind it is inert (no focus, no clicks, not
+  // read out), Tab cycles inside the panel, and closing hands focus back to
+  // where the operator was. `dialogReturn` is that place; `dialogInerted` the
+  // page regions this panel made inert (not ones something else already had).
+  let dialogReturn = null;
+  let dialogInerted = [];
+
+  function setBackgroundInert(backdrop, on) {
+    if (on) {
+      if (dialogInerted.length > 0) return; // already set by the open panel
+      for (const el of Array.from(document.body.children)) {
+        if (el === backdrop || el.hasAttribute("inert")) continue;
+        el.setAttribute("inert", "");
+        dialogInerted.push(el);
+      }
+      return;
+    }
+    for (const el of dialogInerted) el.removeAttribute("inert");
+    dialogInerted = [];
+  }
+
+  function dialogFocusables(panel) {
+    return Array.from(panel.querySelectorAll("button")).filter(
+      (b) => !b.hidden && !b.disabled,
+    );
+  }
+
+  // Remember where focus was the first time a panel opens; a panel replacing
+  // another keeps the original place.
+  function rememberDialogReturn() {
+    if (openDialog) return;
+    const active = document.activeElement;
+    dialogReturn = active && active !== document.body ? active : null;
+  }
+
+  function restoreDialogFocus() {
+    const target = dialogReturn;
+    dialogReturn = null;
+    if (target && target.isConnected && !target.closest("[inert]")) {
+      const visible = target.offsetParent !== null || target === document.body;
+      if (visible && typeof target.focus === "function") {
+        target.focus();
+        if (document.activeElement === target) return;
+      }
+    }
+    // Where it was is gone (the node menu that asked closes behind the
+    // question): the canvas the operator was working on is the next best.
+    const canvas = document.getElementById("session-map-canvas");
+    if (canvas) {
+      if (!canvas.hasAttribute("tabindex")) canvas.setAttribute("tabindex", "-1");
+      canvas.focus();
+    }
+  }
+
+  // The panel's first focus. A destructive question starts on Cancel, so a
+  // stray Enter cannot commit it; anything else starts on its action.
+  function focusDialogStart(panel, danger) {
+    const cancel = panel.querySelector(".dialog-cancel");
+    const ok = panel.querySelector(".dialog-ok");
+    (danger && cancel && !cancel.hidden ? cancel : ok).focus();
+  }
+
   function ensureDialog() {
     let backdrop = document.getElementById("session-map-dialog-backdrop");
     if (backdrop) return backdrop;
@@ -1617,10 +1809,11 @@
     backdrop.style.display = "none";
     backdrop.innerHTML =
       '<div id="session-map-dialog" role="dialog" aria-modal="true" ' +
-      'aria-labelledby="session-map-dialog-title">' +
+      'aria-labelledby="session-map-dialog-title" ' +
+      'aria-describedby="session-map-dialog-body">' +
       '<div class="dialog-title" id="session-map-dialog-title"></div>' +
-      '<div class="dialog-body"></div>' +
-      '<div class="dialog-note" hidden></div>' +
+      '<div class="dialog-body" id="session-map-dialog-body"></div>' +
+      '<div class="dialog-note" role="alert" hidden></div>' +
       '<div class="dialog-actions">' +
       '<button type="button" class="dialog-cancel">Cancel</button>' +
       '<button type="button" class="dialog-ok"></button>' +
@@ -1637,9 +1830,30 @@
       .querySelector(".dialog-ok")
       .addEventListener("click", () => closeDialog(true));
     document.addEventListener("keydown", (e) => {
-      if (openDialog && e.key === "Escape") {
+      if (!openDialog) return;
+      if (e.key === "Escape") {
         e.preventDefault();
         closeDialog(false);
+        return;
+      }
+      if (e.key !== "Tab") return;
+      // Keep Tab / Shift+Tab inside the panel (inert already stops focus
+      // reaching the page; this also wraps from the last button to the first).
+      const panel = backdrop.querySelector("#session-map-dialog");
+      const items = dialogFocusables(panel);
+      if (items.length === 0) {
+        e.preventDefault();
+        return;
+      }
+      const first = items[0];
+      const last = items[items.length - 1];
+      const inside = panel.contains(document.activeElement);
+      if (e.shiftKey && (!inside || document.activeElement === first)) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && (!inside || document.activeElement === last)) {
+        e.preventDefault();
+        first.focus();
       }
     });
     return backdrop;
@@ -1668,12 +1882,26 @@
       .join("");
   }
 
-  function closeDialog(result) {
+  // `replacing`: another question takes the panel straight away, so the page
+  // stays inert and focus stays put for it.
+  function closeDialog(result, { replacing = false } = {}) {
     const backdrop = document.getElementById("session-map-dialog-backdrop");
-    if (backdrop) backdrop.style.display = "none";
     const pending = openDialog;
     openDialog = null;
+    if (!replacing) {
+      if (backdrop) backdrop.style.display = "none";
+      setBackgroundInert(backdrop, false);
+      if (pending) restoreDialogFocus();
+    }
     if (pending) pending.resolve(result);
+  }
+
+  // Show the panel as a modal: page behind it inert, focus on its start.
+  function presentDialog(backdrop, panel, { danger = false, alert = false } = {}) {
+    panel.setAttribute("role", alert ? "alertdialog" : "dialog");
+    backdrop.style.display = "flex";
+    setBackgroundInert(backdrop, true);
+    focusDialogStart(panel, danger);
   }
 
   /**
@@ -1691,7 +1919,8 @@
     // One panel, one question. A refusal can land while a confirm is still up
     // (the room keeps running now that this does not block), and overwriting
     // the slot would leave the first question`s promise unresolved forever.
-    closeDialog(false);
+    rememberDialogReturn();
+    closeDialog(false, { replacing: true });
     const backdrop = ensureDialog();
     const panel = backdrop.querySelector("#session-map-dialog");
     panel.querySelector(".dialog-title").textContent = opts.title;
@@ -1706,8 +1935,7 @@
     ok.disabled = false;
     cancel.hidden = false;
     cancel.textContent = "Cancel";
-    backdrop.style.display = "flex";
-    ok.focus();
+    presentDialog(backdrop, panel, { danger: !!opts.danger });
     return new Promise((resolve) => {
       openDialog = { resolve, guard: opts.guard || null };
     });
@@ -1716,7 +1944,8 @@
   /** The same panel with one button — for a refusal, which the operator is
    * waiting on an answer to and has to acknowledge. */
   function mapAlert(title, body) {
-    closeDialog(false); // as above — never two questions in one panel
+    rememberDialogReturn();
+    closeDialog(false, { replacing: true }); // as above — never two questions in one panel
     const backdrop = ensureDialog();
     const panel = backdrop.querySelector("#session-map-dialog");
     panel.querySelector(".dialog-title").textContent = title;
@@ -1729,8 +1958,7 @@
     ok.classList.remove("dialog-danger");
     ok.disabled = false;
     panel.querySelector(".dialog-cancel").hidden = true;
-    backdrop.style.display = "flex";
-    ok.focus();
+    presentDialog(backdrop, panel, { alert: true });
     return new Promise((resolve) => {
       openDialog = { resolve, guard: null };
     });
@@ -1836,9 +2064,8 @@
       danger: true,
     });
     if (!ok) return;
-    sendToServer(MSG_SELECT_HISTORY, {
+    commitRewind({
       selectedIdx: idx,
-      operationId: newRewindOperationId(),
     });
     // The server answers with fresh MSG_SELECT_HISTORY + positions pushes,
     // which redraw the overlay — nothing to do locally.
@@ -1965,10 +2192,9 @@
             } made since came off`
           : ""),
     );
-    sendToServer(MSG_SELECT_HISTORY, {
+    commitRewind({
       group,
       cascade: undoes,
-      operationId: pendingOperationId(),
     });
   }
 
@@ -2054,11 +2280,10 @@
     // Both values are a race guard: a stale menu cannot undo a later visit to
     // the same split frame. `cascade` guards the far bigger half — everything
     // this click takes off on the way, which the confirm has just named.
-    sendToServer(MSG_SELECT_HISTORY, {
+    commitRewind({
       splitEventId: eventId,
       frame,
       cascade,
-      operationId: pendingOperationId(),
     });
   }
 
@@ -2107,11 +2332,10 @@
     );
     // Both values are a race guard, exactly as the split undo's are; `cascade`
     // guards what the click takes off on the way.
-    sendToServer(MSG_SELECT_HISTORY, {
+    commitRewind({
       mergeEventId: eventId,
       frame,
       cascade,
-      operationId: pendingOperationId(),
     });
   }
 
@@ -2130,6 +2354,19 @@
   // message that carries it out.
   function pendingOperationId() {
     return (pendingRewind && pendingRewind.operationId) || null;
+  }
+
+  // Every rewind this map asks for leaves through here, stamped with the id
+  // of the gesture it carries out: the one `rememberRewind` just opened, or a
+  // fresh one for a rewind that shows no receipt of its own (vanilla mode).
+  // One door, so no entry point can forget the id its answer is matched on.
+  function commitRewind(payload) {
+    const message = {
+      ...payload,
+      operationId: pendingOperationId() || newRewindOperationId(),
+    };
+    sendToServer(MSG_SELECT_HISTORY, message);
+    return message;
   }
 
   // What to show back when the server says this rewind happened. Composed at
@@ -2306,6 +2543,25 @@
   // only when there is somebody to spread. It used to be unconditional, which
   // told every operator about a redistribution that most of the time involved
   // nobody at all.
+  // The latecomer counts change with every join and leave, while the merge
+  // entries they belong to are fetched once per TOPOLOGY (a join is not a
+  // structural change), so the counts held there went stale the moment
+  // anybody arrived and the confirm never mentioned them until the map was
+  // reloaded. Every push carries the live counts in its structural summaries;
+  // copy them onto the entries in hand.
+  function syncLatecomerCounts(summaries) {
+    if (!Array.isArray(summaries)) return;
+    for (const summary of summaries) {
+      if (!summary || summary.kind !== "merge") continue;
+      const entry = (lastMergeRewinds || []).find(
+        (candidate) => candidate && candidate.eventId === summary.eventId,
+      );
+      if (!entry || !entry.available) continue;
+      entry.latecomers = summary.latecomers || 0;
+      entry.latecomersHere = summary.latecomersHere;
+    }
+  }
+
   function latecomerClause(eventId) {
     const entry = (lastMergeRewinds || []).find(
       (candidate) => candidate && candidate.eventId === eventId,
@@ -2505,8 +2761,25 @@
           .map((l) => frameLabel(l.frame)),
       ),
     ];
+    // One line per node: lines the undo puts back on the SAME frame cannot
+    // stay apart there, and merge again the moment they land. Said up front,
+    // since "N lines go back" would otherwise promise a room the undo cannot
+    // leave standing.
+    const shared = new Map();
+    for (const l of mergeLandingsFor(eventId)) {
+      const key = l.sub ? `${l.sub}/${l.frame}` : l.frame;
+      if (!shared.has(key)) shared.set(key, []);
+      shared.get(key).push(l.lineId);
+    }
+    const remerge = [...shared.entries()]
+      .filter(([, ids]) => ids.length > 1)
+      .map(([frame, ids]) => `${ids.join(", ")} merge again on ⟨${frameLabel(frame)}⟩`);
     return {
-      lands: `${exceptLineId ? "The others" : "They"} land ${where}.`,
+      lands:
+        `${exceptLineId ? "The others" : "They"} land ${where}.` +
+        (remerge.length
+          ? ` A frame holds only one line, so ${remerge.join(" and ")}.`
+          : ""),
       barrier: barriers.length
         ? `The hold-until wait at ${barriers
             .map((f) => `⟨${f}⟩`)
@@ -2664,12 +2937,11 @@
     // The line is no longer in the room's lines[] at all — its number went back
     // in the pool at the rejoin — so the merge event is how the server finds
     // the route this entry names.
-    sendToServer(MSG_SELECT_HISTORY, {
+    commitRewind({
       lineId,
       selectedIdx: idx,
       frame,
       absorbedEventId: ghost.mergeEventId,
-      operationId: pendingOperationId(),
     });
   }
 
@@ -2804,14 +3076,28 @@
   // anything the structural, ghost or per-line sections already put on this
   // node belongs to the NEWEST passage, which is reached through its own
   // routes and must not grow a second button for the same undo.
-  function remoteMergeLandingHtml(frameName) {
+  // `sub` is this node's score — null on the main flow, as everywhere else on
+  // the menu. A landing can be inside a dive (a line absorbed mid-dive comes
+  // back on a sub node), so the score has to be part of the match or a main
+  // frame of the same name would claim it.
+  function remoteMergeLandingHtml(frameName, sub = null) {
     let html = "";
     for (const entry of lastMergeRewinds || []) {
       if (!entry || !entry.available || entry.partOfConvergence) continue;
       // The rejoin's own node already offers this, as the merge it was.
-      if (lc(entry.frame || "") === lc(frameName)) continue;
+      if (
+        lc(entry.frame || "") === lc(frameName) &&
+        lc(entry.sub || "") === lc(sub || "")
+      ) {
+        continue;
+      }
       const ids = (entry.landings || [])
-        .filter((l) => l && !l.sub && lc(l.frame || "") === lc(frameName))
+        .filter(
+          (l) =>
+            l &&
+            lc(l.sub || "") === lc(sub || "") &&
+            lc(l.frame || "") === lc(frameName),
+        )
         .map((l) => l.lineId);
       if (ids.length === 0) continue;
       // `data-merge-frame` is the REJOIN frame, not this node's: it is the
@@ -2910,14 +3196,13 @@
       oldest && oldest.eventId,
       landsHere ? null : lineId,
     );
-    sendToServer(MSG_SELECT_HISTORY, {
+    commitRewind({
       lineId,
       selectedIdx: idx,
       frame,
       // The rejoins this rewind promised to walk back through, so the server
       // can refuse one the room has added since (`stale-cascade`).
       cascade,
-      operationId: pendingOperationId(),
     });
   }
 
@@ -3174,12 +3459,18 @@
     return html;
   }
 
-  function mergeRewindHtml(frameName) {
+  // `sub` is the score this node belongs to — null on the main flow. Frame
+  // names are unique within a score and not across them, so without it a
+  // rejoin that happened on `End.svg` inside a sub offered its undo on the
+  // main `End.svg` (a node the operator never watched it happen on), and the
+  // sub node it did happen on offered nothing.
+  function mergeRewindHtml(frameName, sub = null) {
     let html = "";
     let expiredHere = false;
     let supersededBy = null;
     for (const entry of lastMergeRewinds || []) {
       if (lc(entry.frame || "") !== lc(frameName)) continue;
+      if (lc(entry.sub || "") !== lc(sub || "")) continue;
       // Lines arriving apart merge in pairs, so one convergence is several
       // events. The server undoes the passage whole, so its newest event is the
       // only entry the menu shows — and the older ones must not raise the
@@ -3368,6 +3659,12 @@
         const inThisSub = (lastLines || []).filter(
           (l) => l.sub && lc(l.sub) === lc(subMatch[1]),
         );
+        // Lines merge inside sub-scores too (one line per node holds
+        // everywhere), and the undo belongs on the node the operator watched
+        // it happen on. Splits do not: the validator forbids a session-split
+        // inside a sub, so there is no split section here.
+        const structuralHtml = mergeRewindHtml(subMatch[2], subMatch[1]);
+        html += structuralHtml;
         const lineButtons = lineRewindButtonsHtml(inThisSub, subMatch[2]);
         html += lineButtons;
         // A line absorbed mid-DIVE keeps the sub's trail, so its ghost entries
@@ -3377,6 +3674,13 @@
           subMatch[1],
         );
         html += ghostButtons;
+        // …and the landings of an older passage inside this same sub. Same
+        // rule as the main branch: only when nothing above has claimed it.
+        const remote =
+          structuralHtml || lineButtons || ghostButtons
+            ? ""
+            : remoteMergeLandingHtml(subMatch[2], subMatch[1]);
+        html += remote;
         // The note is the REWIND section's, so it may only speak for that
         // section — and only when the menu is otherwise empty. On the frame a
         // diver is standing on it used to print "no line mid-dive here" under
@@ -3384,7 +3688,13 @@
         // occurrence is the line's current position and is deliberately not
         // offered (history is an undo trail, not teleport, §8), so this
         // section is legitimately empty while the ones above it are full.
-        if (!lineButtons && !ghostButtons && !liveHtml) {
+        if (
+          !structuralHtml &&
+          !lineButtons &&
+          !ghostButtons &&
+          !remote &&
+          !liveHtml
+        ) {
           html += `<div class="menu-note">${
             inThisSub.length
               ? "no earlier step of this dive here — no rewind"
@@ -3595,6 +3905,13 @@
       return;
     }
     if (msg === MSG_SHOW) {
+      // A session page's reconnect snapshot rides on MSG_SHOW and can name a
+      // sub-score, whose index means nothing against the main flow. The server
+      // does not send one here, and this says so out loud rather than leaving
+      // the map one routing change away from a sub-relative `cid`.
+      if (data.snapshot && data.sub) {
+        return;
+      }
       // Track the playhead like the session page does (cid rides on outgoing
       // messages); in vanilla mode this IS the single line's position.
       window.currentIndex = data.showIdx;
@@ -3704,8 +4021,10 @@
         lastRoomCheckpoints = Array.isArray(data.roomCheckpoints)
           ? data.roomCheckpoints
           : [];
+        syncLatecomerCounts(data.structuralEvents);
         requestStructuralDetails(data.structuralVersion);
-        updateLines(data.lines);
+        if (Array.isArray(data.walked)) lastWalked = data.walked;
+        updateLines(withKnownTrails(data.lines));
       } else if (vanillaMode) {
         vanillaState.players = data.playerCount || 0;
         vanillaState.riders = data.riderCount || 0;
@@ -3767,35 +4086,19 @@
         window.staffCode || "",
       )}&t=1`;
     }
+    await start(container);
+  }
+
+  // Everything init waits for before opening the socket. The in-page retry
+  // runs it again as a whole; each step skips what an earlier attempt has.
+  async function start(container) {
+    setStatus("loading…");
     try {
-      // Right after a server (re)start the graph is re-derived asynchronously,
-      // so a 404 may just mean "still building" — retry before concluding the
-      // score has no session lines.
-      let res = null;
-      for (let attempt = 0; attempt < 15; attempt++) {
-        res = await fetch(`/session/${window.sessionId}/graph`);
-        if (res.ok) break;
-        setStatus(`score still building — retrying… (${attempt + 1})`);
-        await new Promise((r) => setTimeout(r, 2000));
-      }
-      if (!res.ok) {
-        setStatus("this score has no session-lines graph");
-        return;
-      }
-      const data = await res.json();
+      const data = await fetchGraph();
       graphData = data;
       vanillaMode = !data.main.hasSessionLines;
       mainFrames = data.main.frames || [];
-      for (const src of CDN_SCRIPTS) {
-        try {
-          await loadScript(src);
-        } catch (e) {
-          // dagre / cytoscape-dagre are optional (breadthfirst fallback);
-          // cytoscape itself is not.
-          if (src.includes("/cytoscape@")) throw e;
-          console.warn("session-map: optional layout lib failed", e);
-        }
-      }
+      await loadGraphScripts();
       render(container, graphElements(data));
       if (pendingLines) {
         updateLines(pendingLines);
@@ -3809,9 +4112,25 @@
       window.addEventListener("pageshow", onPageShow);
     } catch (e) {
       console.error("session-map init failed", e);
-      setStatus("map failed to load (see console)");
+      showStartupError(e.message || String(e), () => start(container));
     }
   }
 
   document.addEventListener("DOMContentLoaded", init);
+
+  // For test/map-client.test.js, which runs this file in a sandbox: the
+  // rewind bookkeeping behind the menus, without a canvas or a live server.
+  // Nothing sets this flag on a real page.
+  if (window.__SESSION_MAP_TEST__) {
+    window.__SESSION_MAP_TEST__.hooks = {
+      rememberRewind,
+      commitRewind,
+      pendingRewind: () => pendingRewind,
+      // Before a canvas exists a push is held as pendingLines.
+      latestLines: () => lastLines || pendingLines,
+      // Startup (review F10/F11): the graph fetch and the whole start path.
+      fetchGraph,
+      start,
+    };
+  }
 })();

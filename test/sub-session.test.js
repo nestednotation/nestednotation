@@ -14,7 +14,6 @@ const fs = require("node:fs");
 
 const { buildScore } = require("../bin/build-score.js");
 const { buildSessionLinesFixture } = require("./session-lines-fixture");
-const { SERVER_STATE_DIR } = require("../database.js");
 const { BMLine } = require("../lib/session-lines/line");
 const {
   subReturnIndex,
@@ -38,7 +37,7 @@ module.exports = {
     assert.strictEqual(tetra.graph.subEnd["Echo.svg"], "Tetra");
 
     // The on-disk file mirrors the served payload.
-    const subsPath = `${SERVER_STATE_DIR}/__sub_test__.subs.json`;
+    const subsPath = session.bundleFile("subs.json");
     assert.ok(fs.existsSync(subsPath), "__sub_test__.subs.json must be written");
     const payload = JSON.parse(fs.readFileSync(subsPath, "utf8"));
     assert.ok(payload.Tetra);
@@ -50,7 +49,7 @@ module.exports = {
     assert.ok(!session.hasSessionLines);
     assert.deepStrictEqual(session.subFrames, {});
     assert.ok(
-      !fs.existsSync(`${SERVER_STATE_DIR}/__sub_vanilla__.subs.json`),
+      !fs.existsSync(session.bundleFile("subs.json")),
       "vanilla score must not write a subs file",
     );
   },
@@ -150,7 +149,17 @@ module.exports = {
     );
   },
 
-  "runtime: an ejected line lands HOLDING, so its arrival is not done yet": async () => {
+  // SCOPE: this is a COMPONENT case, not a runtime one. It assembles the
+  // sequence `ejectLineFromSub` performs — exit the dive, land on its return
+  // frame, start that frame's hold — out of the real playhead API, and then
+  // asserts the registry rule that follows from a running hold. It does NOT
+  // invoke the eject handler and does not start a hold: `line.isHolding` is
+  // set here, so removing the runtime's own `startArrivalHoldForLanding` call
+  // would not fail it. What it does protect is the graph contract the
+  // operator landing depends on (every frame carries a `holding` key) and
+  // `markReached`'s arrived/done rule. The eject handler itself is driven
+  // end to end by the `run-session` walkthrough, not from here.
+  "component: a landing whose hold is running is ARRIVED, never done": async () => {
     const session = await buildSessionLinesFixture({ id: "__sub_eject_hold__" });
     const idx = (n) => session.listFilesInLowerCase.indexOf(n.toLowerCase());
 

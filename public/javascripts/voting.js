@@ -77,6 +77,10 @@ function handleSelectLink(aElement) {
     selectedId: aElement.id,
     frameVotingDur,
     nextFrameHoldingDur,
+    // The dive context of the frame this link was tapped ON (session.js keeps
+    // it with the display). The server refuses a tap from a context its line
+    // has left — see validateTapTarget.
+    ctx: window.displayContext,
   });
 }
 

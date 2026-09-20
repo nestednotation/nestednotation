@@ -82,10 +82,46 @@ let wsCountdownTimer = null;
 
 // ── WebSocket lifecycle ──────────────────────────────────────────────
 
+// ── Scheduled deliveries ─────────────────────────────────────────────────────
+// The server can address a message to a moment in the near future (`t`, the
+// preload window), and this page honours that by holding it in a timer. Those
+// timers are their own little stream of pending display changes, and tearing
+// the socket down did not touch them: a SHOW held for the preload window fired
+// after the reconnect that was supposed to replace it, repainting a display the
+// server had already corrected. Tracked so they can be cancelled with the
+// socket they arrived on — the page's display state restarts with the new one
+// (`resetDisplayEpoch`), and anything still owed is re-sent in the snapshot
+// that answers its MSG_NEED_DISPLAY.
+//
+// Same-socket staleness — a rewind overtaking a message already in flight — is
+// not a timer's problem to solve and is not solved here: those messages carry a
+// display revision the page checks before applying one.
+const pendingDeliveries = new Set();
+
+function scheduleDelivery(data, delay) {
+  const handle = setTimeout(() => {
+    pendingDeliveries.delete(handle);
+    parseMessage(data);
+  }, delay);
+  pendingDeliveries.add(handle);
+}
+
+function cancelPendingDeliveries() {
+  for (const handle of pendingDeliveries) {
+    clearTimeout(handle);
+  }
+  pendingDeliveries.clear();
+}
+
 function connectWebSocket() {
   ensureDeviceId();
   cancelReconnectTimer();
   teardownSocket();
+  // A fresh socket is a fresh display epoch: revisions restart (a server that
+  // restarted counts from zero) and the snapshot answering our first
+  // MSG_NEED_DISPLAY is the picture to trust. Defined by session.js only — the
+  // map page has no frame display of its own.
+  window.resetDisplayEpoch?.();
   ws = new WebSocket(wsPath);
   ws.onopen = onWsOpen;
   ws.onmessage = onWsMessage;
@@ -95,6 +131,7 @@ function connectWebSocket() {
 
 function teardownSocket() {
   stopHandshake();
+  cancelPendingDeliveries();
   if (!ws) return;
   ws.onopen = ws.onmessage = ws.onclose = ws.onerror = null;
   ws.close();
@@ -171,7 +208,7 @@ function onWsMessage(event) {
   if (data.m === MSG_SHOW && delay > 0 && data.showIdx !== -1) {
     window.sessionInstance?.preloadFrameAudio(data.showIdx);
   }
-  delay === 0 ? parseMessage(data) : setTimeout(parseMessage, delay, data);
+  delay === 0 ? parseMessage(data) : scheduleDelivery(data, delay);
 }
 
 function onWsClose() {

@@ -29,6 +29,7 @@ module.exports = {
     line.currentHoldingDuration = 4;
     line.subStack = [{ score: "S", returnHref: "R.svg" }];
     line.splitAncestors = ["S1", "S2"];
+    line.dormantAt = 1234;
     const votingTimer = setInterval(() => {}, 1e6);
     line.votingTimer = votingTimer;
 
@@ -54,6 +55,8 @@ module.exports = {
     assert.strictEqual(restored.id, "L0");
     assert.strictEqual(restored.currentHoldingDuration, 4);
     assert.deepStrictEqual(restored.splitAncestors, ["S1", "S2"]);
+    assert.strictEqual(restored.dormantAt, 1234, "dormantAt survives a restart");
+    assert.strictEqual(new BMLine(session, "L1").dormantAt, null);
     // session back-ref restored + non-enumerable (never leaks to JSON).
     assert.strictEqual(restored.session, session);
     assert.ok(
@@ -405,6 +408,36 @@ module.exports = {
       "B must not be swallowed by the truncation",
     );
     assert.strictEqual(line.historyIndex, 2);
+  },
+
+  // M1, at the last boundary before the playhead takes a value. `parseInt`
+  // yielded NaN for anything non-numeric, and the line then rested on a frame
+  // no score has: addressable by nothing, advanceable from nothing.
+  "setCurrIdxTo refuses an out-of-range index and leaves the line put": () => {
+    const session = { listFiles: ["A.svg", "B.svg", "C.svg"], subFrames: {} };
+    const line = new BMLine(session, "L0");
+    line.setCurrIdxTo(1);
+    assert.strictEqual(line.currentIndex, 1);
+    assert.deepStrictEqual(line.history, ["B.svg"]);
+
+    const warn = console.warn;
+    const warnings = [];
+    console.warn = (m) => warnings.push(m);
+    try {
+      for (const bad of [NaN, -1, 3, "stay", undefined, null, 1.5]) {
+        line.setCurrIdxTo(bad);
+        assert.strictEqual(line.currentIndex, 1, `index survived ${bad}`);
+        assert.deepStrictEqual(line.history, ["B.svg"], `trail survived ${bad}`);
+      }
+    } finally {
+      console.warn = warn;
+    }
+    assert.strictEqual(warnings.length, 7, "every refusal is reported");
+
+    // …and a legitimate move still works afterwards.
+    line.setCurrIdxTo(2);
+    assert.strictEqual(line.currentIndex, 2);
+    assert.deepStrictEqual(line.history, ["B.svg", "C.svg"]);
   },
 
   "clearAllTimer clears every line's timers": () => {

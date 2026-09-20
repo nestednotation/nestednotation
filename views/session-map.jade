@@ -52,6 +52,9 @@ html
     //- success only has to be seen, and the status line beside the title is
     //- rewritten by every lines push a rewind sends.
     div(id="session-map-toast", style="display:none")
+    //- Results and errors, read once by assistive technology (session-map.js
+    //- announce()); visually hidden, the toast and status line show them.
+    div(id="session-map-announce", class="visually-hidden", role="status", aria-live="polite")
     div(id="session-map-log", style="display:none")
     div(id="session-map-canvas")
     div(id="session-map-zoom")

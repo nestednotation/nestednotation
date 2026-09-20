@@ -14,7 +14,8 @@ const fs = require("fs");
  *
  * Listings are memoized for the lifetime of the process, so a score folder
  * added while the server is running is not picked up until a restart (or an
- * explicit clearDirCache()).
+ * explicit clearDirCache()). A score build refreshes its own folder's listings
+ * (clearDirCacheUnder), so an in-place rebuild sees added or removed frames.
  */
 
 // Case-insensitive first: that is the order every existing score was authored
@@ -116,4 +117,26 @@ function clearDirCache(dir) {
   recursiveCache.delete(dir);
 }
 
-module.exports = { readDirSorted, readDirSortedSync, clearDirCache };
+/**
+ * Drop the memoized listings of `root` and every directory below it. A score
+ * build calls this for its own folder: rebuilding a score edited in place has
+ * to see frames and sounds added or removed since the last read.
+ */
+function clearDirCacheUnder(root) {
+  const base = sortKey(root).replace(/\/+$/, "");
+  for (const cache of [listCache, recursiveCache]) {
+    for (const dir of [...cache.keys()]) {
+      const key = sortKey(dir);
+      if (key === base || key.startsWith(`${base}/`)) {
+        cache.delete(dir);
+      }
+    }
+  }
+}
+
+module.exports = {
+  readDirSorted,
+  readDirSortedSync,
+  clearDirCache,
+  clearDirCacheUnder,
+};

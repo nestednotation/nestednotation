@@ -14,6 +14,7 @@ const {
   populationLineConnections,
   smallestLineId,
   spectatorLandingLineId,
+  lastVacatedLineId,
 } = require("../lib/session-lines/routing");
 
 function conns() {
@@ -26,6 +27,37 @@ function conns() {
 }
 
 module.exports = {
+  "lastVacatedLineId: the line the room left last, not the lowest husk": () => {
+    // The finished room: L3 was played to END and left last; L0 is an empty
+    // first branch a split left on a mid-score fork, never populated.
+    const lines = [
+      { id: "L0", status: "dormant", dormantAt: null },
+      { id: "L1", status: "dormant", dormantAt: 100 },
+      { id: "L2", status: "dormant" },
+      { id: "L3", status: "dormant", dormantAt: 500 },
+    ];
+    assert.strictEqual(lastVacatedLineId(lines), "L3");
+  },
+
+  "lastVacatedLineId: ignores active and retired lines, ties go to the lower number": () => {
+    assert.strictEqual(
+      lastVacatedLineId([
+        { id: "L0", status: "active", dormantAt: 900 },
+        { id: "L4", status: "retired", dormantAt: 900 },
+        { id: "L2", status: "dormant", dormantAt: 300 },
+        { id: "L1", status: "dormant", dormantAt: 300 },
+      ]),
+      "L1",
+    );
+  },
+
+  "lastVacatedLineId: null when no dormant line carries a stamp (old state file)": () => {
+    assert.strictEqual(
+      lastVacatedLineId([{ id: "L0", status: "dormant" }, { id: "L1", status: "active" }]),
+      null,
+    );
+    assert.strictEqual(lastVacatedLineId([]), null);
+  },
   "single line: lineConnections == sessionConnections": () => {
     const single = [
       { sessionId: "s1", lineId: "L0" },
