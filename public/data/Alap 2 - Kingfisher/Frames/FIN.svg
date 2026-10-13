@@ -8,7 +8,7 @@
     <g clip-path="url(#_clip1)">
     <a href="START.svg">
         <g id="votemarker">
-            <rect id="votemarker1" serif:id="votemarker" x="0.147" y="0.01" width="1275" height="1860" style="fill:#ffd582;stroke:#000;stroke-opacity:0;stroke-width:0.85px;"/>
+            <rect id="votemarker1" sound="START" serif:id="votemarker" x="0.147" y="0.01" width="1275" height="1860" style="fill:#ffd582;stroke:#000;stroke-opacity:0;stroke-width:0.85px;"/>
         </g>
         </a>
         <g transform="matrix(144,0,0,144,566.799,949.618)">

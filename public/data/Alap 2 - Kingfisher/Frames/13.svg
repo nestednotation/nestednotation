@@ -142,13 +142,11 @@
         <g transform="matrix(36,0,0,36,105.603,1838.12)">
         </g>
         <text x="15.516px" y="1838.12px" style="font-family:'ArialMT', 'Arial', sans-serif;font-size:36px;">13/50</text>
-        <g>
-            <g transform="matrix(64,0,0,64,173.85,990.621)">
+        <g id="prepare-to-choose" serif:id="prepare to choose">
+            <rect id="pulses-and-antipulses" serif:id="pulses and antipulses" x="387.984" y="893.402" width="500.064" height="76.074" style="fill:#fff;stroke:#000;stroke-opacity:0;stroke-width:0.85px;"/>
+            <g transform="matrix(64,0,0,64,867.584,945.221)">
             </g>
-            <text x="20.122px" y="990.621px" style="font-family:'MetallophileSp8-Light', 'Metallophile Sp8';font-weight:300;font-size:64px;">pulses</text>
-            <g transform="matrix(64,0,0,64,280.986,897.221)">
-            </g>
-            <text x="20.122px" y="897.221px" style="font-family:'MetallophileSp8-Light', 'Metallophile Sp8';font-weight:300;font-size:64px;">long tones</text>
+            <text x="408.448px" y="945.221px" style="font-family:'MetallophileSp8-Light', 'Metallophile Sp8';font-weight:300;font-size:64px;">prepare to choose</text>
         </g>
     </g>
 </svg>
