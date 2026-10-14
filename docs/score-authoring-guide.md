@@ -225,7 +225,9 @@ Frames sharing the same group name form a **synchronized section**. Two things h
    unlocks when the **last held frame in the group is released**, so all the lines leave
    the section together. Lines with no performers in them, and lines whose route can no
    longer reach the group, are not waited for. (A lone populated line on a grouped frame
-   never shows the notice — there is no one to sync with.)
+   never shows the notice — there is no one to sync with.) The notice is about the lines
+   still on their way: once every line has arrived, the wait for the last held frame
+   shows no notice.
 2. **Voting runs in lockstep.** Once everyone has arrived and every held frame has been
    released, the group's voting windows open and close **together** across all its frames.
    Each line still counts its own votes and follows its own winning link — *except*

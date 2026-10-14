@@ -566,3 +566,95 @@ module.exports["a barrier gate reads a restored hold's deadline on the shared cl
       assert.strictEqual(session._barrier.byFrame["Barrier.svg"], undefined);
       assert.strictEqual(line.isBarrierWaiting, false);
     });
+
+// ── Track-group hold sync vs the "waiting for other lines…" banner ───────────
+// With 2+ lines on a track group, the group also holds every occupant until the
+// last one's holding period ends, so they leave the held frame together. That
+// park is real, but it is not waiting for other LINES: each one is already
+// there. The banner used to show for every held group frame of a multi-line
+// room, which is every voting period of a score that groups its frames.
+const groupHoldRoom = fixtureRoom("group-hold");
+
+// A line's group-park banner messages, without the operator's admin copies.
+const parkedBanners = (conn) =>
+  received(conn, M.MSG_BARRIER_WAITING).filter((p) => !p.admin && !p.straggler);
+
+function pageBannerRole(conn) {
+  const page = clientHarness();
+  replayInto(page, conn);
+  const el = page.banner();
+  return el ? el.dataset.role : undefined;
+}
+
+// Split the room's two devices onto the two links of the line's frame, and run
+// the clock until the split has resolved.
+async function splitTwoWays(h, session, a, b, linkA, linkB) {
+  const line = session.lines[0];
+  const cid = line.currentIndex;
+  const from = session.listFiles[cid];
+  const idx = (n) => session.listFilesInLowerCase.indexOf(n.toLowerCase());
+  await tap(h, session, a, `${idx(linkA)}#${from}#0`, { cid });
+  await tap(h, session, b, `${idx(linkB)}#${from}#1`, { cid });
+  for (let i = 0; i < 60 && a.lineId === b.lineId; i++) {
+    await h.advance(250);
+  }
+  assert.notStrictEqual(a.lineId, b.lineId, "the split never resolved");
+}
+
+const lineOf = (session, conn) => session.lines.find((l) => l.id === conn.lineId);
+const frameOf = (session, conn) => session.listFiles[lineOf(session, conn).currentIndex];
+
+module.exports["lines that reach a held group together are parked, but never told they wait for other lines"] =
+  () =>
+    withRoom(groupHoldRoom("__www_group_hold_together__"), async (h, session) => {
+      const a = await join(h, session, "dA");
+      const b = await join(h, session, "dB");
+      await splitTwoWays(h, session, a, b, "G1.svg", "G2.svg");
+      assert.deepStrictEqual([frameOf(session, a), frameOf(session, b)], ["G1.svg", "G2.svg"]);
+
+      // Both inside G's holding period: parked by the hold sync…
+      const [la, lb] = [lineOf(session, a), lineOf(session, b)];
+      assert.ok(la.isGroupWaiting && lb.isGroupWaiting, "the hold sync no longer parks");
+      // …with no banner standing on either page, nor in a reconnect snapshot.
+      assert.strictEqual(pageBannerRole(a), undefined);
+      assert.strictEqual(pageBannerRole(b), undefined);
+      await h.send(a, M.MSG_NEED_DISPLAY, { sid: session.id, sig: PLAYER, did: "dA" });
+      const snap = a.sent.filter((p) => p.m === M.MSG_SHOW && p.snapshot).pop();
+      assert.strictEqual(snap.waiting, null, "the snapshot restores a hold-only banner");
+
+      // And the group unlocks on the hold's release.
+      await h.advance(3500);
+      assert.ok(!la.isGroupWaiting && !lb.isGroupWaiting, "the group never released");
+    });
+
+module.exports["a line parked for a missing line keeps its banner until that line arrives"] =
+  () =>
+    withRoom(groupHoldRoom("__www_group_hold_stagger__"), async (h, session) => {
+      const idx = (n) => session.listFilesInLowerCase.indexOf(n.toLowerCase());
+      session.lines[0].setCurrIdxTo(idx("STAGGER.svg"));
+      const a = await join(h, session, "dA");
+      const b = await join(h, session, "dB");
+      await splitTwoWays(h, session, a, b, "G1.svg", "Mid.svg");
+      assert.deepStrictEqual([frameOf(session, a), frameOf(session, b)], ["G1.svg", "Mid.svg"]);
+
+      // G is waiting on the line still travelling — that IS waiting for others.
+      assert.ok(lineOf(session, a).isGroupWaiting);
+      assert.strictEqual(parkedBanners(a).length, 1);
+      assert.strictEqual(pageBannerRole(a), "parked");
+      assert.strictEqual(pageBannerRole(b), "straggler", "the travelling line is not told it is awaited");
+
+      // The other line arrives; what is left is the hold sync, so the banner goes.
+      await tap(h, session, b, `${idx("G2.svg")}#Mid.svg#0`, { cid: idx("Mid.svg") });
+      for (let i = 0; i < 20 && frameOf(session, b) !== "G2.svg"; i++) {
+        await h.advance(250);
+      }
+      assert.strictEqual(frameOf(session, b), "G2.svg");
+      const [la, lb] = [lineOf(session, a), lineOf(session, b)];
+      assert.ok(la.isGroupWaiting && lb.isGroupWaiting, "the hold sync no longer parks");
+      assert.strictEqual(pageBannerRole(a), undefined, "the arrival left the banner up");
+      assert.strictEqual(pageBannerRole(b), undefined);
+      assert.strictEqual(parkedBanners(b).length, 0);
+
+      await h.advance(3500);
+      assert.ok(!la.isGroupWaiting && !lb.isGroupWaiting, "the group never released");
+    });

@@ -2306,6 +2306,10 @@ function notifyAdminsBarriers(session) {
   // `stragglers[]` below is built from the result. Refreshing afterwards left
   // the panel one edge behind — visible after a restart, where player devices
   // reconnect one at a time and each reconnect changes who is being waited on.
+  // The parked banners go first: the straggler refresh reads them to decide
+  // whether a line that stopped being a straggler still needs its banner
+  // cleared.
+  refreshGroupParkBanners(session);
   refreshStragglerNotices(session);
   const barriers = session._barrier
     ? Object.keys(session._barrier.byFrame).map((frame) => {
@@ -2529,13 +2533,69 @@ async function maybeParkAtGroup(session, line, frameName) {
     return;
   }
   line.isGroupWaiting = true;
-  sendToLine(session, line.id, 0, {
-    m: MESSAGES.MSG_BARRIER_WAITING,
-    frame: frameName,
-    group,
-  });
+  // The banner, if this park warrants one, goes out from the refresh inside
+  // notifyAdminsBarriers (refreshGroupParkBanners).
   notifyAdminsBarriers(session);
   await session.saveSessionStateToFile();
+}
+
+// Whether a group-parked line is waiting on another LINE — one still on its
+// way to the group, or one held at a hold-until barrier inside it — rather than
+// only on the group's hold sync. Only the first is "waiting for other lines…"
+// (owner): the hold sync parks every occupant of a 2+-line group for its
+// holding period, the last arrival included, and announcing that as a wait for
+// others put the banner on every held group frame of a multi-line room — every
+// voting period, on a score that groups its frames.
+function groupParkWaitsOnLines(session, line) {
+  const group = groupOfCurrentFrame(session, line);
+  if (group == null) {
+    return false;
+  }
+  const state = groupWaitState(session, group);
+  return (
+    state.incomingIds.length > 0 ||
+    state.blockedIds.some((id) => id !== line.id)
+  );
+}
+
+// The "waiting for other lines…" banner a parked line should be showing.
+function parkedBannerShown(session, line) {
+  return (
+    !!line.isBarrierWaiting ||
+    (!!line.isGroupWaiting && groupParkWaitsOnLines(session, line))
+  );
+}
+
+// Push/clear the group-park banner, diffed against `line.groupParkBanner` so a
+// line is only messaged when it changes: a line parks with it while the group
+// still waits on someone travelling, and loses it — still parked — when the
+// last of them lands and only the hold sync is left. TRANSIENT, like
+// `stragglerFor`: derived from live positions, re-derived on the first
+// post-restart edge. A hold-until barrier owns the banner of a line it parks
+// (enterBarrier / its release), so this never clears one from under it.
+function refreshGroupParkBanners(session) {
+  for (const line of session.lines || []) {
+    if (!line || line.status === "retired") {
+      continue;
+    }
+    const show = !!line.isGroupWaiting && groupParkWaitsOnLines(session, line);
+    const was = !!line.groupParkBanner;
+    line.groupParkBanner = show;
+    if (show && !was) {
+      sendToLine(session, line.id, 0, {
+        m: MESSAGES.MSG_BARRIER_WAITING,
+        frame: frameNameForLine(session, line),
+        group: groupOfCurrentFrame(session, line),
+      });
+    } else if (!show && was && line.isGroupWaiting && !line.isBarrierWaiting) {
+      // Still parked, on the hold sync alone. A line that LEFT the wait was
+      // already sent its release by whatever released it.
+      sendToLine(session, line.id, 0, {
+        m: MESSAGES.MSG_BARRIER_RELEASED,
+        frame: frameNameForLine(session, line),
+      });
+    }
+  }
 }
 
 // Group-parked active lines keyed by their frame's group. A line whose frame is
@@ -2779,10 +2839,12 @@ function refreshStragglerNotices(session) {
     line.stragglerFor = ref;
     if (ref && !was) {
       sendToLine(session, line.id, 0, stragglerBanner(session, line));
-    } else if (!ref && was && !line.isBarrierWaiting && !line.isGroupWaiting) {
+    } else if (!ref && was && !line.isBarrierWaiting && !line.groupParkBanner) {
       // Ordering guard: the usual way to STOP being a straggler is to arrive
-      // and park, and maybeParkAtGroup has already sent that line its parked
-      // banner by now. Clearing here would wipe it off the screen.
+      // and park, and refreshGroupParkBanners has already sent that line its
+      // parked banner by now. Clearing here would wipe it off the screen. An
+      // arrival parked on the hold sync alone has no banner to keep, so its
+      // "your move" is cleared like any other.
       sendToLine(session, line.id, 0, {
         m: MESSAGES.MSG_BARRIER_RELEASED,
         frame: frameNameForLine(session, line),
@@ -6779,17 +6841,16 @@ async function messageHandleExclusively(conn, messageData, session) {
       const straggler = line.stragglerFor
         ? stragglerBanner(session, line)
         : null;
-      const waitingBanner =
-        line.isBarrierWaiting || line.isGroupWaiting
-          ? { role: "parked", frame: frameNameForLine(session, line) }
-          : straggler
-            ? {
-                role: "straggler",
-                frame: straggler.frame,
-                group: straggler.group,
-                barrier: straggler.barrier,
-              }
-            : null;
+      const waitingBanner = parkedBannerShown(session, line)
+        ? { role: "parked", frame: frameNameForLine(session, line) }
+        : straggler
+          ? {
+              role: "straggler",
+              frame: straggler.frame,
+              group: straggler.group,
+              barrier: straggler.barrier,
+            }
+          : null;
       if (line.isVoting) {
         conn.currentVoteTo = -1;
       }
