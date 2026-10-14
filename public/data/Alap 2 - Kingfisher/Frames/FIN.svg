@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
+<svg width="100%" height="100%" viewBox="0 0 1276 1861" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" xml:space="preserve" xmlns:serif="http://www.serif.com/" style="fill-rule:evenodd;clip-rule:evenodd;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:1.5;">
+    <rect id="FIN" x="0.147" y="0.01" width="1275" height="1860" style="fill:none;"/>
+    <clipPath id="_clip1">
+        <rect x="0.147" y="0.01" width="1275" height="1860"/>
+    </clipPath>
+    <g clip-path="url(#_clip1)">
+    <a href="START.svg">
+        <g id="votemarker">
+            <rect id="votemarker1" sound="START" serif:id="votemarker" x="0.147" y="0.01" width="1275" height="1860" style="fill:#ffd582;stroke:#000;stroke-opacity:0;stroke-width:0.85px;"/>
+        </g>
+        </a>
+        <g transform="matrix(144,0,0,144,566.799,949.618)">
+        </g>
+        <g transform="matrix(144,0,0,144,607.186,949.618)">
+        </g>
+        <g transform="matrix(144,0,0,144,708.495,949.618)">
+        </g>
+        <text x="566.799px" y="949.618px" style="font-family:'MetallophileSp8-Medium', 'Metallophile Sp8';font-weight:500;font-size:144px;">ﬁn</text>
+        <g transform="matrix(36,0,0,36,105.235,1837.51)">
+        </g>
+        <text x="15.147px" y="1837.51px" style="font-family:'ArialMT', 'Arial', sans-serif;font-size:36px;">50/50</text>
+    </g>
+</svg>
