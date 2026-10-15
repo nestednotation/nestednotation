@@ -170,6 +170,12 @@ class Note {
     return this._playingCount > 0;
   }
 
+  // True as soon as play() is called, before Howler fires "play" (which can
+  // wait on the audio context resuming), so a pending start isn't doubled.
+  get isStarted() {
+    return this.soundInstances.some((s) => s.playing());
+  }
+
   constructor(frameInstance, svgSoundNode) {
     this.frameInstance = frameInstance;
 
@@ -409,8 +415,11 @@ class Frame {
   }
 
   playAllAutoplayNotes() {
+    if (this.sessionInstance.isAudioLocked()) {
+      return;
+    }
     this.notes.forEach((e) => {
-      e.isAutoplay && !e.isPlaying && e.play();
+      e.isAutoplay && !e.isPlaying && !e.isStarted && e.play();
     });
   }
 
@@ -522,6 +531,58 @@ class AudioSession {
 
   autoPlay = false;
 
+  audioUnlocked = false;
+
+  // Until the first user gesture the browser keeps audio suspended, and Howler
+  // parks every play() until it resumes. Parked plays never report "play", so
+  // frame changes never stop them and the first tap would release every
+  // autoplay sound of every frame passed so far at once. Autoplay is therefore
+  // held back while locked and started for the current frame on unlock.
+  isAudioLocked() {
+    if (this.audioUnlocked) {
+      return false;
+    }
+    if (
+      Howler.ctx?.state === "running" ||
+      navigator.userActivation?.hasBeenActive
+    ) {
+      this.audioUnlocked = true;
+    }
+    return !this.audioUnlocked;
+  }
+
+  listenForAudioUnlock() {
+    const stopListening = () =>
+      USER_ACTIVATION_EVENTS.forEach((name) =>
+        window.removeEventListener(name, onActivation, true),
+      );
+    const onActivation = (e) => {
+      // Defer past this event's own handlers (Howler's unlock, a note click)
+      // so a note the gesture already started is not started twice.
+      setTimeout(() => {
+        // Already unlocked: audio was never held back (the browser allowed
+        // autoplay), or something since has started sound normally.
+        if (this.audioUnlocked) {
+          stopListening();
+          return;
+        }
+        if (!navigator.userActivation && e.isTrusted) {
+          this.audioUnlocked = true;
+        }
+        if (this.isAudioLocked()) {
+          return;
+        }
+        stopListening();
+        if (this.autoPlay) {
+          this.frameMap[this.currFrameId]?.playAllAutoplayNotes();
+        }
+      }, 0);
+    };
+    USER_ACTIVATION_EVENTS.forEach((name) =>
+      window.addEventListener(name, onActivation, true),
+    );
+  }
+
   get mode() {
     return this._mode;
   }
@@ -562,6 +623,7 @@ class AudioSession {
 
     window.addEventListener("all-sound-loaded", allSoundLoadedListener);
 
+    this.listenForAudioUnlock();
     this.generateSoundMap();
   }
 
@@ -703,7 +765,7 @@ class AudioSession {
         });
         note.loadNoteSounds();
 
-        if (this.autoPlay && note.isAutoplay) {
+        if (this.autoPlay && note.isAutoplay && !this.isAudioLocked()) {
           note.fadeStart(fadeDuration);
         }
       }
