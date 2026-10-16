@@ -1053,6 +1053,9 @@ if (new URLSearchParams(window.location.search).has("audioDebug")) {
       const frame = session?.getCurrentPlayingFrame?.();
       panel.textContent = [
         `Howler.state=${Howler.state} ctx=${ctx?.state} t=${ctx?.currentTime.toFixed(1)}`,
+        `audioSession=${navigator.audioSession?.type ?? "n/a"} ` +
+          `muted=${Howler._muted} vol=${Howler.volume()} ` +
+          `master=${Howler.masterGain?.gain.value.toFixed(2)}`,
         `activation sticky=${navigator.userActivation?.hasBeenActive} ` +
           `transient=${navigator.userActivation?.isActive}`,
         `autoPlay=${session?.autoPlay} held=${session?.autoplayHeld} ` +
