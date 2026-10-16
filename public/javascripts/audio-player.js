@@ -5,6 +5,14 @@ const SESSION_MODES = {
 
 window.SESSION_MODES = SESSION_MODES;
 
+// Howler suspends the audio context after 30s with nothing playing. On iOS
+// Safari, suspend() before the first user gesture never settles, so Howler is
+// stuck in "suspending": every later play() waits for a "resume" that never
+// comes and the page stays silent until reload. Autoplay is held back until
+// the first gesture (see AudioSession.isAudioLocked), so nothing cancels that
+// timer and a performer who first taps after 30s would hear nothing.
+Howler.autoSuspend = false;
+
 const removeFileExt = (fileName) => {
   return fileName.replace(/\.[^/.]+$/, "");
 };
