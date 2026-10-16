@@ -423,7 +423,7 @@ class Frame {
   }
 
   playAllAutoplayNotes() {
-    if (this.sessionInstance.isAudioLocked()) {
+    if (this.sessionInstance.holdAutoplayIfLocked()) {
       return;
     }
     this.notes.forEach((e) => {
@@ -539,56 +539,84 @@ class AudioSession {
 
   autoPlay = false;
 
-  audioUnlocked = false;
+  // Set when autoplay was skipped because audio could not run, so the
+  // current frame's autoplay notes start as soon as it can.
+  autoplayHeld = false;
 
-  // Until the first user gesture the browser keeps audio suspended, and Howler
-  // parks every play() until it resumes. Parked plays never report "play", so
-  // frame changes never stop them and the first tap would release every
-  // autoplay sound of every frame passed so far at once. Autoplay is therefore
-  // held back while locked and started for the current frame on unlock.
+  // While the AudioContext is not running, Howler parks every play() until it
+  // resumes. Parked plays never report "play", so frame changes never stop
+  // them and the resume would release every autoplay sound of every frame
+  // passed so far at once. Autoplay is therefore held back while locked and
+  // started for the current frame once the context runs.
+  //
+  // The context state is the only reliable signal. Chrome and Firefox start a
+  // context on sticky activation (any earlier interaction), but WebKit only
+  // while the page has transient activation, i.e. from inside a gesture, so
+  // navigator.userActivation.hasBeenActive can be true on Safari while audio
+  // is still suspended.
   isAudioLocked() {
-    if (this.audioUnlocked) {
-      return false;
-    }
-    if (
-      Howler.ctx?.state === "running" ||
-      navigator.userActivation?.hasBeenActive
-    ) {
-      this.audioUnlocked = true;
-    }
-    return !this.audioUnlocked;
+    return Howler.usingWebAudio && Howler.ctx?.state !== "running";
   }
 
-  listenForAudioUnlock() {
-    const stopListening = () =>
-      USER_ACTIVATION_EVENTS.forEach((name) =>
-        window.removeEventListener(name, onActivation, true),
-      );
-    const onActivation = (e) => {
-      // Defer past this event's own handlers (Howler's unlock, a note click)
-      // so a note the gesture already started is not started twice.
-      setTimeout(() => {
-        // Already unlocked: audio was never held back (the browser allowed
-        // autoplay), or something since has started sound normally.
-        if (this.audioUnlocked) {
-          stopListening();
-          return;
-        }
-        if (!navigator.userActivation && e.isTrusted) {
-          this.audioUnlocked = true;
-        }
-        if (this.isAudioLocked()) {
-          return;
-        }
-        stopListening();
-        if (this.autoPlay) {
-          this.frameMap[this.currFrameId]?.playAllAutoplayNotes();
-        }
-      }, 0);
+  holdAutoplayIfLocked() {
+    if (!this.isAudioLocked()) {
+      return false;
+    }
+    this.autoplayHeld = true;
+    return true;
+  }
+
+  // Keeps the AudioContext running and Howler in step with it.
+  //
+  // Howler resumes the context only from its own unlock listener, which it
+  // removes after the first success, and from play(), which skips resume()
+  // whenever its own state already says "running". iOS Safari can leave the
+  // context "suspended" after that (an audio-session interruption that ends
+  // without resuming), and from then on every play(), manual or autoplay,
+  // starts on a stopped context and stays silent until reload. So every
+  // gesture resumes a context that is not running (WebKit allows that only
+  // inside the gesture), and every switch to "running" releases the plays
+  // Howler parked and starts the autoplay held back meanwhile.
+  keepAudioRunning() {
+    const ctx = Howler.ctx;
+    if (!ctx) {
+      return;
+    }
+
+    const resumeInGesture = () => {
+      if (Howler.ctx && Howler.ctx.state !== "running") {
+        Howler.ctx.resume().catch(() => {});
+      }
     };
     USER_ACTIVATION_EVENTS.forEach((name) =>
-      window.addEventListener(name, onActivation, true),
+      window.addEventListener(name, resumeInGesture, true),
     );
+
+    ctx.addEventListener("statechange", () => {
+      if (ctx === Howler.ctx && ctx.state === "running") {
+        this.onAudioRunning();
+      }
+    });
+  }
+
+  onAudioRunning() {
+    // Howler only flips its state (and releases parked plays) when its own
+    // resume() settles; a resume from anywhere else would leave them parked.
+    Howler.state = "running";
+    Howler._howls.forEach((howl) => howl._emit("resume"));
+
+    if (!this.autoplayHeld) {
+      return;
+    }
+    this.autoplayHeld = false;
+    // Howler runs "resume" handlers on a timer; start after them so a note
+    // whose play() was parked (e.g. the tap that unlocked audio was on that
+    // note) is already playing and is not started twice.
+    setTimeout(() => {
+      if (this.autoPlay) {
+        this.frameMap[this.currFrameId]?.playAllAutoplayNotes();
+      }
+    }, 0);
   }
 
   get mode() {
@@ -631,8 +659,10 @@ class AudioSession {
 
     window.addEventListener("all-sound-loaded", allSoundLoadedListener);
 
-    this.listenForAudioUnlock();
+    // Howler creates its AudioContext with the first Howl, so this must
+    // follow generateSoundMap.
     this.generateSoundMap();
+    this.keepAudioRunning();
   }
 
   generateSoundMap() {
@@ -773,7 +803,11 @@ class AudioSession {
         });
         note.loadNoteSounds();
 
-        if (this.autoPlay && note.isAutoplay && !this.isAudioLocked()) {
+        if (
+          this.autoPlay &&
+          note.isAutoplay &&
+          !this.holdAutoplayIfLocked()
+        ) {
           note.fadeStart(fadeDuration);
         }
       }
@@ -959,6 +993,79 @@ window.addEventListener("pagehide", () => {
 });
 
 console.log("Session instance", window.sessionInstance);
+
+// Add ?audioDebug=1 to a session URL to overlay the live audio state, for
+// devices without a desktop inspector (iPad Safari).
+if (new URLSearchParams(window.location.search).has("audioDebug")) {
+  const log = [];
+  const note = (msg) => {
+    const t = (performance.now() / 1000).toFixed(1);
+    log.unshift(`${t}s ${msg}`);
+    log.length = Math.min(log.length, 14);
+  };
+
+  const Ctx = window.AudioContext || window.webkitAudioContext;
+  ["resume", "suspend"].forEach((name) => {
+    const original = Ctx?.prototype[name];
+    if (!original) {
+      return;
+    }
+    Ctx.prototype[name] = function (...args) {
+      const own = this === Howler.ctx ? "howler" : "other";
+      note(`${name}() on ${own} ctx (${this.state})`);
+      const result = original.apply(this, args);
+      result?.then(
+        () => note(`${name}() ${own} resolved -> ${this.state}`),
+        (e) => note(`${name}() ${own} rejected: ${e?.name}`),
+      );
+      return result;
+    };
+  });
+
+  USER_ACTIVATION_EVENTS.forEach((name) =>
+    window.addEventListener(
+      name,
+      () => note(`${name} (ctx ${Howler.ctx?.state})`),
+      true,
+    ),
+  );
+
+  document.addEventListener("DOMContentLoaded", () => {
+    const panel = document.createElement("pre");
+    panel.style.cssText =
+      "position:fixed;left:0;bottom:0;z-index:99999;margin:0;padding:6px;" +
+      "max-width:100vw;font:11px/1.3 monospace;white-space:pre-wrap;" +
+      "background:rgba(0,0,0,.8);color:#0f0;pointer-events:none";
+    document.body.appendChild(panel);
+
+    let watchedCtx = null;
+    setInterval(() => {
+      const session = window.sessionInstance;
+      const ctx = Howler.ctx;
+      if (ctx && ctx !== watchedCtx) {
+        watchedCtx = ctx;
+        note(`howler ctx ${ctx.state} @${ctx.sampleRate}Hz`);
+        ctx.addEventListener("statechange", () =>
+          note(`statechange -> ${ctx.state}`),
+        );
+      }
+      const howls = Howler._howls;
+      const frame = session?.getCurrentPlayingFrame?.();
+      panel.textContent = [
+        `Howler.state=${Howler.state} ctx=${ctx?.state} t=${ctx?.currentTime.toFixed(1)}`,
+        `activation sticky=${navigator.userActivation?.hasBeenActive} ` +
+          `transient=${navigator.userActivation?.isActive}`,
+        `autoPlay=${session?.autoPlay} held=${session?.autoplayHeld} ` +
+          `locked=${session?.isAudioLocked()} frame=${session?.currFrameId}`,
+        `howls=${howls.length} loaded=${howls.filter((h) => h.state() === "loaded").length} ` +
+          `parked=${howls.filter((h) => h._playLock).length} ` +
+          `playing=${howls.filter((h) => h.playing()).length} ` +
+          `frameNotesPlaying=${frame?.notes.filter((n) => n.isPlaying).length ?? "-"}`,
+        ...log,
+      ].join("\n");
+    }, 500);
+  });
+}
 
 function toggleSessionMode(mode) {
   if (!window.sessionInstance) {
