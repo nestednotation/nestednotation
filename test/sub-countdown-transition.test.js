@@ -160,4 +160,55 @@ module.exports = {
       assert.strictEqual(elements.get(`circle_${i}`).className, "circle");
     }
   },
+
+  // A split resolves one second before the client end time and starts each
+  // child's landing hold in the same tick — no standby gap and no sub
+  // transition to reset the countdown. The 9-dot voting tick and the 3-dot
+  // holding tick then alternated on the shared dots for that last second.
+  "a hold beginning during the last voting second retires the voting interval":
+    () => {
+      const { sandbox, intervals, cleared, elements } = clientHarness();
+
+      sandbox.parseMessage({
+        m: sandbox.MSG_BEGIN_VOTING,
+        endTime: 1_800, // server time is 1_000: inside the final second
+        duration: 9,
+      });
+      const votingInterval = [...intervals.keys()][0];
+
+      sandbox.parseMessage({ m: sandbox.MSG_LINE_ASSIGNED, lineId: "L0.1" });
+      sandbox.parseMessage({
+        m: sandbox.MSG_BEGIN_HOLDING,
+        endTime: 3_500,
+        duration: 3,
+      });
+
+      assert.ok(
+        cleared.includes(votingInterval),
+        "the voting interval outlived the hold that replaced it",
+      );
+      assert.strictEqual(intervals.size, 1, "only the holding tick may run");
+
+      for (const tick of intervals.values()) tick();
+      const visible = [...Array(10).keys()]
+        .map((i) => elements.get(`circle_${i + 1}`).className)
+        .filter((c) => c !== "hidden");
+      assert.strictEqual(visible.length, 3, "dots must show the 3s hold");
+    },
+
+  "a hold cancel does not touch a running voting window": () => {
+    const { sandbox, intervals } = clientHarness();
+
+    sandbox.parseMessage({
+      m: sandbox.MSG_BEGIN_VOTING,
+      endTime: 5_000,
+      duration: 4,
+    });
+    sandbox.parseMessage({
+      m: sandbox.MSG_BEGIN_HOLDING,
+      endTime: 0,
+      duration: 1,
+    });
+    assert.strictEqual(intervals.size, 1, "voting interval was cancelled");
+  },
 };

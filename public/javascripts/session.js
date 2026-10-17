@@ -185,6 +185,17 @@ function parseMessage(data) {
         holdingTimer = null;
       }
 
+      // A hold starting means the voting window is over. The server closes
+      // voting one second before the client end time, and a split starts its
+      // children's holds in that same tick, so the voting interval would still
+      // be alive and both would repaint the shared dots (the flicker).
+      if (cooldownTimer != null) {
+        clearInterval(cooldownTimer);
+        cooldownTimer = null;
+      }
+      isCooldowning = false;
+      setIndicatorCooldown(false);
+
       holdingTimer = setInterval(holdingCallback, 100);
       window.isHolding = true;
     } else {
