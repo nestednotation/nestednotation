@@ -938,16 +938,43 @@ class AudioSession {
 
 window.sessionInstance = new AudioSession();
 
+// Output is silenced for either of two independent reasons, so neither may
+// unmute while the other still holds.
+//
+// A device whose screen turns off (or that leaves the tab or app) keeps
+// playing: iOS runs the page in the "playback" audio session (see
+// unmute-audio.js), which by design carries on behind a locked screen, and
+// Android Chrome keeps a running AudioContext audible in the background. The
+// page only learns of it as visibilityState "hidden". Muting rather than
+// stopping keeps every note where it is, so the device rejoins the room's
+// sound on wake; suspending the context instead would leave it silent until
+// the next tap, since WebKit resumes a context only inside a gesture.
+let isPausedMute = false;
+let isHiddenMute = document.visibilityState === "hidden";
+
+const applyMute = () => Howler.mute(isPausedMute || isHiddenMute);
+
+const handleOnVisibilityChange = () => {
+  isHiddenMute = document.visibilityState === "hidden";
+  applyMute();
+};
+
+document.addEventListener("visibilitychange", handleOnVisibilityChange);
+// Howler.mute() creates the AudioContext, so only call it at load for a page
+// that opens hidden (a background tab).
+if (isHiddenMute) {
+  applyMute();
+}
+
 const handleOnUpdateView = ({ detail }) => {
   const { sessionInstance } = window;
   const { newIndex } = detail;
 
   // newIndex === -1 => pausing
-  if (newIndex === -1) {
-    Howler.mute(true);
+  isPausedMute = newIndex === -1;
+  applyMute();
+  if (isPausedMute) {
     return;
-  } else {
-    Howler.mute(false);
   }
 
   // Session Lines: the playhead carries an explicit DOM id so sub frames
@@ -990,6 +1017,7 @@ window.addEventListener("pagehide", () => {
   Howler.unload();
   window.sessionInstance = null;
   window.removeEventListener("update-view", handleOnUpdateView);
+  document.removeEventListener("visibilitychange", handleOnVisibilityChange);
 });
 
 console.log("Session instance", window.sessionInstance);
