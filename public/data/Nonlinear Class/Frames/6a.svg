@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
+<svg width="100%" height="100%" viewBox="0 0 1701 2050" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" xml:space="preserve" xmlns:serif="http://www.serif.com/" style="fill-rule:evenodd;clip-rule:evenodd;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:1.5;">
+    <g transform="matrix(1,0,0,1,-13664,0)">
+        <g id="_6a" serif:id="6a" transform="matrix(0.944444,0,0,1.13889,13664.4,0)">
+            <rect x="0" y="0" width="1800" height="1800" style="fill:none;"/>
+            <g transform="matrix(1.05882,0,0,0.878049,-165.465,-164.103)">
+                <text x="275.647px" y="391.833px" style="font-family:'ArialMT', 'Arial', sans-serif;font-size:128px;">what follows are a few</text>
+                <text x="275.647px" y="524.021px" style="font-family:'ArialMT', 'Arial', sans-serif;font-size:128px;">dif<tspan x="408.522px 444.085px " y="524.021px 524.021px ">fe</tspan>rent expressions of</text>
+                <text x="275.647px" y="656.208px" style="font-family:'ArialMT', 'Arial', sans-serif;font-size:128px;">human musical time.</text>
+                <text x="275.647px" y="920.583px" style="font-family:'ArialMT', 'Arial', sans-serif;font-size:128px;">Let&apos;s hear how Plainchant</text>
+                <text x="275.647px" y="1052.77px" style="font-family:'ArialMT', 'Arial', sans-serif;font-size:128px;">sounds when heard</text>
+                <g transform="matrix(128,0,0,128,1191.08,1184.96)">
+                </g>
+                <text x="275.647px" y="1184.96px" style="font-family:'ArialMT', 'Arial', sans-serif;font-size:128px;">asynchronously<tspan x="1155.52px " y="1184.96px ">.</tspan></text>
+            </g>
+            <g transform="matrix(1.05882,0,0,0.878049,-230.918,1010.95)">
+                <text x="275.647px" y="391.833px" style="font-family:'ArialMT', 'Arial', sans-serif;font-size:128px;">feel free to tap the sound</text>
+                <g transform="matrix(128,0,0,128,1864.52,524.021)">
+                </g>
+                <text x="275.647px" y="524.021px" style="font-family:'ArialMT', 'Arial', sans-serif;font-size:128px;">element to time it dif<tspan x="1418.71px 1454.27px " y="524.021px 524.021px ">fe</tspan>rently<tspan x="1828.96px " y="524.021px ">.</tspan></text>
+            </g>
+            <g id="Plainchant" sound="plainchant" transform="matrix(1,0,0,1,518.646,119.264)">
+                <g transform="matrix(1.88029,0,0,0.878049,-2335.32,-626.776)">
+                    <path d="M1584,1782.4L1584,1858.6C1584,1872.62 1577.59,1884 1569.7,1884L1314.3,1884C1306.41,1884 1300,1872.62 1300,1858.6L1300,1782.4C1300,1768.38 1306.41,1757 1314.3,1757L1569.7,1757C1577.59,1757 1584,1768.38 1584,1782.4Z" style="fill:#d5a9a9;"/>
+                </g>
+                <g transform="matrix(1.05882,0,0,0.878049,-163.116,649.477)">
+                    <g transform="matrix(96,0,0,96,723.96,391.833)">
+                    </g>
+                    <text x="275.647px" y="391.833px" style="font-family:'ArialMT', 'Arial', sans-serif;font-size:96px;">Plainchant</text>
+                </g>
+            </g>
+            <g id="Navigation">
+             <a href="6b.svg">
+                <g id="next" transform="matrix(0.704225,0,0,0.704225,546.47,583.779)">
+                    <g transform="matrix(1.05882,0,0,0.878049,0.595588,3.5122)">
+                        <path d="M1584,1782.4L1584,1858.6C1584,1872.62 1572.62,1884 1558.6,1884L1325.4,1884C1311.38,1884 1300,1872.62 1300,1858.6L1300,1782.4C1300,1768.38 1311.38,1757 1325.4,1757L1558.6,1757C1572.62,1757 1584,1768.38 1584,1782.4Z" style="fill:#d5a9a9;"/>
+                    </g>
+                    <g transform="matrix(1.05882,0,0,0.878049,-76.1691,-110.319)">
+                        <g transform="matrix(1.42,-0,-0,1.42,-661.517,-818.46)">
+                            <path d="M1531.16,1925.67L1603.18,1949.62L1531.2,1973.67L1531.16,1925.67Z"/>
+                            <path d="M1461.63,1949.72C1461.63,1949.72 1506.4,1949.69 1545.58,1949.66" style="fill:none;stroke:#000;stroke-width:16px;"/>
+                        </g>
+                    </g>
+                </g>
+                </a>
+                <a href="6.svg">
+                <g id="previous" transform="matrix(-0.704225,0,0,0.704225,1251.41,583.692)">
+                    <g transform="matrix(1.05882,0,0,0.878049,0.595588,3.5122)">
+                        <path d="M1584,1782.4L1584,1858.6C1584,1872.62 1572.62,1884 1558.6,1884L1325.4,1884C1311.38,1884 1300,1872.62 1300,1858.6L1300,1782.4C1300,1768.38 1311.38,1757 1325.4,1757L1558.6,1757C1572.62,1757 1584,1768.38 1584,1782.4Z" style="fill:#d5a9a9;"/>
+                    </g>
+                    <g transform="matrix(1.05882,0,0,0.878049,-76.1691,-110.319)">
+                        <g transform="matrix(-1.42,0,0,1.42,1750.8,-818.319)">
+                            <path d="M167.615,1973.57L95.632,1949.52L167.648,1925.57L167.615,1973.57Z"/>
+                            <path d="M237.181,1949.62C237.181,1949.62 192.414,1949.59 153.232,1949.56" style="fill:none;stroke:#000;stroke-width:16px;"/>
+                        </g>
+                    </g>
+                </g>
+                </a>
+            </g>
+        </g>
+    </g>
+</svg>

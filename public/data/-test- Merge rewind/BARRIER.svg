@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg width="100%" height="100%" viewBox="0 0 1701 2480" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" session-hold-until="F2.svg" session-rejoin-at="MERGE2.svg" holding="8">
+  <rect x="0" y="0" width="1701" height="2480" style="fill:#8a2f2f"/>
+  <text x="850" y="330" font-size="150" text-anchor="middle" fill="#fff" font-family="sans-serif">BARRIER</text>
+  <text x="850" y="470" font-size="46" text-anchor="middle" fill="#ffffffcc" font-family="monospace">hold-until="F2.svg" + rejoin-at="MERGE2.svg"</text>
+  <text x="850" y="660" font-size="46" text-anchor="middle" fill="#ffffff99" font-family="sans-serif">The other merge shape: the lines are PARKED here when</text>
+  <text x="850" y="738" font-size="46" text-anchor="middle" fill="#ffffff99" font-family="sans-serif">the merge runs, so the undo puts them back on this very</text>
+  <text x="850" y="816" font-size="46" text-anchor="middle" fill="#ffffff99" font-family="sans-serif">frame, not one step behind. The entry itself sits on</text>
+  <text x="850" y="894" font-size="46" text-anchor="middle" fill="#ffffff99" font-family="sans-serif">MERGE2 — a merge is always undone from where it landed.</text>
+  <a xlink:href="MERGE2.svg">
+    <rect x="150" y="2020" width="1401" height="280" rx="36" style="fill:#e8e8f4;stroke:#223;stroke-width:6"/>
+    <text x="850" y="2140" font-size="62" text-anchor="middle" fill="#112" font-family="sans-serif">Released — merge and go</text>
+    <text x="850" y="2235" font-size="40" text-anchor="middle" fill="#556" font-family="sans-serif">MERGE2.svg</text>
+  </a>
+</svg>

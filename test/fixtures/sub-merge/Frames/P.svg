@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- Test-only fixture: two routes that dive into the same sub-score the same way and merge inside it. -->
+<svg width="100%" height="100%" viewBox="0 0 1801 1801" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" voting="0" holding="false">
+  <rect x="0" y="0" width="1801" height="1801" style="fill:#2c5d63"/>
+  <text x="900" y="420" font-size="150" text-anchor="middle" fill="#fff" font-family="sans-serif">P</text>
+  <a session-sub-start="Inner" xlink:href="End.svg">
+    <rect x="150" y="1280" width="700" height="320" rx="36" style="fill:#e8e8f4"/>
+    <text x="500" y="1450" font-size="64" text-anchor="middle" fill="#112" font-family="sans-serif">End.svg</text>
+  </a>
+</svg>

@@ -665,6 +665,14 @@ All real-time communication uses JSON messages over WebSocket. Each message incl
 | 14   | `MSG_CHANGE_VOLUME`         | Server → Client  | Update playback volume for all clients              |
 | 15   | `MSG_GLOBAL_REFRESH`        | Server → Client  | Force all clients to refresh                        |
 
+### Connection Lifecycle
+
+Each browser tab holds one WebSocket and counts as one device. A tab keeps a stable id in `sessionStorage`, so a refresh or a dropped connection rejoins as the same device rather than as a new one; reconnection retries with a short backoff, and a tab that has been asleep re-syncs its display when it becomes visible again.
+
+Leaving a session page closes its socket immediately. This matters because a browser can freeze the page you navigated away from into its back/forward cache with the connection still open — the server would go on counting a page nobody is looking at, and the device count would climb every time an operator moved between the session page and the dashboard. If the browser later restores that page, it reconnects on the way back in.
+
+The server keeps its own check: it pings a connection after 20 seconds of silence and drops it if no reply arrives within 10 more, so a device that loses power or network disappears from the counts in about half a minute.
+
 ### Voting Flow
 
 1. In Guide mode, a client taps a navigation link, sending `MSG_TAP` with the link ID and timing metadata (`frameVotingDur`, `nextFrameHoldingDur`).
@@ -783,6 +791,9 @@ Verify that the score folder contains a `Sounds/` subdirectory with audio files,
 
 **Voting doesn't start**
 Voting triggers in Guide mode when a client taps a link and `votingDuration` is greater than 0. Only a single link is necessary. Per-frame `voting` attributes can override the session default. If `votingDuration` is 0 (or the frame's `voting` attribute is `"false"`), taps navigate directly without voting. Also ensure the session is not paused and no hold period is active.
+
+**Device count looks too high**
+Each browser tab is one connected device. Leaving a session page closes its connection right away, and the server drops a connection that stops answering its keepalive within about 30 seconds — so a count that stays high is pointing at real tabs: a session page still open in a second tab, or a device someone left connected. On a score with session lines, the operator's line panel marks any line whose quietest device has sent nothing for three minutes as `(quiet Nm)` and the score map badges it 💤, which is the quickest way to find one.
 
 **Session state not restoring after restart**
 Session state is saved to `server_state/*.json`. Ensure the server has write permissions to this directory.

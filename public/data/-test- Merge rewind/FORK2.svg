@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg width="100%" height="100%" viewBox="0 0 1701 2480" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" session-split="3">
+  <rect x="0" y="0" width="1701" height="2480" style="fill:#8a5a2a"/>
+  <text x="850" y="330" font-size="150" text-anchor="middle" fill="#fff" font-family="sans-serif">FORK2 — split ×3</text>
+  <text x="850" y="470" font-size="46" text-anchor="middle" fill="#ffffffcc" font-family="monospace">session-split="3"</text>
+  <text x="850" y="660" font-size="46" text-anchor="middle" fill="#ffffff99" font-family="sans-serif">Splits the room again for the barrier-style merge.</text>
+  <text x="850" y="738" font-size="46" text-anchor="middle" fill="#ffffff99" font-family="sans-serif">NOTE: a split EXPIRES the merges above —</text>
+  <text x="850" y="816" font-size="46" text-anchor="middle" fill="#ffffff99" font-family="sans-serif">undo those before leaving MERGE1.</text>
+  <a xlink:href="D1.svg">
+    <rect x="150" y="1340" width="1401" height="280" rx="36" style="fill:#e8e8f4;stroke:#223;stroke-width:6"/>
+    <text x="850" y="1460" font-size="62" text-anchor="middle" fill="#112" font-family="sans-serif">Path D</text>
+    <text x="850" y="1555" font-size="40" text-anchor="middle" fill="#556" font-family="sans-serif">D1.svg</text>
+  </a>
+  <a xlink:href="E1.svg">
+    <rect x="150" y="1680" width="1401" height="280" rx="36" style="fill:#e8e8f4;stroke:#223;stroke-width:6"/>
+    <text x="850" y="1800" font-size="62" text-anchor="middle" fill="#112" font-family="sans-serif">Path E</text>
+    <text x="850" y="1895" font-size="40" text-anchor="middle" fill="#556" font-family="sans-serif">E1.svg</text>
+  </a>
+  <a xlink:href="F1.svg">
+    <rect x="150" y="2020" width="1401" height="280" rx="36" style="fill:#e8e8f4;stroke:#223;stroke-width:6"/>
+    <text x="850" y="2140" font-size="62" text-anchor="middle" fill="#112" font-family="sans-serif">Path F — unlocks the barrier</text>
+    <text x="850" y="2235" font-size="40" text-anchor="middle" fill="#556" font-family="sans-serif">F1.svg</text>
+  </a>
+</svg>

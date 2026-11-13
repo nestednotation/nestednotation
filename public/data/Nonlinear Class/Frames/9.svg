@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
+<svg width="100%" height="100%" viewBox="0 0 1700 2050" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" xml:space="preserve" xmlns:serif="http://www.serif.com/" style="fill-rule:evenodd;clip-rule:evenodd;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:1.5;">
+    <g transform="matrix(1,0,0,1,-20326,-4671)">
+        <g id="_9" serif:id="9" transform="matrix(0.944444,0,0,1.13889,20326,4671)">
+            <rect x="0" y="0" width="1800" height="1800" style="fill:none;"/>
+            <g transform="matrix(1.05882,0,0,0.878049,-194.64,43.8021)">
+                <text x="275.647px" y="391.833px" style="font-family:'ArialMT', 'Arial', sans-serif;font-size:96px;">Now<tspan x="462.397px 489.069px " y="391.833px 391.833px ">, </tspan>please give me just a moment</text>
+                <g transform="matrix(96,0,0,96,1732.57,490.974)">
+                </g>
+                <text x="275.647px" y="490.974px" style="font-family:'ArialMT', 'Arial', sans-serif;font-size:96px;">to change a setting in our session.</text>
+            </g>
+            <g transform="matrix(1.05882,0,0,0.878049,-242.263,403.15)">
+                <text x="275.647px" y="391.833px" style="font-family:'ArialMT', 'Arial', sans-serif;font-size:96px;">Here&apos;s something to think about in the</text>
+                <text x="275.647px" y="490.974px" style="font-family:'ArialMT', 'Arial', sans-serif;font-size:96px;">meantime. In the world, when</text>
+                <text x="275.647px" y="590.114px" style="font-family:'ArialMT', 'Arial', sans-serif;font-size:96px;">decisions are made, how can we get</text>
+                <text x="275.647px" y="689.255px" style="font-family:'ArialMT', 'Arial', sans-serif;font-size:96px;">many people to decide something</text>
+                <g transform="matrix(96,0,0,96,681.304,788.396)">
+                </g>
+                <text x="275.647px" y="788.396px" style="font-family:'ArialMT', 'Arial', sans-serif;font-size:96px;">together?</text>
+            </g>
+            <g id="Navigation">
+            <a href="10.svg">
+                <g id="next" transform="matrix(0.704225,0,0,0.704225,546.47,583.779)">
+                    <g transform="matrix(1.05882,0,0,0.878049,0.595588,3.5122)">
+                        <path d="M1584,1782.4L1584,1858.6C1584,1872.62 1572.62,1884 1558.6,1884L1325.4,1884C1311.38,1884 1300,1872.62 1300,1858.6L1300,1782.4C1300,1768.38 1311.38,1757 1325.4,1757L1558.6,1757C1572.62,1757 1584,1768.38 1584,1782.4Z" style="fill:#d5a9a9;"/>
+                    </g>
+                    <g transform="matrix(1.05882,0,0,0.878049,-76.1691,-110.319)">
+                        <g transform="matrix(1.42,-0,-0,1.42,-660.94,-818.46)">
+                            <path d="M1530.76,1925.67L1602.78,1949.62L1530.79,1973.67L1530.76,1925.67Z"/>
+                            <path d="M1461.23,1949.72C1461.23,1949.72 1505.99,1949.69 1545.17,1949.66" style="fill:none;stroke:#000;stroke-width:16px;"/>
+                        </g>
+                    </g>
+                </g>
+                </a>
+                <a href="8.svg">
+                <g id="previous" transform="matrix(-0.704225,0,0,0.704225,1251.41,583.692)">
+                    <g transform="matrix(1.05882,0,0,0.878049,0.595588,3.5122)">
+                        <path d="M1584,1782.4L1584,1858.6C1584,1872.62 1572.62,1884 1558.6,1884L1325.4,1884C1311.38,1884 1300,1872.62 1300,1858.6L1300,1782.4C1300,1768.38 1311.38,1757 1325.4,1757L1558.6,1757C1572.62,1757 1584,1768.38 1584,1782.4Z" style="fill:#d5a9a9;"/>
+                    </g>
+                    <g transform="matrix(1.05882,0,0,0.878049,-76.1691,-110.319)">
+                        <g transform="matrix(-1.42,0,0,1.42,1750.22,-818.319)">
+                            <path d="M167.209,1973.57L95.225,1949.52L167.242,1925.57L167.209,1973.57Z"/>
+                            <path d="M236.775,1949.62C236.775,1949.62 192.008,1949.59 152.825,1949.56" style="fill:none;stroke:#000;stroke-width:16px;"/>
+                        </g>
+                    </g>
+                </g>
+                </a>
+            </g>
+        </g>
+    </g>
+</svg>

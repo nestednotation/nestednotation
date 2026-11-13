@@ -37,6 +37,7 @@ router.get("/", async function (req, res) {
     const adminpassword = query.sp;
     const playerpassword = query.pp;
     const fadeDuration = Number(query.fadeDuration);
+    const preloadDuration = Number(query.preloadDuration);
     const isHtml5 = Boolean(query.isHtml5);
     const defaultVolume = Number(query.defaultVolume);
     const defaultAutoplay = Boolean(query.defaultAutoplay);
@@ -70,61 +71,128 @@ router.get("/", async function (req, res) {
         const hold = parseInt(holdDur);
         const vote = parseInt(voteDur);
         const size = parseInt(votingSize);
-        await session.patchState(
-          {
-            isHtml5,
-            fadeDuration,
-            holdDuration: hold >= 0 ? hold : session.holdDuration,
-            votingDuration: vote >= 0 ? vote : session.votingDuration,
-            votingSize: size >= 0 ? size : session.votingSize,
-            defaultVolume:
-              defaultVolume >= 0 ? defaultVolume : session.defaultVolume,
-            defaultAutoplay: defaultAutoplay ?? session.defaultAutoplay,
-            enableAutoplayByDefault:
-              enableAutoplayByDefault ?? session.enableAutoplayByDefault,
-          },
-          true,
-        );
+        // A score build that fails (an unreadable frame, a disk error) keeps
+        // the previous score published and the room untouched; report it
+        // instead of letting the rejection escape the request.
+        //
+        // Publishing the new score is the commit point: from then on the
+        // server serves it and the room is reset for it, so the attached
+        // devices are told at once, before the state save. A save that fails
+        // after that cannot un-publish anything; it is reported as what it
+        // is, and the next save (any room change, or simply updating again)
+        // writes the whole state, reset room and new folder included.
+        let published = false;
+        try {
+          await session.runExclusively(async () => {
+            await session.patchState(
+              {
+                isHtml5,
+                fadeDuration,
+                preloadDuration:
+                  preloadDuration >= 0
+                    ? preloadDuration
+                    : session.preloadDuration,
+                holdDuration: hold >= 0 ? hold : session.holdDuration,
+                votingDuration: vote >= 0 ? vote : session.votingDuration,
+                votingSize: size >= 0 ? size : session.votingSize,
+                defaultVolume:
+                  defaultVolume >= 0 ? defaultVolume : session.defaultVolume,
+                defaultAutoplay: defaultAutoplay ?? session.defaultAutoplay,
+                enableAutoplayByDefault:
+                  enableAutoplayByDefault ?? session.enableAutoplayByDefault,
+              },
+              true,
+            );
 
-        const sendToAllClients = req.app.get("sendToAllClients");
+            const sendToAllClients = req.app.get("sendToAllClients");
+            const resetSessionConnections = req.app.get(
+              "resetSessionConnections",
+            );
 
-        if (session.folder.trim() !== folder) {
-          const listScore = db.getListScore();
-          if (listScore.indexOf(folder) >= 0) {
-            await session.reloadScore(folder);
-            session.clearAllTimer();
-            session.resetSessionHistory();
-            await session.saveSessionStateToFile();
+            if (session.folder.trim() !== folder) {
+              const listScore = db.getListScore();
+              if (listScore.indexOf(folder) >= 0) {
+                await session.reloadScore(folder);
+                published = true;
+                resetSessionConnections(session);
+                // Drop the cached page/content/sub responses BEFORE the notice:
+                // the reloads it triggers must get the new score, not the one
+                // cached in front of the handlers (review F17).
+                apicache.clear(SESSION_CACHE_KEY);
 
-            sendToAllClients(session, 0, {
-              m: MESSAGES.MSG_CHANGE_FOLDER,
-              soundList: session.soundList,
-              listFiles: session.listFiles,
-              folder: session.folder,
-              sessionId: session.id,
-              wsPath: session.wsPath,
-              qrSharePath: session.qrSharePath,
-              votingSize: session.votingSize,
-              isHtml5: session.isHtml5,
-              fadeDuration: session.fadeDuration,
-              scoreHasAbout: session.aboutSvg !== null,
-              scoreTitle: session.folder,
-              defaultVolume: session.defaultVolume,
-              defaultAutoplay: session.defaultAutoplay,
-              enableAutoplayByDefault: session.enableAutoplayByDefault,
-            });
-          }
-        } else {
-          await session.buildSVGContent();
+                sendToAllClients(session, 0, {
+                  m: MESSAGES.MSG_CHANGE_FOLDER,
+                  soundList: session.soundList,
+                  listFiles: session.listFiles,
+                  folder: session.folder,
+                  sessionId: session.id,
+                  wsPath: session.wsPath,
+                  qrSharePath: session.qrSharePath,
+                  votingSize: session.votingSize,
+                  isHtml5: session.isHtml5,
+                  fadeDuration: session.fadeDuration,
+                  scoreHasAbout: session.aboutSvg !== null,
+                  scoreTitle: session.folder,
+                  defaultVolume: session.defaultVolume,
+                  defaultAutoplay: session.defaultAutoplay,
+                  enableAutoplayByDefault: session.enableAutoplayByDefault,
+                });
 
-          if (isVolumeChanged) {
-            sendToAllClients(session, 0, {
-              m: MESSAGES.MSG_CHANGE_VOLUME,
-              volume: defaultVolume,
-            });
+                await session.saveSessionStateToFile();
+              }
+            } else {
+              // Same folder: "update session" doubles as "rebuild this score" —
+              // the operator edited the frames on disk and is applying them. The
+              // rebuild replaces the baked svg, the frame list and the graph
+              // server-side (and clears apicache before the notice), but every attached device
+              // is still holding the OLD score: session pages keep the frames they
+              // injected at load, and the standalone /map keeps the graph it
+              // fetched. Send them the same MSG_CHANGE_FOLDER the swap above does.
+              //
+              // Gated on the score CONTENT actually having changed: this same form
+              // also carries pure parameter edits (hold/vote duration, voting
+              // size, volume…), and those must not reload a room mid-performance.
+              const contentChanged = await session.rebuildScore();
+
+              if (contentChanged) {
+                published = true;
+                resetSessionConnections(session);
+                apicache.clear(SESSION_CACHE_KEY);
+                sendToAllClients(session, 0, {
+                  m: MESSAGES.MSG_CHANGE_FOLDER,
+                  soundList: session.soundList,
+                  listFiles: session.listFiles,
+                  folder: session.folder,
+                });
+              }
+
+              if (isVolumeChanged) {
+                sendToAllClients(session, 0, {
+                  m: MESSAGES.MSG_CHANGE_VOLUME,
+                  volume: defaultVolume,
+                });
+              }
+
+              if (contentChanged) {
+                await session.saveSessionStateToFile();
+              }
+            }
+          });
+        } catch (err) {
+          if (published) {
+            console.error(
+              `Session ${session.id} now plays score "${session.folder}" and devices were told to reload, but saving its state failed; the next save will record it:`,
+              err,
+            );
+          } else {
+            console.error(
+              `Session ${session.id} update failed; previous score kept:`,
+              err,
+            );
           }
         }
 
+        // Parameter-only updates are baked into the cached page as well.
         apicache.clear(SESSION_CACHE_KEY);
       } else if (command === "create-session") {
         const listScore = db.getListScore();
@@ -149,6 +217,10 @@ router.get("/", async function (req, res) {
           const size = parseInt(votingSize);
           await session.patchState(
             {
+              preloadDuration:
+                preloadDuration >= 0
+                  ? preloadDuration
+                  : session.preloadDuration,
               holdDuration: hold >= 0 ? hold : session.holdDuration,
               votingDuration: vote >= 0 ? vote : session.votingDuration,
               votingSize: size >= 0 ? size : session.votingSize,
@@ -162,16 +234,18 @@ router.get("/", async function (req, res) {
       } else if (command === "stop-session") {
         const session = db.sessionTable.getById(sessionId);
         if (session != null) {
-          await db.sessionTable.forceSessionStop(session);
+          await session.runExclusively(async () => {
+            await db.sessionTable.forceSessionStop(session);
 
-          const sendToAllClientsWithDelay = req.app.get(
-            "sendToAllClientsWithDelay",
-          );
-          sendToAllClientsWithDelay(session, 0, {
-            m: MESSAGES.MSG_CHANGE_FOLDER,
-            soundList: session.soundList,
-            listFiles: session.listFiles,
-            folder: session.folder,
+            const sendToAllClientsWithDelay = req.app.get(
+              "sendToAllClientsWithDelay",
+            );
+            sendToAllClientsWithDelay(session, 0, {
+              m: MESSAGES.MSG_CHANGE_FOLDER,
+              soundList: session.soundList,
+              listFiles: session.listFiles,
+              folder: session.folder,
+            });
           });
         }
       }

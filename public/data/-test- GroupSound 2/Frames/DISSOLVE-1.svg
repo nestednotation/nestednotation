@@ -1,0 +1,208 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
+<svg width="100%" height="100%" viewBox="0 0 1275 1538" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" xml:space="preserve" xmlns:serif="http://www.serif.com/" style="fill-rule:evenodd;clip-rule:evenodd;stroke-linecap:square;stroke-linejoin:round;stroke-miterlimit:1.5;">
+    <rect id="DISSOLVE-1" x="0" y="0" width="1275" height="1537.5" style="fill:none;"/>
+    <g id="Tesseract-Template-Groups" serif:id="Tesseract Template Groups">
+        <g id="Fields">
+        </g>
+        <g id="SG">
+            <g id="Meta-Ring">
+                <path d="M946.548,972.667c-98.485,170.581 -316.922,229.12 -487.49,130.643c-170.568,-98.478 -229.091,-316.919 -130.606,-487.5c98.485,-170.581 316.922,-229.12 487.49,-130.643c170.568,98.478 229.091,316.919 130.606,487.5Z" style="fill:none;stroke:#000;stroke-width:0.36px;"/>
+                <path d="M946.548,972.667l-19.757,-11.406" style="fill:none;stroke:#000;stroke-width:0.36px;"/>
+                <path d="M348.209,627.216l-19.757,-11.406" style="fill:none;stroke:#000;stroke-width:0.36px;"/>
+                <path d="M470.464,1083.55l-11.406,19.757" style="fill:none;stroke:#000;stroke-width:0.36px;"/>
+                <path d="M815.942,485.167l-11.406,19.757" style="fill:none;stroke:#000;stroke-width:0.36px;"/>
+                <path d="M815.935,1103.3l-11.407,-19.757" style="fill:none;stroke:#000;stroke-width:0.36px;"/>
+                <path d="M470.472,504.937l-11.407,-19.757" style="fill:none;stroke:#000;stroke-width:0.36px;"/>
+                <path d="M348.187,961.273l-19.757,11.407" style="fill:none;stroke:#000;stroke-width:0.36px;"/>
+                <path d="M946.57,615.797l-19.757,11.407" style="fill:none;stroke:#000;stroke-width:0.36px;"/>
+                <path d="M637.5,1151.12l-0,-22.814" style="fill:none;stroke:#000;stroke-width:0.36px;"/>
+                <path d="M637.5,460.169l-0,-22.814" style="fill:none;stroke:#000;stroke-width:0.36px;"/>
+                <path d="M303.444,794.239l-22.814,-0" style="fill:none;stroke:#000;stroke-width:0.36px;"/>
+                <path d="M994.37,794.239l-22.814,-0" style="fill:none;stroke:#000;stroke-width:0.36px;"/>
+            </g>
+            <g id="Child-Rings" serif:id="Child Rings">
+                <a href="ASSEMBLE-1.svg">
+                <g id="_11" serif:id="11" groupsound="true">
+                    <g id="Ring--Sounder--Background" serif:id="Ring, Sounder, Background">
+                        <circle id="white-background" serif:id="white background" cx="461.352" cy="492.327" r="83.198" style="fill:#fff;"/>
+                        <g id="Ring">
+                            <path d="M520.689,526.585c-18.909,32.752 -60.849,43.991 -93.598,25.083c-32.749,-18.907 -43.985,-60.848 -25.076,-93.6c18.909,-32.751 60.849,-43.991 93.598,-25.083c32.749,18.908 43.986,60.849 25.076,93.6Z" style="fill:none;stroke:#000;stroke-width:1.63px;stroke-linecap:round;"/>
+                            <path d="M520.689,526.585l-3.793,-2.19" style="fill:none;stroke:#000;stroke-width:1.63px;stroke-linecap:round;"/>
+                            <path d="M405.808,460.259l-3.793,-2.191" style="fill:none;stroke:#000;stroke-width:1.63px;stroke-linecap:round;"/>
+                            <path d="M429.281,547.875l-2.19,3.793" style="fill:none;stroke:#000;stroke-width:1.63px;stroke-linecap:round;"/>
+                            <path d="M495.613,432.985l-2.19,3.793" style="fill:none;stroke:#000;stroke-width:1.63px;stroke-linecap:round;"/>
+                            <path d="M495.612,551.666l-2.19,-3.793" style="fill:none;stroke:#000;stroke-width:1.63px;stroke-linecap:round;"/>
+                            <path d="M429.283,436.781l-2.19,-3.793" style="fill:none;stroke:#000;stroke-width:1.63px;stroke-linecap:round;"/>
+                            <path d="M405.804,524.398l-3.793,2.19" style="fill:none;stroke:#000;stroke-width:1.63px;stroke-linecap:round;"/>
+                            <path d="M520.694,458.066l-3.794,2.19" style="fill:none;stroke:#000;stroke-width:1.63px;stroke-linecap:round;"/>
+                            <path d="M461.352,560.848l0,-4.38" style="fill:none;stroke:#000;stroke-width:1.63px;stroke-linecap:round;"/>
+                            <path d="M461.352,428.185l0,-4.38" style="fill:none;stroke:#000;stroke-width:1.63px;stroke-linecap:round;"/>
+                            <path d="M397.213,492.327l-4.38,-0" style="fill:none;stroke:#000;stroke-width:1.63px;stroke-linecap:round;"/>
+                            <path d="M529.871,492.327l-4.38,-0" style="fill:none;stroke:#000;stroke-width:1.63px;stroke-linecap:round;"/>
+                        </g>
+                    </g>
+                    <g id="Notes">
+                        <path id="_111" sound="Mid-B" serif:id="11" d="M437.007,438.634c-3.177,5.503 -10.223,7.391 -15.725,4.214c-5.502,-3.177 -7.39,-10.223 -4.214,-15.725c3.177,-5.502 10.223,-7.39 15.726,-4.214c5.502,3.177 7.39,10.223 4.213,15.725Z" style="fill:#83001d;stroke:#fff;stroke-width:3.91px;stroke-linecap:round;"/>
+                        <path id="_7" sound="Low-G" serif:id="7" d="M437.674,556.492c-3.177,5.503 -10.223,7.391 -15.725,4.214c-5.502,-3.177 -7.39,-10.223 -4.214,-15.725c3.177,-5.502 10.223,-7.39 15.726,-4.214c5.502,3.177 7.39,10.223 4.213,15.725Z" style="fill:#83001d;stroke:#fff;stroke-width:3.91px;stroke-linecap:round;"/>
+                        <path id="_2" sound="Mid-D" serif:id="2" d="M530.196,463.991c-3.177,5.502 -10.223,7.39 -15.725,4.213c-5.503,-3.177 -7.391,-10.223 -4.214,-15.725c3.177,-5.502 10.223,-7.39 15.725,-4.214c5.503,3.177 7.391,10.223 4.214,15.726Z" style="fill:#83001d;stroke:#fff;stroke-width:3.91px;stroke-linecap:round;"/>
+                    </g>
+                    <g id="Root-Marker" serif:id="Root Marker">
+                        <path id="_71" serif:id="7" d="M436.256,535.765l2.58,-14.335l8.545,4.933l-11.125,9.402Zm3.845,-6.659l2.768,-2.34l-2.126,-1.228l-0.642,3.568Z"/>
+                    </g>
+                    <g id="Treble-Note" serif:id="Treble Note" sound="High-C">
+                        <g id="_0" serif:id="0">
+                            <path id="_0u" serif:id="0u" d="M471.597,428.877c-3.215,5.569 -10.346,7.48 -15.915,4.265c-5.569,-3.215 -7.48,-10.347 -4.265,-15.915c3.215,-5.569 10.347,-7.48 15.916,-4.265c5.569,3.215 7.48,10.347 4.264,15.915Z" style="fill:#fff;stroke:#fff;stroke-width:4.87px;stroke-linecap:round;"/>
+                            <circle id="_0a" serif:id="0a" cx="461.654" cy="423.098" r="9.358" style="fill:#fff;stroke:#83001d;stroke-width:2.44px;stroke-linecap:round;"/>
+                        </g>
+                    </g>
+                </g>
+                </a>
+                <g id="_72" serif:id="7" groupsound="true">
+                    <g id="Ring--Sounder--Background1" serif:id="Ring, Sounder, Background">
+                        <circle id="white-background1" serif:id="white background" cx="461.658" cy="1094.73" r="83.198" style="fill:#fff;"/>
+                        <g id="Ring1" serif:id="Ring">
+                            <path d="M520.995,1128.99c-18.909,32.751 -60.849,43.991 -93.598,25.083c-32.749,-18.908 -43.986,-60.849 -25.077,-93.6c18.91,-32.752 60.849,-43.991 93.599,-25.083c32.749,18.907 43.985,60.848 25.076,93.6Z" style="fill:none;stroke:#000;stroke-width:1.63px;stroke-linecap:round;"/>
+                            <path d="M520.995,1128.99l-3.794,-2.191" style="fill:none;stroke:#000;stroke-width:1.63px;stroke-linecap:round;"/>
+                            <path d="M406.114,1062.66l-3.794,-2.19" style="fill:none;stroke:#000;stroke-width:1.63px;stroke-linecap:round;"/>
+                            <path d="M429.587,1150.28l-2.19,3.793" style="fill:none;stroke:#000;stroke-width:1.63px;stroke-linecap:round;"/>
+                            <path d="M495.919,1035.39l-2.191,3.793" style="fill:none;stroke:#000;stroke-width:1.63px;stroke-linecap:round;"/>
+                            <path d="M495.917,1154.07l-2.19,-3.793" style="fill:none;stroke:#000;stroke-width:1.63px;stroke-linecap:round;"/>
+                            <path d="M429.588,1039.18l-2.19,-3.793" style="fill:none;stroke:#000;stroke-width:1.63px;stroke-linecap:round;"/>
+                            <path d="M406.109,1126.8l-3.793,2.19" style="fill:none;stroke:#000;stroke-width:1.63px;stroke-linecap:round;"/>
+                            <path d="M520.999,1060.47l-3.793,2.191" style="fill:none;stroke:#000;stroke-width:1.63px;stroke-linecap:round;"/>
+                            <path d="M461.658,1163.25l-0,-4.38" style="fill:none;stroke:#000;stroke-width:1.63px;stroke-linecap:round;"/>
+                            <path d="M461.658,1030.59l-0,-4.38" style="fill:none;stroke:#000;stroke-width:1.63px;stroke-linecap:round;"/>
+                            <path d="M397.519,1094.73l-4.38,0" style="fill:none;stroke:#000;stroke-width:1.63px;stroke-linecap:round;"/>
+                            <path d="M530.177,1094.73l-4.381,0" style="fill:none;stroke:#000;stroke-width:1.63px;stroke-linecap:round;"/>
+                        </g>
+                    </g>
+                    <g id="Notes1" serif:id="Notes">
+                        <path id="_6" serif:id="6" sound="Mid-Gb" d="M471.627,1168.6c-3.177,5.502 -10.223,7.39 -15.725,4.213c-5.503,-3.177 -7.391,-10.223 -4.214,-15.725c3.177,-5.502 10.223,-7.39 15.725,-4.214c5.503,3.177 7.391,10.223 4.214,15.726Z" style="fill:#728a80;stroke:#fff;stroke-width:3.91px;stroke-linecap:round;"/>
+                        <path id="_4" serif:id="4" sound="Mid-E" d="M530.504,1134.37c-3.177,5.502 -10.223,7.39 -15.726,4.214c-5.502,-3.177 -7.39,-10.223 -4.213,-15.726c3.176,-5.502 10.223,-7.39 15.725,-4.213c5.502,3.177 7.39,10.223 4.214,15.725Z" style="fill:#728a80;stroke:#fff;stroke-width:3.91px;stroke-linecap:round;"/>
+                    </g>
+                </g>
+                <g id="_61" serif:id="6" groupsound="true">
+                    <g id="Ring--Sounder--Background2" serif:id="Ring, Sounder, Background">
+                        <circle id="white-background2" serif:id="white background" cx="639" cy="1145.9" r="83.198" style="fill:#fff;"/>
+                        <g id="Ring2" serif:id="Ring">
+                            <path d="M698.337,1180.15c-18.909,32.751 -60.849,43.991 -93.598,25.083c-32.749,-18.908 -43.985,-60.848 -25.076,-93.6c18.909,-32.751 60.849,-43.991 93.598,-25.083c32.749,18.907 43.985,60.848 25.076,93.6Z" style="fill:none;stroke:#000;stroke-width:1.63px;stroke-linecap:round;"/>
+                            <path d="M698.337,1180.15l-3.793,-2.19" style="fill:none;stroke:#000;stroke-width:1.63px;stroke-linecap:round;"/>
+                            <path d="M583.456,1113.83l-3.793,-2.19" style="fill:none;stroke:#000;stroke-width:1.63px;stroke-linecap:round;"/>
+                            <path d="M606.929,1201.44l-2.19,3.793" style="fill:none;stroke:#000;stroke-width:1.63px;stroke-linecap:round;"/>
+                            <path d="M673.261,1086.56l-2.19,3.793" style="fill:none;stroke:#000;stroke-width:1.63px;stroke-linecap:round;"/>
+                            <path d="M673.259,1205.24l-2.19,-3.794" style="fill:none;stroke:#000;stroke-width:1.63px;stroke-linecap:round;"/>
+                            <path d="M606.931,1090.35l-2.19,-3.794" style="fill:none;stroke:#000;stroke-width:1.63px;stroke-linecap:round;"/>
+                            <path d="M583.452,1177.97l-3.793,2.19" style="fill:none;stroke:#000;stroke-width:1.63px;stroke-linecap:round;"/>
+                            <path d="M698.341,1111.64l-3.793,2.19" style="fill:none;stroke:#000;stroke-width:1.63px;stroke-linecap:round;"/>
+                            <path d="M639,1214.42l-0,-4.38" style="fill:none;stroke:#000;stroke-width:1.63px;stroke-linecap:round;"/>
+                            <path d="M639,1081.76l-0,-4.38" style="fill:none;stroke:#000;stroke-width:1.63px;stroke-linecap:round;"/>
+                            <path d="M574.861,1145.9l-4.38,0" style="fill:none;stroke:#000;stroke-width:1.63px;stroke-linecap:round;"/>
+                            <path d="M707.519,1145.9l-4.38,0" style="fill:none;stroke:#000;stroke-width:1.63px;stroke-linecap:round;"/>
+                        </g>
+                    </g>
+                    <g id="Notes2" serif:id="Notes">
+                        <path id="_62" sound="Mid-Gb" serif:id="6" d="M648.969,1219.76c-3.176,5.502 -10.223,7.39 -15.725,4.213c-5.502,-3.176 -7.39,-10.223 -4.213,-15.725c3.176,-5.502 10.223,-7.39 15.725,-4.213c5.502,3.176 7.39,10.222 4.213,15.725Z" style="fill:#c9c873;stroke:#fff;stroke-width:3.91px;stroke-linecap:round;"/>
+                    </g>
+                </g>
+                <a href="ASSEMBLE-2.svg">
+                <g id="_21" serif:id="2" groupsound="true">
+                    <g id="Ring--Sounder--Background3" serif:id="Ring, Sounder, Background">
+                        <circle id="white-background3" serif:id="white background" cx="943.197" cy="621.546" r="83.198" style="fill:#fff;"/>
+                        <g id="Ring3" serif:id="Ring">
+                            <path d="M1002.53,655.804c-18.909,32.752 -60.849,43.991 -93.598,25.083c-32.749,-18.907 -43.986,-60.848 -25.077,-93.6c18.91,-32.751 60.849,-43.991 93.599,-25.083c32.749,18.908 43.985,60.849 25.076,93.6Z" style="fill:none;stroke:#000;stroke-width:1.63px;stroke-linecap:round;"/>
+                            <path d="M1002.53,655.804l-3.794,-2.19" style="fill:none;stroke:#000;stroke-width:1.63px;stroke-linecap:round;"/>
+                            <path d="M887.653,589.478l-3.794,-2.191" style="fill:none;stroke:#000;stroke-width:1.63px;stroke-linecap:round;"/>
+                            <path d="M911.126,677.094l-2.19,3.793" style="fill:none;stroke:#000;stroke-width:1.63px;stroke-linecap:round;"/>
+                            <path d="M977.458,562.204l-2.191,3.793" style="fill:none;stroke:#000;stroke-width:1.63px;stroke-linecap:round;"/>
+                            <path d="M977.456,680.885l-2.19,-3.793" style="fill:none;stroke:#000;stroke-width:1.63px;stroke-linecap:round;"/>
+                            <path d="M911.127,566l-2.19,-3.793" style="fill:none;stroke:#000;stroke-width:1.63px;stroke-linecap:round;"/>
+                            <path d="M887.648,653.617l-3.793,2.19" style="fill:none;stroke:#000;stroke-width:1.63px;stroke-linecap:round;"/>
+                            <path d="M1002.54,587.285l-3.793,2.19" style="fill:none;stroke:#000;stroke-width:1.63px;stroke-linecap:round;"/>
+                            <path d="M943.197,690.067l-0,-4.38" style="fill:none;stroke:#000;stroke-width:1.63px;stroke-linecap:round;"/>
+                            <path d="M943.197,557.404l-0,-4.38" style="fill:none;stroke:#000;stroke-width:1.63px;stroke-linecap:round;"/>
+                            <path d="M879.058,621.546l-4.38,-0" style="fill:none;stroke:#000;stroke-width:1.63px;stroke-linecap:round;"/>
+                            <path d="M1011.72,621.546l-4.381,-0" style="fill:none;stroke:#000;stroke-width:1.63px;stroke-linecap:round;"/>
+                        </g>
+                    </g>
+                    <g id="Notes3" serif:id="Notes">
+                        <path id="_112" sound="Low-B" serif:id="11" d="M918.851,567.853c-3.176,5.503 -10.223,7.391 -15.725,4.214c-5.502,-3.177 -7.39,-10.223 -4.213,-15.725c3.176,-5.502 10.223,-7.39 15.725,-4.214c5.502,3.177 7.39,10.223 4.213,15.725Z" style="fill:#0082ff;stroke:#fff;stroke-width:3.91px;stroke-linecap:round;"/>
+                        <path id="_73" sound="Mid-G" serif:id="7" d="M919.519,685.711c-3.177,5.503 -10.223,7.391 -15.726,4.214c-5.502,-3.177 -7.39,-10.223 -4.213,-15.725c3.176,-5.502 10.223,-7.39 15.725,-4.214c5.502,3.177 7.39,10.223 4.214,15.725Z" style="fill:#0082ff;stroke:#fff;stroke-width:3.91px;stroke-linecap:round;"/>
+                        <path id="_63" sound="Mid-Gb" serif:id="6" d="M953.166,695.412c-3.177,5.502 -10.223,7.39 -15.725,4.214c-5.503,-3.177 -7.391,-10.223 -4.214,-15.726c3.177,-5.502 10.223,-7.39 15.725,-4.213c5.503,3.177 7.391,10.223 4.214,15.725Z" style="fill:#0082ff;stroke:#fff;stroke-width:3.91px;stroke-linecap:round;"/>
+                    </g>
+                    <g id="Root-Marker1" serif:id="Root Marker">
+                        <path id="_113" serif:id="11" d="M918.135,578.167l11.124,9.402l-8.545,4.933l-2.579,-14.335Zm3.844,6.659l0.642,3.568l2.127,-1.228l-2.769,-2.34Z"/>
+                    </g>
+                    <g id="Treble-Note1" serif:id="Treble Note" sound="High-D">
+                        <g id="_22" serif:id="2">
+                            <path id="_2u" serif:id="2u" d="M1013.03,592.942c-3.215,5.568 -10.346,7.479 -15.915,4.264c-5.569,-3.215 -7.48,-10.346 -4.265,-15.915c3.216,-5.569 10.347,-7.48 15.916,-4.265c5.569,3.216 7.48,10.347 4.264,15.916Z" style="fill:#fff;stroke:#fff;stroke-width:4.87px;stroke-linecap:round;"/>
+                            <circle id="_2a" serif:id="2a" cx="1002.94" cy="587.116" r="9.358" style="fill:#fff;stroke:#0082ff;stroke-width:2.44px;stroke-linecap:round;"/>
+                        </g>
+                    </g>
+                </g>
+                </a>
+            </g>
+            <path d="M461.658,1188.75c1.928,47.474 57.273,77.779 175.842,57.75c128.679,55.25 232.827,-105.526 305.697,-541.756" style="fill:none;stroke:#dbdbdb;stroke-width:4px;stroke-linecap:round;"/>
+            <path d="M895.5,685.5c-179.25,45 -355.5,-5.25 -462,-117.75" style="fill:none;stroke:#969fa8;stroke-width:4px;stroke-linecap:round;"/>
+        </g>
+        <g id="Songs">
+        </g>
+    </g>
+    <g transform="matrix(144,0,0,144,900.75,163.945)">
+    </g>
+    <text x="372.352px" y="163.945px" style="font-family:'ArialMT', 'Arial', sans-serif;font-size:144px;">parent 2</text>
+    <g transform="matrix(0.75,0,0,0.75,-777.261,1291.41)">
+        <text x="1388.62px" y="182.54px" style="font-family:'ArialMT', 'Arial', sans-serif;font-size:66.667px;">groupsound=&quot;true&quot;</text>
+        <g transform="matrix(66.6667,0,0,66.6667,2448.55,251.387)">
+        </g>
+        <text x="1388.62px" y="251.387px" style="font-family:'ArialMT', 'Arial', sans-serif;font-size:66.667px;">for sounds dissolving into next page</text>
+    </g>
+    <g transform="matrix(0.75,0,0,0.75,-79.9857,36.3518)">
+        <text x="1139.32px" y="983.533px" style="font-family:'ArialMT', 'Arial', sans-serif;font-size:40px;">child 2 (&quot;refocus&quot;, goes back to</text>
+        <text x="1139.32px" y="1024.84px" style="font-family:'ArialMT', 'Arial', sans-serif;font-size:40px;">previous page)</text>
+        <text x="1139.32px" y="1066.15px" style="font-family:'ArialMT', 'Arial', sans-serif;font-size:40px;">dissolve to ungrouped notes</text>
+        <g transform="matrix(40,0,0,40,1357.23,1107.46)">
+        </g>
+        <text x="1139.32px" y="1107.46px" style="font-family:'ArialMT', 'Arial', sans-serif;font-size:40px;">on transition</text>
+    </g>
+    <g transform="matrix(0.75,0,0,0.75,-757.236,-100.809)">
+        <text x="1139.32px" y="983.533px" style="font-family:'ArialMT', 'Arial', sans-serif;font-size:40px;">child 1 (next frame links to parent 1)</text>
+        <text x="1139.32px" y="1024.84px" style="font-family:'ArialMT', 'Arial', sans-serif;font-size:40px;">dissolve to ungrouped notes</text>
+        <g transform="matrix(40,0,0,40,1357.23,1066.15)">
+        </g>
+        <text x="1139.32px" y="1066.15px" style="font-family:'ArialMT', 'Arial', sans-serif;font-size:40px;">on transition</text>
+    </g>
+    <text x="249.004px" y="1210.23px" style="font-family:'ArialMT', 'Arial', sans-serif;font-size:30px;">other sounds</text>
+    <g transform="matrix(0.75,0,0,0.75,179.15,-5.98264)">
+        <text x="321.749px" y="313.93px" style="font-family:'ArialMT', 'Arial', sans-serif;font-size:40px;">sounds will play as groups</text>
+        <text x="321.749px" y="355.239px" style="font-family:'ArialMT', 'Arial', sans-serif;font-size:40px;">sounds should dissolve on transition</text>
+    </g>
+    <g>
+        <g transform="matrix(13,0,0,13,480.329,397.964)">
+        </g>
+        <text x="442.033px" y="397.964px" style="font-family:'ArialMT', 'Arial', sans-serif;font-size:13px;">high-C</text>
+        <g transform="matrix(13,0,0,13,561.8,442.056)">
+        </g>
+        <text x="527.136px" y="442.056px" style="font-family:'ArialMT', 'Arial', sans-serif;font-size:13px;">mid-D</text>
+        <g transform="matrix(13,0,0,13,411.244,575.373)">
+        </g>
+        <text x="377.297px" y="575.373px" style="font-family:'ArialMT', 'Arial', sans-serif;font-size:13px;">low-G</text>
+        <g transform="matrix(13,0,0,13,414.866,421.964)">
+        </g>
+        <text x="380.918px" y="421.964px" style="font-family:'ArialMT', 'Arial', sans-serif;font-size:13px;">mid-B</text>
+    </g>
+    <g>
+        <g transform="matrix(13,0,0,13,925.649,533.714)">
+        </g>
+        <text x="893.143px" y="533.714px" style="font-family:'ArialMT', 'Arial', sans-serif;font-size:13px;">low-B</text>
+        <g transform="matrix(13,0,0,13,1051.46,565.756)">
+        </g>
+        <text x="1013.17px" y="565.756px" style="font-family:'ArialMT', 'Arial', sans-serif;font-size:13px;">high-D</text>
+        <g transform="matrix(13,0,0,13,966.719,675.153)">
+        </g>
+        <text x="924.101px" y="675.153px" style="font-family:'ArialMT', 'Arial', sans-serif;font-size:13px;">mid-Gb</text>
+        <g transform="matrix(13,0,0,13,890.281,679.964)">
+        </g>
+        <text x="854.893px" y="679.964px" style="font-family:'ArialMT', 'Arial', sans-serif;font-size:13px;">mid-G</text>
+    </g>
+</svg>

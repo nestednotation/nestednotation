@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
+<svg width="100%" height="100%" viewBox="0 0 1275 1538" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" xml:space="preserve" xmlns:serif="http://www.serif.com/" style="fill-rule:evenodd;clip-rule:evenodd;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:1.5;">
+    <rect id="ASSEMBLE-2" x="0" y="0" width="1275" height="1537.5" style="fill:none;"/>
+    <g id="Tesseract-Template-Groups" serif:id="Tesseract Template Groups">
+        <g id="Fields">
+        </g>
+        <a href="DISSOLVE-1.svg">
+        <g id="S">
+            <g id="Ring" groupsound="false">
+                <path id="Backer" d="M946.076,970.499c-98.167,170.026 -315.897,228.374 -485.913,130.217c-170.016,-98.157 -228.349,-315.887 -130.183,-485.912c98.166,-170.026 315.897,-228.375 485.913,-130.218c170.016,98.157 228.349,315.888 130.183,485.913Z" style="fill:#fff;"/>
+                <path d="M946.076,970.499c-98.167,170.026 -315.897,228.374 -485.913,130.217c-170.016,-98.157 -228.349,-315.887 -130.183,-485.912c98.166,-170.026 315.897,-228.375 485.913,-130.218c170.016,98.157 228.349,315.888 130.183,485.913Z" style="fill:none;stroke:#000;stroke-width:6.25px;"/>
+                <path d="M946.076,970.499l-19.693,-11.369" style="fill:none;stroke:#000;stroke-width:6.25px;"/>
+                <path d="M349.673,626.173l-19.693,-11.369" style="fill:none;stroke:#000;stroke-width:6.25px;"/>
+                <path d="M471.533,1081.02l-11.37,19.692" style="fill:none;stroke:#000;stroke-width:6.25px;"/>
+                <path d="M815.893,484.586l-11.37,19.693" style="fill:none;stroke:#000;stroke-width:6.25px;"/>
+                <path d="M815.885,1100.7l-11.369,-19.692" style="fill:none;stroke:#000;stroke-width:6.25px;"/>
+                <path d="M471.54,504.292l-11.37,-19.693" style="fill:none;stroke:#000;stroke-width:6.25px;"/>
+                <path d="M349.651,959.143l-19.693,11.369" style="fill:none;stroke:#000;stroke-width:6.25px;"/>
+                <path d="M946.098,614.791l-19.693,11.369" style="fill:none;stroke:#000;stroke-width:6.25px;"/>
+                <path d="M638.028,1148.37l-0,-22.739" style="fill:none;stroke:#000;stroke-width:6.25px;"/>
+                <path d="M638.028,459.669l-0,-22.739" style="fill:none;stroke:#000;stroke-width:6.25px;"/>
+                <path d="M305.052,792.651l-22.739,0" style="fill:none;stroke:#000;stroke-width:6.25px;"/>
+                <path d="M993.743,792.651l-22.74,0" style="fill:none;stroke:#000;stroke-width:6.25px;"/>
+            </g>
+            <g id="Root-Markers" serif:id="Root Markers">
+                <path id="_11" serif:id="11" d="M500.217,553.055l61.39,51.88l-47.155,27.225l-14.235,-79.105Zm21.216,36.746l3.543,19.688l11.736,-6.776l-15.279,-12.912Z"/>
+            </g>
+            <g id="Notes">
+                <path id="_111" sound="Low-B" serif:id="11" d="M511.64,517.802c-16.492,28.564 -53.072,38.365 -81.637,21.874c-28.565,-16.492 -38.367,-53.072 -21.875,-81.636c16.492,-28.564 53.073,-38.366 81.638,-21.874c28.565,16.491 38.366,53.071 21.874,81.636Z" style="fill:#0082ff;stroke:#fff;stroke-width:18px;"/>
+                <path id="_7" sound="Mid-G" serif:id="7" d="M515.104,1129.65c-16.492,28.564 -53.073,38.366 -81.638,21.874c-28.565,-16.492 -38.366,-53.071 -21.874,-81.636c16.492,-28.564 53.072,-38.365 81.637,-21.874c28.565,16.492 38.366,53.072 21.875,81.636Z" style="fill:#0082ff;stroke:#fff;stroke-width:18px;"/>
+                <path id="_6" sound="Mid-Gb" serif:id="6" d="M689.784,1180.01c-16.492,28.565 -53.073,38.366 -81.638,21.875c-28.564,-16.492 -38.366,-53.072 -21.874,-81.636c16.492,-28.564 53.072,-38.366 81.637,-21.874c28.565,16.491 38.367,53.071 21.875,81.635Z" style="fill:#0082ff;stroke:#fff;stroke-width:18px;"/>
+            </g>
+            <g id="Treble-Marker" serif:id="Treble Marker" sound="High-D">
+                <g id="_2" serif:id="2">
+                    <path id="_2u" serif:id="2u" d="M995.429,649.434c-16.492,28.565 -53.073,38.366 -81.638,21.874c-28.565,-16.491 -38.366,-53.071 -21.874,-81.635c16.492,-28.564 53.072,-38.366 81.637,-21.874c28.565,16.491 38.367,53.071 21.875,81.635Z" style="fill:#fff;stroke:#fff;stroke-width:25px;"/>
+                    <circle id="_2a" serif:id="2a" cx="943.673" cy="619.554" r="48" style="fill:#fff;stroke:#0082ff;stroke-width:12.5px;"/>
+                </g>
+            </g>
+        </g>
+        </a>
+        <g id="Songs">
+        </g>
+    </g>
+    <g transform="matrix(144,0,0,144,846.609,163.945)">
+    </g>
+    <text x="430.359px" y="163.945px" style="font-family:'ArialMT', 'Arial', sans-serif;font-size:144px;">child 2</text>
+    <g>
+        <g transform="matrix(49.9944,0,0,49.9944,415.812,420.537)">
+        </g>
+        <text x="290.802px" y="420.537px" style="font-family:'ArialMT', 'Arial', sans-serif;font-size:49.994px;">low-B</text>
+        <g transform="matrix(49.9944,0,0,49.9944,1107.73,530.037)">
+        </g>
+        <text x="960.454px" y="530.037px" style="font-family:'ArialMT', 'Arial', sans-serif;font-size:49.994px;">high-D</text>
+        <g transform="matrix(49.9944,0,0,49.9944,718.826,1282.15)">
+        </g>
+        <text x="554.929px" y="1282.15px" style="font-family:'ArialMT', 'Arial', sans-serif;font-size:49.994px;">mid-Gb</text>
+        <g transform="matrix(49.9944,0,0,49.9944,385.548,1153.35)">
+        </g>
+        <text x="249.454px" y="1153.35px" style="font-family:'ArialMT', 'Arial', sans-serif;font-size:49.994px;">mid-G</text>
+    </g>
+    <g transform="matrix(0.75,0,0,0.75,-817.307,1292.02)">
+        <text x="1388.62px" y="182.54px" style="font-family:'ArialMT', 'Arial', sans-serif;font-size:66.667px;">groupsound=&quot;false&quot;</text>
+        <g transform="matrix(66.6667,0,0,66.6667,2493.01,251.387)">
+        </g>
+        <text x="1388.62px" y="251.387px" style="font-family:'ArialMT', 'Arial', sans-serif;font-size:66.667px;">for sounds assembling into next page</text>
+    </g>
+    <g transform="matrix(0.75,0,0,0.75,145.773,-5.98264)">
+        <text x="321.749px" y="313.93px" style="font-family:'ArialMT', 'Arial', sans-serif;font-size:40px;">sounds will play ungrouped</text>
+        <g transform="matrix(40,0,0,40,991.046,355.239)">
+        </g>
+        <text x="321.749px" y="355.239px" style="font-family:'ArialMT', 'Arial', sans-serif;font-size:40px;">sounds should assemble on transition</text>
+    </g>
+</svg>

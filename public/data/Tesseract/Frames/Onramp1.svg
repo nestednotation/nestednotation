@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
+<svg width="100%" height="100%" viewBox="0 0 1701 2481" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" xml:space="preserve" xmlns:serif="http://www.serif.com/" style="fill-rule:evenodd;clip-rule:evenodd;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:1.5;">
+    <g transform="matrix(1,0,0,1,-8138,-2783)">
+        <g id="Onramp1" transform="matrix(0.944444,0,0,1.37778,8138.91,2783.07)">
+            <rect x="0" y="0" width="1800" height="1800" style="fill:none;"/>
+            <a href="Onramp2.svg">
+            <g id="S" groupsound="false" transform="matrix(0.91466,0,0,0.626984,193.138,243.957)">
+                <g id="Ring" transform="matrix(-1.09813,0,0,-1.09811,1579.66,2245.28)">
+                    <g id="Backer" transform="matrix(0.545852,-0.945443,0.9537,0.550619,-641.299,1170.26)">
+                        <ellipse cx="692" cy="1046" rx="458" ry="454" style="fill:white;"/>
+                    </g>
+                    <g transform="matrix(0.545852,-0.945443,0.9537,0.550619,-641.299,1170.26)">
+                        <ellipse cx="692" cy="1046" rx="458" ry="454" style="fill:none;stroke:black;stroke-width:8.01px;"/>
+                    </g>
+                    <g transform="matrix(0.5,-0.866025,0.629632,0.363518,-412.931,1316.59)">
+                        <path d="M768,524.038L768,568" style="fill:none;stroke:black;stroke-width:10.05px;"/>
+                    </g>
+                    <g transform="matrix(0.5,-0.866025,0.629632,0.363518,425.349,1800.57)">
+                        <path d="M768,524.038L768,568" style="fill:none;stroke:black;stroke-width:10.05px;"/>
+                    </g>
+                    <g transform="matrix(-0.866025,-0.5,0.363518,-0.629632,1442.63,1400.58)">
+                        <path d="M768,524.038L768,568" style="fill:none;stroke:black;stroke-width:10.05px;"/>
+                    </g>
+                    <g transform="matrix(-0.866025,-0.5,0.363518,-0.629632,958.61,2238.93)">
+                        <path d="M768,524.038L768,568" style="fill:none;stroke:black;stroke-width:10.05px;"/>
+                    </g>
+                    <g transform="matrix(0.866025,-0.5,0.363518,0.629632,-371.594,713.016)">
+                        <path d="M768,524.038L768,568" style="fill:none;stroke:black;stroke-width:10.05px;"/>
+                    </g>
+                    <g transform="matrix(0.866025,-0.5,0.363518,0.629632,112.404,1551.33)">
+                        <path d="M768,524.038L768,568" style="fill:none;stroke:black;stroke-width:10.05px;"/>
+                    </g>
+                    <g transform="matrix(-0.5,-0.866025,0.629632,-0.363518,1193.38,1713.55)">
+                        <path d="M768,524.038L768,568" style="fill:none;stroke:black;stroke-width:10.05px;"/>
+                    </g>
+                    <g transform="matrix(-0.5,-0.866025,0.629632,-0.363518,355.038,2197.57)">
+                        <path d="M768,524.038L768,568" style="fill:none;stroke:black;stroke-width:10.05px;"/>
+                    </g>
+                    <g transform="matrix(1,0,0,0.727036,-34,210.969)">
+                        <path d="M768,524.038L768,568" style="fill:none;stroke:black;stroke-width:10.05px;"/>
+                    </g>
+                    <g transform="matrix(1,0,0,0.727036,-34,1179)">
+                        <path d="M768,524.038L768,568" style="fill:none;stroke:black;stroke-width:10.05px;"/>
+                    </g>
+                    <g transform="matrix(6.12323e-17,-1,0.727036,4.45181e-17,821.022,1859.96)">
+                        <path d="M768,524.038L768,568" style="fill:none;stroke:black;stroke-width:10.05px;"/>
+                    </g>
+                    <g transform="matrix(6.12323e-17,-1,0.727036,4.45181e-17,-146.974,1859.96)">
+                        <path d="M768,524.038L768,568" style="fill:none;stroke:black;stroke-width:10.05px;"/>
+                    </g>
+                </g>
+                <g id="_11" serif:id="11" transform="matrix(1.01086,-0.583619,0.521096,0.902565,-501.064,545.804)">
+                    <g id="Root-Markers" serif:id="Root Markers">
+                        <path id="_111" serif:id="11" d="M731.999,618L768,730L695.999,730L731.999,618ZM731.999,680.84L723.04,708.715L740.959,708.715L731.999,680.84Z" style="fill:rgb(127,146,94);"/>
+                    </g>
+                </g>
+                <g id="Notes">
+                    <g id="_112" sound="Font/2-Low-B" serif:id="11" transform="matrix(-1.39762,2.4207,-2.45799,-1.41909,2863.38,-531.256)">
+                        <ellipse cx="766" cy="526.5" rx="33" ry="32.5" style="fill:rgb(127,146,94);stroke:white;stroke-width:9.86px;"/>
+                    </g>
+                    <g id="_3" sound="Font/2-Mid-Eb" serif:id="3" transform="matrix(-1.39762,2.4207,-2.45799,-1.41909,3685.18,-55.5762)">
+                        <ellipse cx="766" cy="526.5" rx="33" ry="32.5" style="fill:rgb(127,146,94);stroke:white;stroke-width:9.86px;"/>
+                    </g>
+                </g>
+                <g id="Treble-Marker" serif:id="Treble Marker">
+                    <g id="_8" sound="Font/2-High-Ab" serif:id="8">
+                        <g id="_8u" serif:id="8u" transform="matrix(-1.39762,2.4207,-2.45799,-1.41909,2664.62,218.751)">
+                            <ellipse cx="766" cy="526.5" rx="33" ry="32.5" style="fill:white;stroke:white;stroke-width:13.7px;"/>
+                        </g>
+                        <g id="_8a" serif:id="8a" transform="matrix(1.12855,0,0,1.10639,-727.469,757.131)">
+                            <ellipse cx="910.352" cy="514.037" rx="65.648" ry="66.963" style="fill:white;stroke:rgb(127,146,94);stroke-width:17.26px;"/>
+                        </g>
+                    </g>
+                </g>
+            </g>
+            </a>
+            <g transform="matrix(1.05882,0,0,0.725806,-5682.83,-3068.12)">
+                <text x="5494.01px" y="6165.51px" style="font-family:'MetallophileSp8-Light', 'Metallophile Sp8';font-weight:300;font-size:62.5px;">These three green circles represent notes, forming a chord.</text>
+                <text x="5643.57px" y="6228.01px" style="font-family:'MetallophileSp8-Light', 'Metallophile Sp8';font-weight:300;font-size:62.5px;">In play mode, touch them to hear their sounds.</text>
+                <g transform="matrix(62.5,0,0,62.5,6854.38,6353.01)">
+                </g>
+                <text x="5582.19px" y="6353.01px" style="font-family:'MetallophileSp8-Light', 'Metallophile Sp8';font-weight:300;font-size:62.5px;">In guide mode, touch them (or the ring) to proceed.</text>
+            </g>
+        </g>
+    </g>
+</svg>
