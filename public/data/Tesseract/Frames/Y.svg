@@ -98,7 +98,7 @@
                     </g>
                 </g>
                 <g id="Treble-Note1" serif:id="Treble Note">
-                    <g id="_24" sound="Font/2-Low-D,2-High-D" serif:id="2">
+                    <g id="_24" sound="Font/2-Low-D,Font/2-High-D" serif:id="2">
                         <path id="_2u" serif:id="2u" d="M709.584,1604.5C705.297,1611.93 695.788,1614.48 688.363,1610.19C680.938,1605.9 678.39,1596.39 682.677,1588.97C686.964,1581.54 696.473,1579 703.898,1583.28C711.323,1587.57 713.871,1597.08 709.584,1604.5Z" style="fill:#fff;stroke:#fff;stroke-width:6.5px;"/>
                         <circle id="_2a" serif:id="2a" cx="696.131" cy="1596.74" r="12.477" style="fill:#fff;stroke:#ab7d8d;stroke-width:3.25px;"/>
                     </g>

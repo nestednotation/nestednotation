@@ -59,7 +59,7 @@
                     <path id="_6" serif:id="6" d="M615.136,906.13L608.558,887.858L621.714,887.858L615.136,906.13ZM615.136,895.878L616.773,891.33L613.499,891.33L615.136,895.878Z" style="fill:#e3a77c;"/>
                 </g>
                 <g id="Treble-Note" serif:id="Treble Note">
-                    <g id="_61" sound="Font/1-Low-Gb,1-High-Gb" serif:id="6">
+                    <g id="_61" sound="Font/1-Low-Gb,Font/1-High-Gb" serif:id="6">
                         <path id="_62" serif:id="6" d="M628.797,939.213C624.51,946.638 615.001,949.186 607.576,944.899C600.151,940.612 597.603,931.104 601.89,923.679C606.177,916.254 615.685,913.706 623.11,917.993C630.536,922.28 633.083,931.788 628.797,939.213Z" style="fill:#fff;stroke:#fff;stroke-width:6.5px;"/>
                         <circle id="_6a" serif:id="6a" cx="615.206" cy="931.446" r="12.477" style="fill:#fff;stroke:#e3a77c;stroke-width:3.25px;"/>
                     </g>
