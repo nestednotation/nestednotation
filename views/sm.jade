@@ -60,6 +60,11 @@ block content
               input(type="number" name="fadeDuration", value=d.fadeDuration, min=0)
           tr
             td
+              label(for="preloadDuration") &nbsp;buffer duration(ms)&nbsp;
+            td
+              input(type="number" name="preloadDuration", value=d.preloadDuration, min=0)
+          tr
+            td
               label(for="votingSize") &nbsp;voting size (%)&nbsp;
             td
               input(type="number" name="votingSize",  value=d.votingSize, min=1)
@@ -157,6 +162,11 @@ block content
           label(for="fadeDuration") &nbsp;fade duration(ms)&nbsp;
         td
           input(type="number" name="fadeDuration", value=1000, min=0)
+      tr
+        td
+          label(for="preloadDuration") &nbsp;buffer duration(ms)&nbsp;
+        td
+          input(type="number" name="preloadDuration", value=1100, min=0)
       tr
         td
           label(for="votingSize") &nbsp;voting size (%)&nbsp;

@@ -1,0 +1,95 @@
+/**
+ * Baseline guard.
+ *
+ * Rebuilds the vanilla score "-u- Hello" (no session-* markup) and proves the
+ * generated `.content.svg` and `.html` match the snapshots in test/baseline/.
+ * This is the no-regression net for every build/state change in the Session
+ * Lines work: a vanilla score must always build exactly as it did before.
+ *
+ *   - `.content.svg` is compared BYTE-FOR-BYTE (it has no env-dependent bytes).
+ *   - `.html` is compared byte-for-byte EXCEPT for two env-dependent things,
+ *     both normalized away so the guard stays portable across machines/CI:
+ *       * the injected `wsPath` — deploy config (SERVER_IP, or a hardcoded dev
+ *         IP in database.js), orthogonal to session-lines output;
+ *       * line endings — a git-checkout artifact (core.autocrlf), see below.
+ *
+ * If this fails after an intentional output change, re-capture with
+ *   node bin/build-score.js "-u- Hello" __baseline__
+ * which prints the two built files (their names carry the build's revision);
+ * copy them to test/baseline/__baseline__.content.svg and
+ * test/baseline/__baseline__.html.
+ */
+
+const assert = require("node:assert");
+const fs = require("node:fs");
+const path = require("node:path");
+
+const { buildScore } = require("../bin/build-score.js");
+
+const BASELINE_ID = "__baseline__";
+const BASELINE_FOLDER = "-u- Hello";
+const baselineDir = path.join(__dirname, "baseline");
+
+// Replace any ws://… / wss://… URL (the deploy-dependent wsPath) with a stable
+// token so it cannot cause spurious diffs.
+const stripWsPath = (s) => s.replace(/wss?:\/\/[^"'\s\\]+/g, "__WS_PATH__");
+
+// Line endings are a git-checkout artifact, not build output: with
+// core.autocrlf=true and no .gitattributes, views/session.jade and this
+// snapshot land on disk as CRLF, while jade emits "\n" for the template's own
+// newlines — so a build is mixed-EOL and the snapshot is uniformly CRLF. The
+// frame ORDER and every other byte still compare exactly.
+const normalizeEol = (s) => s.replace(/\r\n/g, "\n");
+
+const normalizeHtml = (s) => normalizeEol(stripWsPath(s));
+
+function assertMatchesBaseline(label, actualPath, expectedPath, normalize) {
+  assert.ok(
+    fs.existsSync(actualPath),
+    `${label}: build did not produce ${actualPath}`,
+  );
+  assert.ok(
+    fs.existsSync(expectedPath),
+    `${label}: missing baseline snapshot ${expectedPath} (re-capture it)`,
+  );
+  const actual = fs.readFileSync(actualPath);
+  const expected = fs.readFileSync(expectedPath);
+
+  if (normalize) {
+    assert.strictEqual(
+      normalize(actual.toString("utf8")),
+      normalize(expected.toString("utf8")),
+      `${label}: output differs from baseline (after normalizing wsPath + EOLs)`,
+    );
+  } else {
+    assert.ok(
+      actual.equals(expected),
+      `${label}: output differs from baseline (${actual.length} vs ${expected.length} bytes)`,
+    );
+  }
+}
+
+module.exports = {
+  "vanilla score builds byte-identical to baseline": async () => {
+    const session = await buildScore(BASELINE_FOLDER, { id: BASELINE_ID });
+    // content.svg: strict byte-for-byte (no env-dependent content).
+    assertMatchesBaseline(
+      "content.svg",
+      session.bundleFile("content.svg"),
+      path.join(baselineDir, `${BASELINE_ID}.content.svg`),
+    );
+    // html: byte-for-byte except the deploy-dependent wsPath and line endings.
+    assertMatchesBaseline(
+      "html",
+      session.bundleFile("html"),
+      path.join(baselineDir, `${BASELINE_ID}.html`),
+      normalizeHtml,
+    );
+
+    // Vanilla score must NOT be flagged as having session lines.
+    assert.ok(
+      !session.hasSessionLines,
+      "vanilla score should not set hasSessionLines",
+    );
+  },
+};

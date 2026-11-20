@@ -13,11 +13,22 @@ const USER_ACTIVATION_EVENTS = [
 ];
 
 function unmuteIosAudio() {
-  const AudioContext = window.webkitAudioContext;
+  // iOS plays Web Audio in the "ambient" audio session, which the silent
+  // switch / Silent Mode mutes. Safari 17+ lets a page ask for the "playback"
+  // session instead, which is what a performance needs anyway.
+  if (navigator.audioSession) {
+    navigator.audioSession.type = "playback";
+    return;
+  }
 
-  // To detect iOS, check for touch device and confirm Safari-only
-  // webkitAudioContext is present.
-  const isIos = navigator.maxTouchPoints > 0 && AudioContext != null;
+  // Older iOS: keep a silent <audio> element playing, which moves the session
+  // to playback. Safari dropped the prefixed webkitAudioContext this used to
+  // detect iOS by, so detect iOS (iPadOS reports itself as a Mac) directly.
+  const AudioContext = window.AudioContext || window.webkitAudioContext;
+  const isIos =
+    AudioContext != null &&
+    (/iPad|iPhone|iPod/.test(navigator.userAgent) ||
+      (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1));
 
   if (!isIos) return;
 

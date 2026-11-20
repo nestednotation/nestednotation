@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg width="100%" height="100%" viewBox="0 0 1701 2480" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+  <rect x="0" y="0" width="1701" height="2480" style="fill:#20242c"/>
+  <text x="850" y="300" font-size="110" text-anchor="middle" fill="#fff" font-family="sans-serif">-test- Session lines 2</text>
+  <text x="120" y="520" font-size="46" fill="#e8e8f4" font-family="monospace" xml:space="preserve">Second session-lines test score, extracted</text>
+  <text x="120" y="596" font-size="46" fill="#e8e8f4" font-family="monospace" xml:space="preserve">from FigJam 'Sample score' (node 198-1723),</text>
+  <text x="120" y="672" font-size="46" fill="#e8e8f4" font-family="monospace" xml:space="preserve">cross-checked against table node 72-193.</text>
+  <text x="120" y="748" font-size="46" fill="#e8e8f4" font-family="monospace" xml:space="preserve">Diagram-faithful (owner 2026-07-16): only</text>
+  <text x="120" y="824" font-size="46" fill="#e8e8f4" font-family="monospace" xml:space="preserve">the two drawn hold-until arrows exist;</text>
+  <text x="120" y="900" font-size="46" fill="#e8e8f4" font-family="monospace" xml:space="preserve">the table's intra-group hold-untils</text>
+  <text x="120" y="976" font-size="46" fill="#e8e8f4" font-family="monospace" xml:space="preserve">(e,l,m,r,t,v,w) are omitted pending a</text>
+  <text x="120" y="1052" font-size="46" fill="#e8e8f4" font-family="monospace" xml:space="preserve">track-group arrival-barrier change.</text>
+  <text x="120" y="1128" font-size="46" fill="#e8e8f4" font-family="monospace" xml:space="preserve">START &gt; A  split=2 -&gt; top B / bottom C</text>
+  <text x="120" y="1204" font-size="46" fill="#e8e8f4" font-family="monospace" xml:space="preserve">top:  B D F G I L P S U V &gt; Z</text>
+  <text x="120" y="1280" font-size="46" fill="#e8e8f4" font-family="monospace" xml:space="preserve">H          split=2 -&gt; middle J / bottom K</text>
+  <text x="120" y="1356" font-size="46" fill="#e8e8f4" font-family="monospace" xml:space="preserve">mid:  J M Q T W &gt; Z</text>
+  <text x="120" y="1432" font-size="46" fill="#e8e8f4" font-family="monospace" xml:space="preserve">bot:  C E H K N O R X Y A' &gt; B'</text>
+  <text x="120" y="1508" font-size="46" fill="#e8e8f4" font-family="monospace" xml:space="preserve">groups: BC EF GH IJK LMO RTU VWY ZA'</text>
+  <text x="120" y="1584" font-size="46" fill="#e8e8f4" font-family="monospace" xml:space="preserve">Q          hold-until=S  (leapfrog:</text>
+  <text x="120" y="1660" font-size="46" fill="#e8e8f4" font-family="monospace" xml:space="preserve">S          hold-until=T   Q waits S,</text>
+  <text x="120" y="1736" font-size="46" fill="#e8e8f4" font-family="monospace" xml:space="preserve">           S waits T, T follows Q)</text>
+  <text x="120" y="1812" font-size="46" fill="#e8e8f4" font-family="monospace" xml:space="preserve">V,W        rejoin-at=Z  top+mid merge</text>
+  <text x="120" y="1888" font-size="46" fill="#e8e8f4" font-family="monospace" xml:space="preserve">Z,A'       rejoin-at=B' final merge</text>
+  <text x="120" y="1964" font-size="46" fill="#e8e8f4" font-family="monospace" xml:space="preserve">B' &gt; END   one line again</text>
+</svg>

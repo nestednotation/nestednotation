@@ -3,7 +3,7 @@
 <svg width="100%" height="100%" viewBox="0 0 1700 2480" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" xml:space="preserve" xmlns:serif="http://www.serif.com/" style="fill-rule:evenodd;clip-rule:evenodd;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:1.5;">
     <rect id="Yrefocus" x="0" y="0" width="1700" height="2480" style="fill:none;"/>
     <a href="Y.svg">
-    <g id="S">
+    <g id="S" groupsound="false">
         <g id="Ring">
             <path id="Backer" d="M1261.43,1477C1130.55,1703.7 840.239,1781.5 613.55,1650.62C386.862,1519.75 309.085,1229.44 439.973,1002.74C570.862,776.037 861.169,698.239 1087.86,829.115C1314.55,959.991 1392.32,1250.3 1261.43,1477Z" style="fill:#fff;"/>
             <path d="M1261.43,1477C1130.55,1703.7 840.239,1781.5 613.55,1650.62C386.862,1519.75 309.085,1229.44 439.973,1002.74C570.862,776.037 861.169,698.239 1087.86,829.115C1314.55,959.991 1392.32,1250.3 1261.43,1477Z" style="fill:none;stroke:#000;stroke-width:8.33px;"/>

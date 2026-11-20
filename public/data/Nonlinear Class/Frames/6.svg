@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
+<svg width="100%" height="100%" viewBox="0 0 1700 2050" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" xml:space="preserve" xmlns:serif="http://www.serif.com/" style="fill-rule:evenodd;clip-rule:evenodd;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:1.5;">
+    <g transform="matrix(1,0,0,1,-11208,-4671)">
+        <g id="_6" serif:id="6" transform="matrix(0.944444,0,0,1.13889,11208,4671)">
+            <rect x="0" y="0" width="1800" height="1800" style="fill:none;"/>
+            <g transform="matrix(1.05882,0,0,0.878049,-197.594,-112.957)">
+                <text x="275.647px" y="391.833px" style="font-family:'ArialMT', 'Arial', sans-serif;font-size:128px;">Y<tspan x="349.272px 420.46px " y="391.833px 391.833px ">ou</tspan>&apos;ll note the sounds play</text>
+                <text x="275.647px" y="524.021px" style="font-family:'Arial-BoldMT', 'Arial', sans-serif;font-weight:700;font-size:128px;">asynchronously</text>
+                <text x="1292.84px" y="524.021px" style="font-family:'ArialMT', 'Arial', sans-serif;font-size:128px;">- that is,</text>
+                <text x="275.647px" y="656.208px" style="font-family:'ArialMT', 'Arial', sans-serif;font-size:128px;">everyone plays sounds in</text>
+                <text x="275.647px" y="788.396px" style="font-family:'ArialMT', 'Arial', sans-serif;font-size:128px;">their</text>
+                <text x="560.21px" y="788.396px" style="font-family:'Arial-BoldMT', 'Arial', sans-serif;font-weight:700;font-size:128px;">own time</text>
+                <text x="1114.9px" y="788.396px" style="font-family:'ArialMT', 'Arial', sans-serif;font-size:128px;">.</text>
+                <text x="275.647px" y="1052.77px" style="font-family:'ArialMT', 'Arial', sans-serif;font-size:128px;">Y<tspan x="349.272px 420.46px " y="1052.77px 1052.77px ">ou</tspan> can turn them</text>
+                <g transform="matrix(128,0,0,128,1518.58,1184.96)">
+                </g>
+                <text x="275.647px" y="1184.96px" style="font-family:'ArialMT', 'Arial', sans-serif;font-size:128px;">on and of<tspan x="807.147px 842.71px " y="1184.96px 1184.96px ">f </tspan>as you like.</text>
+            </g>
+            <g id="Navigation">
+            <a href="6a.svg">
+                <g id="next" transform="matrix(0.704225,0,0,0.704225,546.47,583.779)">
+                    <g transform="matrix(1.05882,0,0,0.878049,0.595588,3.5122)">
+                        <path d="M1584,1782.4L1584,1858.6C1584,1872.62 1572.62,1884 1558.6,1884L1325.4,1884C1311.38,1884 1300,1872.62 1300,1858.6L1300,1782.4C1300,1768.38 1311.38,1757 1325.4,1757L1558.6,1757C1572.62,1757 1584,1768.38 1584,1782.4Z" style="fill:#d5a9a9;"/>
+                    </g>
+                    <g transform="matrix(1.05882,0,0,0.878049,-76.1691,-110.319)">
+                        <g transform="matrix(1.42,-0,-0,1.42,-660.94,-818.46)">
+                            <path d="M1530.76,1925.67L1602.78,1949.62L1530.79,1973.67L1530.76,1925.67Z"/>
+                            <path d="M1461.23,1949.72C1461.23,1949.72 1505.99,1949.69 1545.17,1949.66" style="fill:none;stroke:#000;stroke-width:16px;"/>
+                        </g>
+                    </g>
+                </g>
+                </a>
+                <a href="5.svg">
+                <g id="previous" transform="matrix(-0.704225,0,0,0.704225,1251.41,583.692)">
+                    <g transform="matrix(1.05882,0,0,0.878049,0.595588,3.5122)">
+                        <path d="M1584,1782.4L1584,1858.6C1584,1872.62 1572.62,1884 1558.6,1884L1325.4,1884C1311.38,1884 1300,1872.62 1300,1858.6L1300,1782.4C1300,1768.38 1311.38,1757 1325.4,1757L1558.6,1757C1572.62,1757 1584,1768.38 1584,1782.4Z" style="fill:#d5a9a9;"/>
+                    </g>
+                    <g transform="matrix(1.05882,0,0,0.878049,-76.1691,-110.319)">
+                        <g transform="matrix(-1.42,0,0,1.42,1750.22,-818.319)">
+                            <path d="M167.209,1973.57L95.225,1949.52L167.242,1925.57L167.209,1973.57Z"/>
+                            <path d="M236.775,1949.62C236.775,1949.62 192.008,1949.59 152.825,1949.56" style="fill:none;stroke:#000;stroke-width:16px;"/>
+                        </g>
+                    </g>
+                </g>
+                </a>
+            </g>
+            <g id="Drum-Groove" sound="drumgroove" serif:id="Drum Groove" transform="matrix(1,0,0,1,-4.76471,176.337)">
+                <g transform="matrix(2.38608,0,0,0.878049,-2992.85,-626.776)">
+                    <path d="M1584,1782.4L1584,1858.6C1584,1872.62 1578.95,1884 1572.73,1884L1311.27,1884C1305.05,1884 1300,1872.62 1300,1858.6L1300,1782.4C1300,1768.38 1305.05,1757 1311.27,1757L1572.73,1757C1578.95,1757 1584,1768.38 1584,1782.4Z" style="fill:#c9c873;"/>
+                </g>
+                <g transform="matrix(1.05882,0,0,0.878049,-150.807,657.833)">
+                    <g transform="matrix(96,0,0,96,851.788,391.833)">
+                    </g>
+                    <text x="275.647px" y="391.833px" style="font-family:'ArialMT', 'Arial', sans-serif;font-size:96px;">Drum Groove</text>
+                </g>
+            </g>
+            <g id="Violin-Scale" sound="violinscale" serif:id="Violin Scale" transform="matrix(1,0,0,1,-4.76471,395.259)">
+                <g transform="matrix(2.20246,0,0,0.878049,-2754.15,-626.776)">
+                    <path d="M1584,1782.4L1584,1858.6C1584,1872.62 1578.53,1884 1571.79,1884L1312.21,1884C1305.47,1884 1300,1872.62 1300,1858.6L1300,1782.4C1300,1768.38 1305.47,1757 1312.21,1757L1571.79,1757C1578.53,1757 1584,1768.38 1584,1782.4Z" style="fill:#a9d5ac;"/>
+                </g>
+                <g transform="matrix(1.05882,0,0,0.878049,-132.807,657.833)">
+                    <g transform="matrix(96,0,0,96,775.522,391.833)">
+                    </g>
+                    <text x="275.647px" y="391.833px" style="font-family:'ArialMT', 'Arial', sans-serif;font-size:96px;">V<tspan x="337.944px 359.272px " y="391.833px 391.833px ">io</tspan>lin Scale</text>
+                </g>
+            </g>
+        </g>
+    </g>
+</svg>

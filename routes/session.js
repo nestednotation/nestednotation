@@ -1,16 +1,10 @@
 const express = require("express");
 const router = express.Router();
-const { FORM_MESSAGES } = require("../constants");
+const { FORM_MESSAGES, MESSAGES } = require("../constants");
+const { wsPath } = require("../database");
 const fs = require("fs");
 
 const { cache, SESSION_CACHE_KEY } = require("../utils/sessionCache");
-
-let prefixDir = ".";
-const testPrefixFile = prefixDir + "/account/admin.dat";
-if (!fs.existsSync(testPrefixFile)) {
-  prefixDir = "..";
-}
-const SERVER_STATE_DIR = `${prefixDir}/server_state`;
 
 router.get(
   "/:sessionId/svgcontent.html",
@@ -27,14 +21,141 @@ router.get(
       return;
     }
 
+    if (session.scoreUnavailable) {
+      res.status(503).type("text/plain").send("Score unavailable");
+      return;
+    }
+
     res.header("data-session-folder", session.folder);
 
-    const stream = fs.createReadStream(
-      `${SERVER_STATE_DIR}/${sessionId}.content.svg`,
-    );
+    // The revision the live score describes (database.js publishScoreBundle).
+    const stream = fs.createReadStream(session.bundleFile("content.svg"));
+    // A missing or unreadable file (a score that never built, a session being
+    // deleted) is answered here; unhandled, the stream error crashes the server.
+    stream.on("error", (err) => {
+      if (res.headersSent) {
+        res.destroy(err);
+        return;
+      }
+      res
+        .status(err.code === "ENOENT" ? 404 : 500)
+        .type("text/plain")
+        .send(err.code === "ENOENT" ? "Score content not built" : "Score content unreadable");
+    });
     stream.pipe(res);
   },
 );
+
+// Session Lines: on-demand sub-score frames. Read-only; mirrors the apicache of
+// the main content route. Returns the rewritten frames + frame/sound lists the
+// client injects when a line dives into a sub-session.
+router.get(
+  "/:sessionId/sub/:subName",
+  cache("30 minutes"),
+  function (req, res) {
+    req.apicacheGroup = SESSION_CACHE_KEY;
+
+    const { sessionId, subName } = req.params;
+    const db = req.app.get("Database");
+    const session = db.sessionTable.getById(sessionId);
+
+    if (!session || !session.subFrames || !session.subFrames[subName]) {
+      res.status(404).json({ error: "Sub-score not found" });
+      return;
+    }
+
+    const sub = session.subFrames[subName];
+    res.json({
+      framesHtml: sub.framesHtml,
+      frameList: sub.frameList,
+      soundList: sub.soundList,
+    });
+  },
+);
+
+// Session Lines: the full score structure (main graph + every sub-score graph)
+// for the admin live map. Read-only, pure data. Vanilla scores get a graph too
+// (the map shows them as a single-line session; main.hasSessionLines tells the
+// client which mode it is). Deliberately UNCACHED: session.graph is re-derived
+// asynchronously after boot, and apicache would also cache a 404 emitted
+// during that window — wedging the map for the whole cache TTL.
+router.get("/:sessionId/graph", function (req, res) {
+  const db = req.app.get("Database");
+  const session = db.sessionTable.getById(req.params.sessionId);
+
+  if (!session || !session.graph) {
+    res.status(404).json({ error: "No graph (score still building?)" });
+    return;
+  }
+
+  const subs = {};
+  for (const [score, sub] of Object.entries(session.subFrames || {})) {
+    subs[score] = sub.graph;
+  }
+  res.json({ main: session.graph, subs });
+});
+
+// Session Lines: standalone live score-map page (admin tool). Rendered on the
+// fly (not baked/cached like the session page). Works for vanilla scores too —
+// the map presents them as a single-line session.
+router.get("/:sessionId/map", function (req, res) {
+  const db = req.app.get("Database");
+  const session = db.sessionTable.getById(req.params.sessionId);
+
+  if (!session) {
+    res.status(404).send("Session not found");
+    return;
+  }
+
+  if (req.query.p !== session.adminPassword) {
+    res
+      .status(403)
+      .type("text/plain")
+      .send("Admin password invalid or expired");
+    return;
+  }
+
+  // One JSON blob instead of per-constant locals: jade renders the view from
+  // disk per request, so a view newer than the running process would turn a
+  // missing local into `window.X = ;` — a SyntaxError killing the whole
+  // inline script. A blob just leaves new constants undefined.
+  res.render("session-map", {
+    sessionId: session.id,
+    scoreTitle: session.folder,
+    wsPath,
+    constantsJson: JSON.stringify({
+      MSG_PING: MESSAGES.MSG_PING,
+      MSG_SHOW: MESSAGES.MSG_SHOW,
+      MSG_NEED_DISPLAY: MESSAGES.MSG_NEED_DISPLAY,
+      MSG_SHOW_NUMBER_CONNECTION: MESSAGES.MSG_SHOW_NUMBER_CONNECTION,
+      MSG_SELECT_HISTORY: MESSAGES.MSG_SELECT_HISTORY,
+      // Vanilla-mode voting/holding overlay (session-lines mode gets these
+      // states in the `lines` payload instead).
+      MSG_BEGIN_VOTING: MESSAGES.MSG_BEGIN_VOTING,
+      MSG_BEGIN_HOLDING: MESSAGES.MSG_BEGIN_HOLDING,
+      // Barrier valve strip: the admin-flagged waiting list comes in on
+      // MSG_BARRIER_WAITING, and release / force-advance go back out on
+      // MSG_BARRIER_RELEASED.
+      MSG_BARRIER_WAITING: MESSAGES.MSG_BARRIER_WAITING,
+      MSG_BARRIER_RELEASED: MESSAGES.MSG_BARRIER_RELEASED,
+      // Every rewind this map offers can still be refused — a stale menu, a
+      // topology that moved under it — and until this message existed the
+      // operator answered a confirm() and got silence, indistinguishable from
+      // a bug.
+      MSG_REWIND_REFUSED: MESSAGES.MSG_REWIND_REFUSED,
+      // …and its opposite: a rewind that DID happen. The map answers it with
+      // the sentence its own confirm promised, so the operator sees the
+      // topology change land instead of inferring it from a redrawn canvas.
+      MSG_REWIND_DONE: MESSAGES.MSG_REWIND_DONE,
+      // The score itself can change under the map: the session manager swaps
+      // this session's folder (or stops the session), or the operator hits
+      // "global refresh". Both reload the session page — the map has to
+      // follow, or it keeps drawing a score the room has already left.
+      MSG_CHANGE_FOLDER: MESSAGES.MSG_CHANGE_FOLDER,
+      MSG_GLOBAL_REFRESH: MESSAGES.MSG_GLOBAL_REFRESH,
+    }),
+  });
+});
 
 router.get("/", function (req, res) {
   const sessionName = req.query.s;
@@ -116,7 +237,14 @@ router.get("/*", cache("30 minutes"), async function (req, res) {
     return;
   }
 
-  const data = fs.readFileSync(`${SERVER_STATE_DIR}/${sessionId}.html`, {
+  // No score found for this session (database.js #publishBundle): an older
+  // baked page on disk would show frames the session no longer has.
+  if (session.scoreUnavailable) {
+    res.status(503).type("text/plain").send("Score unavailable");
+    return;
+  }
+
+  const data = fs.readFileSync(session.bundleFile("html"), {
     encoding: "utf-8",
   });
   res.send(data);

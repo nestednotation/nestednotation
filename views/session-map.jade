@@ -1,0 +1,63 @@
+//- Session Lines — standalone live score-map page (admin tool, experimental).
+//- Rendered on the fly by routes/session.js (never baked/cached), so it adds
+//- nothing to the shared session page. Opens its own ws connection; pass the
+//- admin password as ?p= so the server addresses admin payloads to it.
+html
+  head
+    title Score map: #{scoreTitle}
+    link(rel='stylesheet', href='/stylesheets/style.css')
+    meta(name='viewport', content='width=device-width, initial-scale=1.0')
+    script.
+      const search = new URLSearchParams(window.location.search);
+      window.staffCode = search.get('p');
+      window.sessionId = '#{sessionId}';
+      window.wsPath = '#{wsPath}';
+      window.currentIndex = 0;
+      window.isAdminView = true;
+      // The map is an observation tool: its ws connection announces itself so
+      // the server never counts it as population (player counts, group waits).
+      window.wsMapView = true;
+      // MSG_* constants arrive as one JSON blob (see routes/session.js) so a
+      // stale server process can never render a SyntaxError into this script.
+      try { Object.assign(window, JSON.parse('!{constantsJson}')); }
+      catch (e) { console.error('session-map constants missing — restart the server', e); }
+    script(src='/javascripts/ws-client.js')
+    script(src='/javascripts/session-map.js')
+  //- data-score-folder keys the saved manual arrangement (session-map.js):
+  //- the same session can be pointed at a different score from the session
+  //- manager, and the old score's node positions must not leak into the new one.
+  body(class="session-map-page", data-score-folder=scoreTitle)
+    div(id="session-map-header")
+      div(id="session-map-heading")
+        span(id="session-map-title") score map — #{scoreTitle}
+        span(id="session-map-status") loading…
+      button(id="session-map-relayout", type="button", title="discard manual arrangement and re-run automatic layout") re-layout
+      //- The canvas carries a dozen encodings (route colours, trail shades,
+      //- ghosts, badges) and had nowhere to explain them. Filled and toggled by
+      //- session-map.js, which owns the styles they describe.
+      button(id="session-map-legend-toggle", type="button", title="what the colours and badges mean") ? legend
+      //- The session's persisted receipts. A rewind is the one gesture an
+      //- operator may have to account for afterwards, long after its toast or
+      //- the map tab that initiated it has gone away.
+      button(id="session-map-log-toggle", type="button", title="the rewinds this session has made", disabled) rewind log
+      a(id="session-map-back", href="#") back to session
+    div(id="ws-reconnect-indicator")
+    div(id="session-map-legend", style="display:none")
+    //- Waiting hold-until barriers / track-group arrival waits, with the
+    //- operator's valves (release, release all, force advance stragglers).
+    //- Hidden by session-map.js whenever nothing is waiting.
+    div(id="session-map-barriers", style="display:none")
+    //- What a rewind just did, shown back for a few seconds. A refusal
+    //- interrupts with an alert (the operator is waiting on an answer); a
+    //- success only has to be seen, and the status line beside the title is
+    //- rewritten by every lines push a rewind sends.
+    div(id="session-map-toast", style="display:none")
+    //- Results and errors, read once by assistive technology (session-map.js
+    //- announce()); visually hidden, the toast and status line show them.
+    div(id="session-map-announce", class="visually-hidden", role="status", aria-live="polite")
+    div(id="session-map-log", style="display:none")
+    div(id="session-map-canvas")
+    div(id="session-map-zoom")
+      button(id="session-map-zoom-out", type="button", title="zoom out") −
+      span(id="session-map-zoom-value") —
+      button(id="session-map-zoom-in", type="button", title="zoom in") +

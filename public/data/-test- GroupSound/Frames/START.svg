@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 720">
+  <a href="FRAME-2.svg">
+    <!-- Full-frame background. In guide mode (staff), tapping empty space
+         navigates to FRAME-2. In play mode it does nothing. -->
+    <rect x="0" y="0" width="1000" height="720" fill="#ffffff"/>
+    <text x="500" y="54" text-anchor="middle" font-family="sans-serif" font-size="34" fill="#222" style="pointer-events:none">START — groupsound test</text>
+
+    <!-- GROUPSOUND: clicking anywhere inside this box plays/stops all three
+         notes together, and the whole box pulses while all three play. -->
+    <g id="ChordGroup" groupsound="true">
+      <rect x="110" y="100" width="780" height="330" rx="24" fill="#e8f0ff" stroke="#3a6cf0" stroke-width="4"/>
+      <text x="500" y="142" text-anchor="middle" font-family="sans-serif" font-size="24" fill="#3a6cf0" style="pointer-events:none">groupsound="true" — click anywhere to play all 3</text>
+      <circle cx="290" cy="300" r="82" fill="#3a6cf0" sound="Font/2-Low-B"/>
+      <text x="290" y="308" text-anchor="middle" font-family="sans-serif" font-size="22" fill="#fff" style="pointer-events:none">Low-B</text>
+      <circle cx="500" cy="300" r="82" fill="#5a8cf5" sound="Font/2-Mid-Eb"/>
+      <text x="500" y="308" text-anchor="middle" font-family="sans-serif" font-size="22" fill="#fff" style="pointer-events:none">Mid-Eb</text>
+      <circle cx="710" cy="300" r="82" fill="#7aa6ff" sound="Font/2-High-Ab"/>
+      <text x="710" y="308" text-anchor="middle" font-family="sans-serif" font-size="22" fill="#fff" style="pointer-events:none">High-Ab</text>
+    </g>
+
+    <!-- Standalone note for contrast: only this one plays/animates on click. -->
+    <circle cx="500" cy="565" r="72" fill="#f0883a" sound="Font/2-Mid-C"/>
+    <text x="500" y="572" text-anchor="middle" font-family="sans-serif" font-size="22" fill="#fff" style="pointer-events:none">Mid-C (solo)</text>
+
+    <text x="500" y="690" text-anchor="middle" font-family="sans-serif" font-size="20" fill="#999" style="pointer-events:none">guide mode: tap to go to FRAME-2 &#8594;</text>
+  </a>
+</svg>
