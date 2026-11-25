@@ -288,8 +288,9 @@ function received(conn, m) {
 function removeBuildOutputs(id) {
   const { SERVER_STATE_DIR } = require("../database.js");
   // The state file, and every baked file of every revision
-  // (`${id}.rev-<revision>.html` and so on; database.js bundleFile).
-  const baked = /^(?:rev-[0-9a-z]+\.)?(?:html|content\.svg|about\.svg|subs\.json)$/;
+  // (`${id}.rev-<revision>.html` and so on; database.js bundleFile), with the
+  // page's gzip copy (PAGE_GZIP_SUFFIX).
+  const baked = /^(?:rev-[0-9a-z]+\.)?(?:html|content\.svg|about\.svg|subs\.json)(?:\.gz)?$/;
   for (const name of fs.readdirSync(SERVER_STATE_DIR)) {
     if (!name.startsWith(`${id}.`)) continue;
     const rest = name.slice(id.length + 1);

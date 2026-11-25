@@ -1,8 +1,11 @@
 const express = require("express");
 const router = express.Router();
 const { FORM_MESSAGES, MESSAGES } = require("../constants");
-const { wsPath } = require("../database");
+const { wsPath, PAGE_GZIP_SUFFIX, isLocalMode } = require("../database");
 const fs = require("fs");
+const nodePath = require("path");
+// Local mode's sub-score bodies, gzip included (see the sub route below).
+const { subBody } = require("../utils/subBodies");
 
 const { cache, SESSION_CACHE_KEY } = require("../utils/sessionCache");
 
@@ -46,30 +49,63 @@ router.get(
   },
 );
 
+// apicache keys a response on its URL alone, so it would hand one encoding
+// to every browser: in local mode the sub route keeps its own bodies instead.
+const unlessLocalMode = (middleware) => (req, res, next) =>
+  isLocalMode() ? next() : middleware(req, res, next);
+
 // Session Lines: on-demand sub-score frames. Read-only; mirrors the apicache of
-// the main content route. Returns the rewritten frames + frame/sound lists the
-// client injects when a line dives into a sub-session.
+// the main content route (outside local mode). Returns the rewritten frames +
+// frame/sound lists the client injects when a line dives into a sub-session.
 router.get(
   "/:sessionId/sub/:subName",
-  cache("30 minutes"),
-  function (req, res) {
+  unlessLocalMode(cache("30 minutes")),
+  async function (req, res) {
     req.apicacheGroup = SESSION_CACHE_KEY;
 
     const { sessionId, subName } = req.params;
     const db = req.app.get("Database");
     const session = db.sessionTable.getById(sessionId);
 
-    if (!session || !session.subFrames || !session.subFrames[subName]) {
+    if (
+      !session ||
+      !session.subFrames ||
+      !Object.prototype.hasOwnProperty.call(session.subFrames, subName)
+    ) {
       res.status(404).json({ error: "Sub-score not found" });
       return;
     }
 
     const sub = session.subFrames[subName];
-    res.json({
-      framesHtml: sub.framesHtml,
-      frameList: sub.frameList,
-      soundList: sub.soundList,
+    if (!isLocalMode()) {
+      res.json({
+        framesHtml: sub.framesHtml,
+        frameList: sub.frameList,
+        soundList: sub.soundList,
+      });
+      return;
+    }
+
+    const body = subBody(sub);
+    res.set({
+      "Content-Type": "application/json; charset=utf-8",
+      "Cache-Control": "no-cache",
+      Vary: "Accept-Encoding",
     });
+    if (req.acceptsEncodings("gzip") === "gzip") {
+      let gzipped = null;
+      try {
+        gzipped = await body.gzip;
+      } catch (err) {
+        console.warn(`Could not compress sub-score ${subName}: ${err.message}`);
+      }
+      if (gzipped) {
+        res.set("Content-Encoding", "gzip");
+        res.send(gzipped);
+        return;
+      }
+    }
+    res.send(body.json);
   },
 );
 
@@ -201,10 +237,7 @@ router.get("/", function (req, res) {
     );
 });
 
-router.get("/*", cache("30 minutes"), async function (req, res) {
-  // API Cache will be clear in routes/sm.js
-  req.apicacheGroup = SESSION_CACHE_KEY;
-
+router.get("/*", async function (req, res) {
   const path = req.path.match("/(.*?)/*$");
   const sessionId = path[1];
   const password = req.query.p;
@@ -244,10 +277,37 @@ router.get("/*", cache("30 minutes"), async function (req, res) {
     return;
   }
 
-  const data = fs.readFileSync(session.bundleFile("html"), {
-    encoding: "utf-8",
-  });
-  res.send(data);
+  // The baked page, or in local mode its gzip copy (database.js
+  // PAGE_GZIP_SUFFIX) when the browser takes gzip and the copy is written.
+  // Sent from disk, uncached: a response cache keyed on the URL alone would
+  // hand one encoding to every browser, and would hold a copy of a page tens
+  // of MB large per password.
+  const page = nodePath.resolve(session.bundleFile("html"));
+  const gzipped = `${page}${PAGE_GZIP_SUFFIX}`;
+  const useGzip =
+    isLocalMode() &&
+    req.acceptsEncodings("gzip") === "gzip" &&
+    fs.existsSync(gzipped);
+  const headers = {
+    "Content-Type": "text/html; charset=utf-8",
+    "Cache-Control": "no-cache",
+    Vary: "Accept-Encoding",
+  };
+  if (useGzip) {
+    headers["Content-Encoding"] = "gzip";
+  }
+  res.sendFile(
+    useGzip ? gzipped : page,
+    // The state directory may sit under a dot-directory.
+    { headers, cacheControl: false, dotfiles: "allow" },
+    (err) => {
+      if (!err || res.headersSent) return;
+      res
+        .status(err.code === "ENOENT" ? 404 : 500)
+        .type("text/plain")
+        .send(err.code === "ENOENT" ? "Score page not built" : "Score page unreadable");
+    },
+  );
 });
 
 module.exports = router;

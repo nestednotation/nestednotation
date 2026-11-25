@@ -115,7 +115,7 @@ router.get("/", async function (req, res) {
                 await session.reloadScore(folder);
                 published = true;
                 resetSessionConnections(session);
-                // Drop the cached page/content/sub responses BEFORE the notice:
+                // Drop the cached content/sub responses BEFORE the notice:
                 // the reloads it triggers must get the new score, not the one
                 // cached in front of the handlers (review F17).
                 apicache.clear(SESSION_CACHE_KEY);
@@ -192,7 +192,9 @@ router.get("/", async function (req, res) {
           }
         }
 
-        // Parameter-only updates are baked into the cached page as well.
+        // A parameter-only update publishes a new revision too (the page is
+        // sent from disk, uncached); drop the content/sub responses cached
+        // for the old one.
         apicache.clear(SESSION_CACHE_KEY);
       } else if (command === "create-session") {
         const listScore = db.getListScore();

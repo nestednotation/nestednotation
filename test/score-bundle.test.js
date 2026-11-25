@@ -57,8 +57,12 @@ function makeWorkspace({ frames, sounds = null }) {
   };
 }
 
+// The page's gzip copy is written in the background after a publish; settle
+// it, so it never lands mid-assertion on the state directory.
 async function build(ws, id) {
-  return buildScore("Score", { id, dataDir: ws.dataDir, stateDir: ws.stateDir });
+  const session = await buildScore("Score", { id, dataDir: ws.dataDir, stateDir: ws.stateDir });
+  await session.whenPageCompressed();
+  return session;
 }
 
 // The published view of a session: in-memory state plus the baked files of
@@ -85,11 +89,14 @@ function leftoverTemps(ws) {
   return fs.readdirSync(ws.stateDir).filter((f) => f.endsWith(".tmp"));
 }
 
-// Every baked file in the state directory (anything but session state).
+// Every baked file in the state directory (anything but session state). The
+// page's gzip copy is left out: it is written in the background, and its own
+// cases below cover it.
 function bakedFiles(ws) {
   return fs
     .readdirSync(ws.stateDir)
     .filter((f) => !/\.json$/.test(f) || f.endsWith(".subs.json"))
+    .filter((f) => !/\.html\.gz(?:\.\d+\.tmp)?$/.test(f))
     .sort();
 }
 
@@ -104,27 +111,39 @@ function requestFor(session, over = {}) {
     params: { sessionId: session.id },
     path: `/${session.id}/`,
     query: { p: "player" },
+    // A browser that takes no compression: the page itself is sent.
+    acceptsEncodings: () => false,
     app: { get: () => ({ sessionTable: { getById: () => session } }) },
     ...over,
   };
 }
 
 // What the page route (GET /session/:id/) answers, through its real handler.
-async function servePage(session) {
-  let body = null;
-  await routeHandler("/*")(requestFor(session), {
-    status() {
-      return this;
-    },
-    type() {
-      return this;
-    },
-    redirect() {},
-    send(data) {
-      body = data;
-    },
+function servePage(session) {
+  return new Promise((resolve, reject) => {
+    const res = {
+      headersSent: false,
+      status() {
+        return this;
+      },
+      type() {
+        return this;
+      },
+      redirect() {},
+      send: resolve,
+      sendFile(file, options, done) {
+        let body;
+        try {
+          body = fs.readFileSync(file, "utf8");
+        } catch (err) {
+          done(err);
+          return;
+        }
+        resolve(body);
+      },
+    };
+    Promise.resolve(routeHandler("/*")(requestFor(session), res)).catch(reject);
   });
-  return body;
 }
 
 // What the content route answers, streamed through its real handler.
@@ -392,12 +411,13 @@ async function reloadRaceCase({ swap, saveFails }) {
     apicache.clear(SESSION_CACHE_KEY);
     server = await startSessionServer(session);
 
-    // Warm the cache, and prove the second round is served from it.
+    // Warm the cache, and prove the second round of content and sub-score is
+    // served from it. The page is sent from disk every time (uncached).
     const old = await server.fetchAll();
     assert.ok(old.page.includes('file="B.svg"'), old.page);
     const handled = server.counter.handled;
     assert.deepStrictEqual(await server.fetchAll(), old);
-    assert.strictEqual(server.counter.handled, handled, "the cache was not warmed");
+    assert.strictEqual(server.counter.handled, handled + 1, "the cache was not warmed");
 
     // Same URLs, visibly different score: a new return frame and a longer sub.
     if (swap) {
@@ -457,7 +477,396 @@ async function reloadRaceCase({ swap, saveFails }) {
   }
 }
 
+// GET the page of `session` from the real session router, as a browser that
+// sends `acceptEncoding` (none when null). The body comes back as raw bytes.
+function fetchPage(session, acceptEncoding) {
+  return fetchFrom(session, `/session/${session.id}/?p=player`, acceptEncoding);
+}
+
+// The same for sub-score `subName`.
+function fetchSub(session, subName, acceptEncoding) {
+  return fetchFrom(session, `/session/${session.id}/sub/${subName}`, acceptEncoding);
+}
+
+async function fetchFrom(session, urlPath, acceptEncoding) {
+  const express = require("express");
+  const http = require("node:http");
+  const app = express();
+  app.set("Database", { sessionTable: { getById: () => session } });
+  app.use("/session", require("../routes/session.js"));
+  const server = http.createServer(app);
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  try {
+    const headers = acceptEncoding == null ? {} : { "accept-encoding": acceptEncoding };
+    return await new Promise((resolve, reject) => {
+      http
+        .get(
+          { host: "127.0.0.1", port: server.address().port, path: urlPath, headers },
+          (res) => {
+            const chunks = [];
+            res.on("data", (c) => chunks.push(c));
+            res.on("end", () =>
+              resolve({ status: res.statusCode, headers: res.headers, body: Buffer.concat(chunks) }),
+            );
+          },
+        )
+        .on("error", reject);
+    });
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+  }
+}
+
+const gzipCopies = (ws) =>
+  fs.readdirSync(ws.stateDir).filter((f) => f.endsWith(".html.gz")).sort();
+
+// Run `work` with LOCAL_MODE set to `value` (unset when undefined), restoring
+// the caller's setting after.
+async function withLocalMode(value, work) {
+  const had = Object.prototype.hasOwnProperty.call(process.env, "LOCAL_MODE");
+  const before = process.env.LOCAL_MODE;
+  if (value === undefined) delete process.env.LOCAL_MODE;
+  else process.env.LOCAL_MODE = value;
+  try {
+    return await work();
+  } finally {
+    if (had) process.env.LOCAL_MODE = before;
+    else delete process.env.LOCAL_MODE;
+  }
+}
+
+// The gzip cases below run in local mode; the page is compressed only there.
+const inLocalMode = (work) => () => withLocalMode("1", work);
+
 module.exports = {
+  "outside local mode the page gets no gzip copy and goes out as is, even to gzip": () =>
+    withLocalMode(undefined, async () => {
+      const ws = makeWorkspace({ frames: BASE_FRAMES });
+      try {
+        const session = await build(ws, "__bundle_gzip_off__");
+        const page = fs.readFileSync(session.bundleFile("html"));
+        assert.deepStrictEqual(gzipCopies(ws), []);
+        const res = await fetchPage(session, "gzip, deflate, br");
+        assert.strictEqual(res.status, 200);
+        assert.strictEqual(res.headers["content-encoding"], undefined);
+        assert.deepStrictEqual(res.body, page);
+
+        // A copy left on disk (a local-mode run before) is not sent either.
+        fs.writeFileSync(`${session.bundleFile("html")}.gz`, require("node:zlib").gzipSync(page));
+        const stale = await fetchPage(session, "gzip");
+        assert.strictEqual(stale.headers["content-encoding"], undefined);
+        assert.deepStrictEqual(stale.body, page);
+
+        for (const value of ["", "0", "false", "no"]) {
+          await withLocalMode(value, async () => {
+            fs.writeFileSync(ws.framePath("C.svg"), frameSvg([], `data-v="${value}"`));
+            await session.rebuildScore();
+            await session.whenPageCompressed();
+            assert.ok(
+              !fs.existsSync(`${session.bundleFile("html")}.gz`),
+              `LOCAL_MODE=${JSON.stringify(value)} compressed the page`,
+            );
+          });
+        }
+      } finally {
+        ws.cleanup();
+      }
+    }),
+
+  "the page goes out gzipped to a browser that takes gzip, as is to one that does not": inLocalMode(async () => {
+    const zlib = require("node:zlib");
+    const ws = makeWorkspace({ frames: BASE_FRAMES });
+    try {
+      const session = await build(ws, "__bundle_gzip__");
+      const page = fs.readFileSync(session.bundleFile("html"));
+      assert.ok(fs.existsSync(`${session.bundleFile("html")}.gz`), "no gzip copy was written");
+
+      const gz = await fetchPage(session, "gzip, deflate");
+      assert.strictEqual(gz.status, 200);
+      assert.strictEqual(gz.headers["content-encoding"], "gzip");
+      assert.match(gz.headers["content-type"], /^text\/html/);
+      assert.match(gz.headers.vary, /accept-encoding/i);
+      assert.ok(gz.body.length < page.length, "the gzipped page is not smaller");
+      assert.deepStrictEqual(zlib.gunzipSync(gz.body), page);
+
+      for (const accept of [null, "identity", "br, deflate"]) {
+        const plain = await fetchPage(session, accept);
+        assert.strictEqual(plain.status, 200, String(accept));
+        assert.strictEqual(plain.headers["content-encoding"], undefined, String(accept));
+        assert.match(plain.headers["content-type"], /^text\/html/);
+        assert.match(plain.headers.vary, /accept-encoding/i);
+        assert.deepStrictEqual(plain.body, page, String(accept));
+      }
+
+      // Before its copy is written, the page goes out as is, even to gzip.
+      fs.rmSync(`${session.bundleFile("html")}.gz`);
+      const early = await fetchPage(session, "gzip");
+      assert.strictEqual(early.headers["content-encoding"], undefined);
+      assert.deepStrictEqual(early.body, page);
+    } finally {
+      ws.cleanup();
+    }
+  }),
+
+  "each revision's gzip copy is swept and deleted with its page": inLocalMode(async () => {
+    const zlib = require("node:zlib");
+    const ws = makeWorkspace({ frames: BASE_FRAMES });
+    try {
+      const session = await build(ws, "__bundle_gzip_sweep__");
+      const first = session.bundleRevision;
+      assert.deepStrictEqual(gzipCopies(ws), [`${session.id}.rev-${first}.html.gz`]);
+
+      fs.writeFileSync(ws.framePath("C.svg"), frameSvg([]));
+      assert.strictEqual(await session.rebuildScore(), true);
+      await session.whenPageCompressed();
+      const second = session.bundleRevision;
+      // The new revision's copy is the new page; the replaced one is kept.
+      assert.deepStrictEqual(
+        zlib.gunzipSync(fs.readFileSync(`${session.bundleFile("html")}.gz`)),
+        fs.readFileSync(session.bundleFile("html")),
+      );
+      assert.deepStrictEqual(
+        gzipCopies(ws),
+        [`${session.id}.rev-${first}.html.gz`, `${session.id}.rev-${second}.html.gz`].sort(),
+      );
+
+      fs.writeFileSync(ws.framePath("D.svg"), frameSvg([]));
+      assert.strictEqual(await session.rebuildScore(), true);
+      await session.whenPageCompressed();
+      assert.ok(!gzipCopies(ws).some((f) => f.includes(`.rev-${first}.`)), "a swept revision kept its copy");
+      assert.strictEqual(gzipCopies(ws).length, 2);
+
+      await session.deleteStateFile();
+      assert.deepStrictEqual(gzipCopies(ws), []);
+      assert.deepStrictEqual(leftoverTemps(ws), []);
+    } finally {
+      ws.cleanup();
+    }
+  }),
+
+  "a copy that finishes after its page was swept is not kept": inLocalMode(async () => {
+    const ws = makeWorkspace({ frames: BASE_FRAMES });
+    try {
+      const session = await build(ws, "__bundle_gzip_late__");
+      fs.writeFileSync(ws.framePath("C.svg"), frameSvg([]));
+      // Hold the copy's write until the page it belongs to is gone.
+      let release;
+      const gate = new Promise((resolve) => (release = resolve));
+      let reachedGate;
+      const atGate = new Promise((resolve) => (reachedGate = resolve));
+      await withPatched(
+        "writeFile",
+        async (original, file, ...rest) => {
+          if (/\.html\.gz\.\d+\.tmp$/.test(String(file))) {
+            reachedGate();
+            await gate;
+          }
+          return original(file, ...rest);
+        },
+        async () => {
+          assert.strictEqual(await session.rebuildScore(), true);
+          await atGate;
+          fs.rmSync(session.bundleFile("html"));
+          release();
+          await session.whenPageCompressed();
+        },
+      );
+      assert.ok(!fs.existsSync(`${session.bundleFile("html")}.gz`), "an orphaned copy was kept");
+      assert.deepStrictEqual(leftoverTemps(ws), []);
+    } finally {
+      ws.cleanup();
+    }
+  }),
+
+  "a page superseded before its turn is not compressed": inLocalMode(async () => {
+    const wsA = makeWorkspace({ frames: BASE_FRAMES });
+    const wsB = makeWorkspace({ frames: BASE_FRAMES });
+    try {
+      const a = await build(wsA, "__bundle_gzip_queue_a__");
+      const b = await build(wsB, "__bundle_gzip_queue_b__");
+      fs.writeFileSync(wsA.framePath("C.svg"), frameSvg([]));
+      // Hold A's compression, so B's two publishes queue behind it.
+      let release;
+      const gate = new Promise((resolve) => (release = resolve));
+      let reachedGate;
+      const atGate = new Promise((resolve) => (reachedGate = resolve));
+      await withPatched(
+        "writeFile",
+        async (original, file, ...rest) => {
+          if (String(file).includes(a.id) && /\.html\.gz\.\d+\.tmp$/.test(String(file))) {
+            reachedGate();
+            await gate;
+          }
+          return original(file, ...rest);
+        },
+        async () => {
+          assert.strictEqual(await a.rebuildScore(), true);
+          await atGate;
+          fs.writeFileSync(wsB.framePath("C.svg"), frameSvg([]));
+          assert.strictEqual(await b.rebuildScore(), true);
+          const superseded = b.bundleRevision;
+          fs.writeFileSync(wsB.framePath("D.svg"), frameSvg([]));
+          assert.strictEqual(await b.rebuildScore(), true);
+          release();
+          await b.whenPageCompressed();
+          // The superseded page is still on disk (kept for a request that
+          // resolved it a moment before), but was not compressed.
+          assert.ok(fs.existsSync(b.bundleFile("html", superseded)));
+          assert.ok(!fs.existsSync(`${b.bundleFile("html", superseded)}.gz`), "the superseded page was compressed");
+          assert.ok(fs.existsSync(`${b.bundleFile("html")}.gz`), "the live page was not compressed");
+        },
+      );
+    } finally {
+      wsA.cleanup();
+      wsB.cleanup();
+    }
+  }),
+
+  "deleting a session does not wait for its page compression, and leaves no copy": inLocalMode(async () => {
+    const ws = makeWorkspace({ frames: BASE_FRAMES });
+    try {
+      const session = await build(ws, "__bundle_gzip_delete__");
+      fs.writeFileSync(ws.framePath("C.svg"), frameSvg([]));
+      let release;
+      const gate = new Promise((resolve) => (release = resolve));
+      let reachedGate;
+      const atGate = new Promise((resolve) => (reachedGate = resolve));
+      await withPatched(
+        "writeFile",
+        async (original, file, ...rest) => {
+          if (/\.html\.gz\.\d+\.tmp$/.test(String(file))) {
+            reachedGate();
+            await gate;
+          }
+          return original(file, ...rest);
+        },
+        async () => {
+          assert.strictEqual(await session.rebuildScore(), true);
+          await atGate;
+          // The compression is held mid-write: the delete still finishes.
+          try {
+            await within(session.deleteStateFile(), 5000, "the delete, behind a held compression");
+          } finally {
+            release();
+          }
+          await session.whenPageCompressed();
+        },
+      );
+      assert.deepStrictEqual(gzipCopies(ws), []);
+      assert.deepStrictEqual(bakedFiles(ws), []);
+      assert.deepStrictEqual(leftoverTemps(ws), []);
+    } finally {
+      ws.cleanup();
+    }
+  }),
+
+  "in local mode a sub-score goes out gzipped to a browser that takes gzip, and never stale": inLocalMode(async () => {
+    const zlib = require("node:zlib");
+    const ws = makeWorkspace({ frames: BASE_FRAMES });
+    try {
+      writeDiveScore(ws.dataDir, "Score");
+      const session = await build(ws, "__bundle_gzip_sub__");
+      const expected = () => ({
+        framesHtml: session.subFrames.Inner.framesHtml,
+        frameList: session.subFrames.Inner.frameList,
+        soundList: session.subFrames.Inner.soundList,
+      });
+
+      const gz = await fetchSub(session, "Inner", "gzip, deflate");
+      assert.strictEqual(gz.status, 200);
+      assert.strictEqual(gz.headers["content-encoding"], "gzip");
+      assert.match(gz.headers["content-type"], /^application\/json/);
+      assert.match(gz.headers.vary, /accept-encoding/i);
+      assert.deepStrictEqual(JSON.parse(zlib.gunzipSync(gz.body)), expected());
+
+      for (const accept of [null, "identity", "br"]) {
+        const plain = await fetchSub(session, "Inner", accept);
+        assert.strictEqual(plain.status, 200, String(accept));
+        assert.strictEqual(plain.headers["content-encoding"], undefined, String(accept));
+        assert.match(plain.headers.vary, /accept-encoding/i);
+        assert.deepStrictEqual(JSON.parse(plain.body), expected(), String(accept));
+      }
+
+      // A rebuild with a longer sub: both encodings answer with the new one.
+      const before = JSON.parse(zlib.gunzipSync(gz.body)).frameList;
+      writeDiveScore(ws.dataDir, "Score", { innerMid: true });
+      assert.strictEqual(await session.rebuildScore(), true);
+      await session.whenPageCompressed();
+      const fresh = await fetchSub(session, "Inner", "gzip");
+      assert.deepStrictEqual(JSON.parse(zlib.gunzipSync(fresh.body)), expected());
+      assert.notDeepStrictEqual(expected().frameList, before);
+      assert.deepStrictEqual(JSON.parse((await fetchSub(session, "Inner", null)).body), expected());
+
+      // Only the sub-scores themselves: an inherited name is not one.
+      assert.strictEqual((await fetchSub(session, "constructor", "gzip")).status, 404);
+    } finally {
+      ws.cleanup();
+    }
+  }),
+
+  "in local mode a publish readies every sub-score's gzip before any request": inLocalMode(async () => {
+    const zlib = require("node:zlib");
+    const { peekSubBody } = require("../utils/subBodies");
+    const ws = makeWorkspace({ frames: BASE_FRAMES });
+    try {
+      writeDiveScore(ws.dataDir, "Score");
+      const session = await build(ws, "__bundle_gzip_sub_ready__");
+      const ready = (sub) => {
+        const body = peekSubBody(sub);
+        assert.ok(body, "no body was made at publish");
+        return body;
+      };
+
+      const first = session.subFrames.Inner;
+      const body = ready(first);
+      const expected = {
+        framesHtml: first.framesHtml,
+        frameList: first.frameList,
+        soundList: first.soundList,
+      };
+      assert.deepStrictEqual(JSON.parse(body.json), expected);
+      assert.deepStrictEqual(JSON.parse(zlib.gunzipSync(await body.gzip)), expected);
+
+      // The route sends that same body: nothing is made at the request.
+      const res = await fetchSub(session, "Inner", "gzip");
+      assert.strictEqual(res.headers["content-encoding"], "gzip");
+      assert.deepStrictEqual(res.body, await body.gzip);
+      assert.strictEqual(peekSubBody(first), body, "the request made a new body");
+
+      // A rebuild readies the new sub's body; the old object keeps its own.
+      writeDiveScore(ws.dataDir, "Score", { innerMid: true });
+      assert.strictEqual(await session.rebuildScore(), true);
+      assert.notStrictEqual(session.subFrames.Inner, first);
+      const fresh = ready(session.subFrames.Inner);
+      assert.notStrictEqual(fresh, body);
+      assert.deepStrictEqual(
+        JSON.parse(zlib.gunzipSync(await fresh.gzip)).frameList,
+        session.subFrames.Inner.frameList,
+      );
+    } finally {
+      ws.cleanup();
+    }
+  }),
+
+  "outside local mode a sub-score goes out as is, even to gzip": () =>
+    withLocalMode(undefined, async () => {
+      const ws = makeWorkspace({ frames: BASE_FRAMES });
+      try {
+        writeDiveScore(ws.dataDir, "Score");
+        const session = await build(ws, "__bundle_gzip_sub_off__");
+        const { peekSubBody } = require("../utils/subBodies");
+        assert.strictEqual(peekSubBody(session.subFrames.Inner), undefined, "a body was made outside local mode");
+        const res = await fetchSub(session, "Inner", "gzip, deflate");
+        assert.strictEqual(res.status, 200);
+        assert.strictEqual(res.headers["content-encoding"], undefined);
+        assert.deepStrictEqual(JSON.parse(res.body).frameList, session.subFrames.Inner.frameList);
+      } finally {
+        const { apicache, SESSION_CACHE_KEY } = require("../utils/sessionCache");
+        apicache.clear(SESSION_CACHE_KEY);
+        ws.cleanup();
+      }
+    }),
+
   "a reload after an in-place update gets the new score while the save is pending": () =>
     reloadRaceCase({ swap: false, saveFails: false }),
   "a reload after a folder swap gets the new score while the save is pending": () =>
@@ -538,6 +947,7 @@ module.exports = {
       assert.notStrictEqual(after.contentHash, before.contentHash);
       assert.ok(after.html.includes('file="C.svg"'), "the page carries the new frame");
       assert.ok(after.content.includes('file="C.svg"'));
+      await session.whenPageCompressed();
       assert.deepStrictEqual(leftoverTemps(ws), []);
     } finally {
       ws.cleanup();
