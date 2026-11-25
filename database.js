@@ -1,6 +1,9 @@
 const { MESSAGES, ABOUT_DATA_DIR } = require("./constants");
 const fs = require("fs");
 const crypto = require("crypto");
+const { promisify } = require("util");
+const zlib = require("zlib");
+const { subBody } = require("./utils/subBodies");
 
 const jade = require("jade");
 
@@ -67,6 +70,32 @@ const writeFileAtomic = async (filePath, data) => {
 // is on disk. A failed write removes what it wrote and throws; the previous
 // revision, never touched, stays the one served.
 const BUNDLE_KINDS = ["html", "content.svg", "subs.json", "about.svg"];
+
+// The session page is the one large download every device makes at join (tens
+// of MB for a big score). Behind Cloudflare it travels compressed; served
+// straight from this app (a LAN build) it would not. So in local mode each
+// published page gets a gzip copy beside it, `<page>.gz`, which the page route
+// sends to a browser that accepts gzip. The copy belongs to its page's
+// revision: swept and deleted with it.
+//
+// Only in local mode: Cloudflare keeps an origin's gzip as it is, so on the
+// live site a gzip copy would replace Cloudflare's own, much smaller
+// compression.
+const PAGE_GZIP_SUFFIX = ".gz";
+
+// LOCAL_MODE=1 (or true/yes) marks a LAN build served straight to devices,
+// without Cloudflare in front. Read when used, not at load: bin/www reads its
+// .env files only after this module is loaded.
+const isLocalMode = () =>
+  /^(1|true|yes)$/i.test(String(process.env.LOCAL_MODE || "").trim());
+const gzipAsync = promisify(zlib.gzip);
+
+// Compression runs after the publish, never inside it: a boot republishes
+// every session, and a big page takes seconds to compress, so nothing waits
+// for it. Until a page's copy is on disk, the route sends the page
+// uncompressed. One page at a time across the server, so a boot's worth of
+// pages does not tie up the thread pool that file reads also use.
+let pageCompressionQueue = Promise.resolve();
 
 const unavailableWhy = (reason) =>
   reason === "empty" ? "has no frames" : "not found";
@@ -159,7 +188,7 @@ const escapeRegex = (text) =>
 const listBundleFiles = async (stateDir, id) => {
   const kinds = BUNDLE_KINDS.map(escapeRegex).join("|");
   const pattern = new RegExp(
-    `^${escapeRegex(id)}\\.(?:rev-([0-9a-z]+)\\.)?(?:${kinds})$`,
+    `^${escapeRegex(id)}\\.(?:rev-([0-9a-z]+)\\.)?(?:${kinds})(?:${escapeRegex(PAGE_GZIP_SUFFIX)})?$`,
   );
   let names;
   try {
@@ -259,7 +288,7 @@ let hostAddress = null;
 const aboutNestedNotationSvg = buildAboutSvg(ABOUT_DATA_DIR, "-about-nn");
 
 const serverIp = process.env.SERVER_IP;
-const wsPath = process.env.WS_PATH || `wss://${serverIp}`;
+const wsPath = `ws://192.168.0.2:2382`;
 console.log(`Websocket path is ${wsPath}`);
 
 class BMAdmin {
@@ -408,6 +437,8 @@ class BMSession {
   // through bundleFile(); see publishScoreBundle. Not persisted: a boot
   // rebuilds the score and publishes a fresh revision.
   bundleRevision = null;
+  // The page compression this session queued last; see #queuePageCompression.
+  #pageCompression = Promise.resolve();
   // "missing" / "empty" while the session has no score to serve (it found
   // none before any publish); null once one is published. Not persisted.
   scoreUnavailable = null;
@@ -950,10 +981,72 @@ class BMSession {
       (rev) => rev !== revision && rev !== previousRevision,
     );
 
+    if (isLocalMode()) {
+      this.#queuePageCompression(revision);
+      // Each sub-score's response, gzip included, starts now rather than
+      // queued behind the pages (seconds each at boot), so it is ready before
+      // the first dive (utils/subBodies.js). The score is already live: a
+      // failure here only leaves the body to be made at the first request.
+      for (const [name, sub] of Object.entries(this.subFrames)) {
+        try {
+          subBody(sub);
+        } catch (err) {
+          console.warn(`Could not prepare sub-score ${name}: ${err.message}`);
+        }
+      }
+    }
+
     // Last: tooling (and the end-to-end test) reads this line as "published".
     console.log(
       `Finish building svg content... for ${this.folder} with ID ${this.id}`,
     );
+  }
+
+  // Write the gzip copy of revision `revision`'s page in the background (see
+  // PAGE_GZIP_SUFFIX). Never rejects: a page without its copy is still
+  // served, uncompressed. Only the revision is queued, not the page: at boot
+  // every session queues at once, and holding each page (tens of MB) until
+  // its turn would hold them all together.
+  #queuePageCompression(revision) {
+    const run = pageCompressionQueue.then(() => this.#compressPage(revision));
+    pageCompressionQueue = run;
+    this.#pageCompression = run;
+  }
+
+  async #compressPage(revision) {
+    const page = this.bundleFile("html", revision);
+    const target = `${page}${PAGE_GZIP_SUFFIX}`;
+    // A copy is kept only for a page still on disk: by its turn, or by the
+    // time it is written, the session may be deleted or the revision swept.
+    const pageStillServed = async () =>
+      !this.isSessionDeleted && (await pathPresent(page));
+    try {
+      // Superseded before its turn: a newer page is live (and queued), and
+      // the one this would compress is kept only for a moment.
+      if (revision !== this.bundleRevision) return;
+      if (!(await pageStillServed())) return;
+      const html = await fs.promises.readFile(page);
+      const gzipped = await gzipAsync(html, {
+        level: zlib.constants.Z_BEST_COMPRESSION,
+      });
+      // Atomic, so the route never sends a half-written copy.
+      await writeFileAtomic(target, gzipped);
+      if (!(await pageStillServed())) {
+        await fs.promises.rm(target, { force: true });
+      }
+    } catch (err) {
+      // ENOENT: the state directory went away with the page; nothing to keep.
+      if (err.code !== "ENOENT") {
+        console.warn(`Could not compress score page ${page}: ${err.message}`);
+      }
+      await fs.promises.rm(target, { force: true }).catch(() => {});
+    }
+  }
+
+  // Settles once the page published last has its gzip copy, or failed to get
+  // one.
+  whenPageCompressed() {
+    return this.#pageCompression;
   }
 
   // Remove this session's baked files whose revision `doomed` picks (null is
@@ -1225,6 +1318,9 @@ class BMSession {
     }
     // Every baked revision, the current one included. A publish still under
     // way finishes first, so it cannot leave a revision behind.
+    // A page compression still queued or running is not waited for (it may
+    // sit behind every other session's): it checks for the deletion before
+    // and after writing, and removes its own copy.
     await this.#bundlePublishes;
     await this.#removeBundleFiles(() => true);
 
@@ -1461,3 +1557,5 @@ module.exports.BMSessionTable = BMSessionTable;
 module.exports.SERVER_STATE_DIR = SERVER_STATE_DIR;
 module.exports.DATA_DIR = DATA_DIR;
 module.exports.wsPath = wsPath;
+module.exports.PAGE_GZIP_SUFFIX = PAGE_GZIP_SUFFIX;
+module.exports.isLocalMode = isLocalMode;

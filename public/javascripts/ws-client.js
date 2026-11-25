@@ -9,7 +9,7 @@ let timeStampRate = 1.0;
 // ── Device identity (Session Lines) ──────────────────────────────────────────
 // A stable per-TAB UUID, persisted in sessionStorage as "did", so a refreshed
 // or reconnected tab rejoins ITS line. Generated client-side (never baked
-// into the shared, apicache-cached ${id}.html). sessionStorage is per-tab —
+// into the shared, baked ${id}.html). sessionStorage is per-tab —
 // unlike localStorage, which collapses every tab of one browser into a single
 // line — and survives refresh and mobile tab-eviction restore; a closed tab
 // mints a new did and falls back to smallest-line assignment (dormant revived

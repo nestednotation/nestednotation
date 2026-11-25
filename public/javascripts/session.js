@@ -713,7 +713,7 @@ const BARRIER_BANNER_TEXT = {
 // the moment the performer guided their device.
 //
 // The element is also created on demand, so a vanilla score that never receives
-// a barrier message keeps its shared, apicache-cached HTML byte-identical.
+// a barrier message keeps its shared, baked HTML byte-identical.
 function showBarrierWaiting(role) {
   let el = document.getElementById("barrier-waiting-indicator");
   if (!el) {
